@@ -138,6 +138,14 @@ export interface Project {
   status: "draft" | "generating" | "ready" | "error";
 }
 
+export type SaveState = "idle" | "saving" | "saved" | "error";
+
+export interface ProjectSnapshot {
+  project: Project;
+  editorState: EditorState;
+  aiChats: AIChatMessage[];
+}
+
 // ─── Generation Types ─────────────────────────────────────────────────────────
 
 export type GenerationStatus =
@@ -157,8 +165,8 @@ export interface GenerationLogEntry {
 
 // ─── Editor Types ─────────────────────────────────────────────────────────────
 
-export type LeftPanelTab = "pages" | "files" | "components";
-export type RightPanelTab = "ai" | "properties" | "blocks" | "design";
+export type LeftPanelTab = "pages" | "navigator" | "add" | "files";
+export type RightPanelTab = "ai" | "properties" | "blocks" | "design" | "style";
 export type PreviewMode = "preview" | "code" | "split";
 export type DevicePreview = "desktop" | "tablet" | "mobile";
 
@@ -166,14 +174,87 @@ export interface EditorState {
   selectedPageId: string | null;
   selectedFileId: string | null;
   selectedSectionId: string | null;
+  selectedNode: CanvasNodeInfo | null;
+  isCanvasEditing: boolean;
   leftPanelTab: LeftPanelTab;
   rightPanelTab: RightPanelTab;
   previewMode: PreviewMode;
   devicePreview: DevicePreview;
   isFullPreview: boolean;
-  visualEditMode: boolean;
+  leftSidebarOpen: boolean;
+  rightSidebarOpen: boolean;
   leftPanelWidth: number;
   rightPanelWidth: number;
+  visualEditMode: boolean;
+}
+
+export interface CanvasNodeInfo {
+  nodeId: string;
+  parentNodeId: string | null;
+  sectionId: string | null;
+  sectionName: string | null;
+  sectionType: string | null;
+  tag: string;
+  label: string;
+  role: "section" | "container" | "text" | "button" | "image" | "input" | "media";
+  depth: number;
+  text: string;
+  src: string | null;
+  href: string | null;
+  target: string | null;
+  isImg: boolean;
+  isVideo: boolean;
+  isIframe: boolean;
+  isInput: boolean;
+  isText: boolean;
+  isBtn: boolean;
+  isContainer: boolean;
+  isSec: boolean;
+  videoAutoplay: boolean;
+  videoLoop: boolean;
+  videoMuted: boolean;
+  videoControls: boolean;
+  placeholder: string | null;
+  inputType: string | null;
+  inputName: string | null;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: string;
+  fontStyle: string;
+  textAlign: string;
+  lineHeight: string;
+  letterSpacing: string;
+  textDecoration: string;
+  textTransform?: string;
+  color: string | null;
+  backgroundColor: string | null;
+  backgroundImage: string;
+  paddingTop: number;
+  paddingRight: number;
+  paddingBottom: number;
+  paddingLeft: number;
+  marginTop: number;
+  marginRight: number;
+  marginBottom: number;
+  marginLeft: number;
+  width: string;
+  height: string;
+  minWidth: string;
+  maxWidth: string;
+  borderRadius: string;
+  border: string;
+  display: string;
+  flexDir: string;
+  flexWrap: string;
+  justifyContent: string;
+  alignItems: string;
+  gap: string;
+  gridCols: string;
+  opacity: string;
+  boxShadow: string;
+  overflow: string;
+  secBg: string | null;
+  secPadding: string | null;
 }
 
 // ─── AI Chat Types ────────────────────────────────────────────────────────────

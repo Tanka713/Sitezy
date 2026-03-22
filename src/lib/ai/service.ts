@@ -10,11 +10,7 @@ import type {
 // ─── Client ───────────────────────────────────────────────────────────────────
 function getClient(): Anthropic {
   const key = process.env.SITEZY_SPARK_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error(
-      "No API key found. Add SITEZY_SPARK_KEY (or ANTHROPIC_API_KEY) to your .env.local file."
-    );
-  }
+  if (!key) throw new Error("No API key found. Add SITEZY_SPARK_KEY to your .env.local file.");
   return new Anthropic({ apiKey: key });
 }
 
@@ -22,7 +18,7 @@ function getModel(): string {
   return process.env.SITEZY_SPARK_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 }
 
-// ─── Streaming ────────────────────────────────────────────────────────────────
+// ─── Streaming helper ─────────────────────────────────────────────────────────
 export async function streamCompletion(
   systemPrompt: string,
   userPrompt: string,
@@ -32,7 +28,7 @@ export async function streamCompletion(
   let full = "";
   const stream = await client.messages.create({
     model: getModel(),
-    max_tokens: 4096,
+    max_tokens: 8000,
     stream: true,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
@@ -46,7 +42,7 @@ export async function streamCompletion(
   return full;
 }
 
-// ─── JSON completion with retry + repair ─────────────────────────────────────
+// ─── JSON completion (for small responses only — blueprint, sections list) ────
 export async function jsonCompletion<T = unknown>(
   systemPrompt: string,
   userPrompt: string,
@@ -75,23 +71,6 @@ export async function jsonCompletion<T = unknown>(
       lastError = e as Error;
       const match = raw.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (match) { try { return JSON.parse(match[0]) as T; } catch {} }
-      // Repair pass
-      if (attempt < maxRetries) {
-        try {
-          const repairMsg = await client.messages.create({
-            model: getModel(),
-            max_tokens: 4096,
-            system: "You are a JSON repair assistant. Fix the malformed JSON and return ONLY valid JSON.",
-            messages: [{ role: "user", content: `Fix this malformed JSON:\n\n${raw}\n\nReturn ONLY the corrected JSON.` }],
-          });
-          const repaired = repairMsg.content
-            .filter((b) => b.type === "text")
-            .map((b) => (b as { type: "text"; text: string }).text)
-            .join("")
-            .replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
-          return JSON.parse(repaired) as T;
-        } catch {}
-      }
     }
   }
   throw new Error(`JSON generation failed after ${maxRetries + 1} attempts: ${lastError?.message}`);
@@ -140,7 +119,82 @@ Return JSON:
   return jsonCompletion<SiteBlueprint>(system, user);
 }
 
-// ─── Page generation ──────────────────────────────────────────────────────────
+// ─── Extract sections from raw HTML ──────────────────────────────────────────
+// Infers sections from top-level HTML tags — no JSON needed
+function extractSections(html: string, pageSections: string[]): PageSection[] {
+  const uid = () => Math.random().toString(36).slice(2, 9);
+
+  // If we know the planned sections, use them directly
+  if (pageSections.length > 0) {
+    return pageSections.map((s) => ({
+      id: uid(),
+      type: s,
+      name: s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " "),
+    }));
+  }
+
+  // Infer from HTML tags
+  const sections: PageSection[] = [];
+  const tagMap: Record<string, string> = {
+    nav: "navbar", header: "hero", main: "content",
+    section: "section", article: "article", footer: "footer", aside: "sidebar",
+  };
+
+  const tagRe = /<(nav|header|main|section|article|footer|aside|div)[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = tagRe.exec(html)) !== null && count < 20) {
+    const tag = m[1].toLowerCase();
+    const type = tagMap[tag] ?? tag;
+    if (!sections.find((s) => s.type === type)) {
+      sections.push({ id: uid(), type, name: type.charAt(0).toUpperCase() + type.slice(1) });
+      count++;
+    }
+  }
+  return sections.length > 0 ? sections : [{ id: uid(), type: "content", name: "Content" }];
+}
+
+function sanitizeGeneratedHtml(raw: string): string {
+  let html = raw
+    .replace(/^```html?\s*/im, "")
+    .replace(/^```\s*/im, "")
+    .replace(/\s*```\s*$/im, "")
+    .trim();
+
+  if (!html) {
+    throw new Error("Generation returned empty HTML.");
+  }
+
+  if (html.startsWith("{") || html.startsWith('{"html"')) {
+    try {
+      const parsed = JSON.parse(html);
+      if (typeof parsed.html === "string") {
+        html = parsed.html.trim();
+      }
+    } catch {
+      const m = html.match(/"html"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+      if (m) html = m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+    }
+  }
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch?.[1]) {
+    html = bodyMatch[1].trim();
+  }
+
+  html = html
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?(html|head|body)[^>]*>/gi, "")
+    .trim();
+
+  if (!html.startsWith("<")) {
+    throw new Error("Generation did not return valid HTML.");
+  }
+
+  return html;
+}
+
+// ─── Page generation — streams raw HTML directly, no JSON wrapper ─────────────
 export async function generatePage(
   blueprint: SiteBlueprint,
   page: BlueprintPage,
@@ -152,70 +206,63 @@ export async function generatePage(
   const imageGuide  = palette ? formatPaletteForPrompt(palette) : "";
 
   const system = `You are an elite frontend developer specializing in premium, unique website design.
-Generate production-ready HTML for a single website page.
+Generate production-ready HTML for a single website page body.
+
+OUTPUT RULES — CRITICAL:
+- Output ONLY the raw HTML body content. Nothing else.
+- Do NOT wrap in JSON. Do NOT use markdown fences. Do NOT add explanation.
+- Do NOT include <html>, <head>, or <body> tags — output only what goes INSIDE <body>
+- Start your response directly with the first HTML tag (e.g. <nav or <header)
 
 TECHNICAL REQUIREMENTS:
-- Output pure HTML for the <body> content (no <html>/<head> tags)
-- Use inline Tailwind CSS classes via CDN (these are already loaded)
+- Use inline Tailwind CSS classes (CDN already loaded)
 - Use inline styles with CSS variables (--primary, --secondary, --accent, --bg, --text)
-- Make it visually stunning and unique — not a generic template
-- Include smooth hover effects using inline CSS transitions
-- Use semantic HTML5 elements
-- Make responsive with Tailwind responsive prefixes (sm:, md:, lg:)
-- Do NOT use any external JS libraries
-${wantsImages ? "- Use the real image URLs provided — do NOT use picsum.photos or placeholder URLs" : "- Do NOT use any images"}
+- Make it visually stunning — not a generic template
+- Include smooth hover effects using CSS transitions
+- Use semantic HTML5 elements (nav, header, section, article, footer)
+- Make fully responsive with Tailwind prefixes (sm:, md:, lg:)
+- Do NOT use external JS libraries
+${wantsImages ? "- Use the real image URLs provided — do NOT use placeholder.com or picsum.photos" : "- Do NOT use any images. Design with color and typography only."}
 
 DESIGN REQUIREMENTS:
-- Layout style: ${blueprint.layoutStyle}
-- Brand personality: ${blueprint.brandPersonality}
-- Colors: primary=${blueprint.colorScheme.primary}, secondary=${blueprint.colorScheme.secondary}, accent=${blueprint.colorScheme.accent}
-- Typography: headings use ${blueprint.typography.headingFont}, body uses ${blueprint.typography.bodyFont}
-- Animation style: ${blueprint.animationStyle}
-- Design direction: ${blueprint.designDirection}
+- Layout: ${blueprint.layoutStyle}
+- Brand: ${blueprint.brandPersonality}
+- Colors: primary=${blueprint.colorScheme.primary}, secondary=${blueprint.colorScheme.secondary}, accent=${blueprint.colorScheme.accent}, bg=${blueprint.colorScheme.bg}, text=${blueprint.colorScheme.text}
+- Heading font: ${blueprint.typography.headingFont}
+- Body font: ${blueprint.typography.bodyFont}
+- Animation: ${blueprint.animationStyle}
+- Direction: ${blueprint.designDirection}
 
 ${imageGuide}`;
 
-  const user = `Generate the "${page.name}" page for ${blueprint.siteName}.
+  const user = `Generate the "${page.name}" page body for ${blueprint.siteName}.
 
-Site Brief: ${brief.description}
-Site Type: ${brief.siteType}
+Brief: ${brief.description}
+Type: ${brief.siteType}
 Tone: ${brief.tone}
-Special Features: ${brief.features}
-Image Style: ${brief.imageStyle || "photos"}
-${brief.imageStyle === "none" ? "IMPORTANT: No images — design with pure color, typography, and layout only." : brief.imageStyle === "minimal" ? "IMPORTANT: Minimal images — 1-2 max." : ""}
-
-Page Purpose: ${page.purpose}
+Features: ${brief.features || "none"}
+Image style: ${brief.imageStyle || "photos"}
+Page purpose: ${page.purpose}
 Sections to include: ${page.sections.join(", ")}
-Navigation links to: ${blueprint.pages.map((p) => p.name).join(", ")}
+Navigation links: ${blueprint.pages.map((p) => p.name).join(", ")}
 
-Return JSON:
-{
-  "html": "complete body HTML as a single string",
-  "sections": [{ "id":"uid","type":"section-type","name":"Display Name" }]
-}`;
+Output ONLY the raw HTML. Start with the first tag. No JSON, no markdown, no explanation.`;
+
+  let fullHtml = "";
 
   if (onChunk) {
-    let fullText = "";
-    await streamCompletion(
-      system + "\n\nCRITICAL: Respond ONLY with valid JSON. No markdown fences, no explanation.",
-      user,
-      (chunk, full) => { fullText = full; onChunk(chunk, full); }
-    );
-    try {
-      const cleaned = fullText.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
-      return JSON.parse(cleaned);
-    } catch {
-      const match = fullText.match(/\{[\s\S]*\}/);
-      if (match) { try { return JSON.parse(match[0]); } catch {} }
-      const htmlMatch = fullText.match(/"html"\s*:\s*"([\s\S]*?)"\s*[,}]/);
-      return {
-        html: htmlMatch ? htmlMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"') : fullText,
-        sections: page.sections.map((s, i) => ({ id: `section-${i}`, type: s, name: s.charAt(0).toUpperCase() + s.slice(1) })),
-      };
-    }
+    await streamCompletion(system, user, (chunk, full) => {
+      fullHtml = full;
+      onChunk(chunk, full);
+    });
+  } else {
+    fullHtml = await streamCompletion(system, user, () => {});
   }
 
-  return jsonCompletion<{ html: string; sections: PageSection[] }>(system, user);
+  fullHtml = sanitizeGeneratedHtml(fullHtml);
+
+  const sections = extractSections(fullHtml, page.sections);
+  return { html: fullHtml, sections };
 }
 
 // ─── Section regeneration ─────────────────────────────────────────────────────
@@ -228,10 +275,21 @@ export async function regenerateSection(
 ): Promise<string> {
   const palette    = getSiteImagePalette(siteType);
   const imageGuide = formatPaletteForPrompt(palette);
-  const system = `You are an elite frontend developer. Regenerate a specific section. Match existing style perfectly.\n${imageGuide}`;
-  const user   = `Regenerate the "${sectionType}" section.\n\nPage HTML:\n${pageHtml.slice(0, 3000)}\n\nInstruction: ${instruction}\nColors: primary=${blueprint.colorScheme.primary}\n\nReturn JSON: { "sectionHtml": "new HTML string" }`;
-  const result = await jsonCompletion<{ sectionHtml: string }>(system, user);
-  return result.sectionHtml;
+
+  const system = `You are an elite frontend developer. Return ONLY the complete updated page HTML. No explanation, no markdown.
+${imageGuide}`;
+
+  const user = `Update the "${sectionType}" section of this page.
+Instruction: ${instruction}
+Colors: primary=${blueprint.colorScheme.primary}
+Layout: ${blueprint.layoutStyle}
+
+Current page HTML:
+${pageHtml.slice(0, 8000)}
+
+Return ONLY the complete updated page HTML with the ${sectionType} section changed. Nothing else.`;
+
+  return streamCompletion(system, user, () => {});
 }
 
 // ─── AI assistant ─────────────────────────────────────────────────────────────
@@ -248,14 +306,17 @@ export async function aiAssist(
 ): Promise<string> {
   const palette    = getSiteImagePalette(context.siteType || "agency");
   const imageGuide = formatPaletteForPrompt(palette);
+
   const system = `You are Sitezy's AI design and development assistant.
 Project: ${context.projectName}
-Blueprint: ${JSON.stringify(context.blueprint ?? {}).slice(0, 500)}
 ${context.pageName ? `Current page: ${context.pageName}` : ""}
-Be concise and specific. Use real image URLs when generating HTML.\n${imageGuide}`;
+Be concise and specific. When generating HTML, return raw HTML only — no JSON, no markdown fences.
+${imageGuide}`;
+
   const user = context.pageHtml
-    ? `Current page HTML (first 2000 chars):\n${context.pageHtml.slice(0, 2000)}\n\nUser: ${instruction}`
+    ? `Current page HTML:\n${context.pageHtml.slice(0, 6000)}\n\nUser request: ${instruction}`
     : instruction;
+
   return streamCompletion(system, user, onChunk);
 }
 
@@ -266,14 +327,20 @@ export async function generateNewPage(
   pageDescription: string,
   brief: SiteBrief
 ): Promise<{ page: BlueprintPage; html: string; sections: PageSection[] }> {
+  // Plan the page structure (small JSON — safe)
   const planSystem = "You are a web architect. Plan a new page for an existing website. Return JSON only.";
-  const planUser   = `Add a "${pageName}" page to ${blueprint.siteName}.\nDescription: ${pageDescription}\nExisting pages: ${blueprint.pages.map(p=>p.name).join(", ")}\nReturn JSON: { "id":"uid","name":"${pageName}","slug":"url-slug","sections":["type1","type2"],"purpose":"string" }`;
+  const planUser   = `Add a "${pageName}" page to ${blueprint.siteName}.
+Description: ${pageDescription}
+Existing pages: ${blueprint.pages.map((p) => p.name).join(", ")}
+Return JSON: { "id":"uid","name":"${pageName}","slug":"url-slug","sections":["type1","type2"],"purpose":"string" }`;
+
   const pageBlueprint = await jsonCompletion<BlueprintPage>(planSystem, planUser);
-  const result        = await generatePage(blueprint, pageBlueprint, brief);
+
+  // Generate the HTML (raw, no JSON)
+  const result = await generatePage(blueprint, pageBlueprint, brief);
   return { page: pageBlueprint, html: result.html, sections: result.sections };
 }
 
-// ─── Engine availability (simplified — Spark only) ────────────────────────────
 export function getEngineAvailability() {
   const hasKey = !!(process.env.SITEZY_SPARK_KEY || process.env.ANTHROPIC_API_KEY);
   return { spark: hasKey };

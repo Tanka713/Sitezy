@@ -1,22 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { generateBlueprint } from "@/lib/ai/service";
+import {
+  handleRouteError,
+  parseRequestBody,
+  createAppError,
+  API_REQUEST_002,
+  API_GENERATE_001,
+} from "@/lib/errors";
 import type { SiteBrief } from "@/types";
 
-export const runtime = "nodejs";
+export const runtime   = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? null;
+
   try {
-    const body = await req.json();
-    const brief: SiteBrief = body.brief;
-    if (!brief?.description || !brief?.siteName) {
-      return NextResponse.json({ error: "Missing required fields: siteName and description" }, { status: 400 });
+    const body = await parseRequestBody<{ brief?: SiteBrief }>(req);
+    const brief = body.brief;
+
+    if (!brief?.siteName || !brief?.description) {
+      throw createAppError({
+        code: API_REQUEST_002,
+        devMessage: "Blueprint request missing siteName or description",
+        severity: "warn",
+        metadata: { hasSiteName: !!brief?.siteName, hasDescription: !!brief?.description },
+      });
     }
-    const blueprint = await generateBlueprint(brief);
-    return NextResponse.json({ blueprint });
+
+    const blueprint = await generateBlueprint(brief).catch((err) => {
+      throw createAppError({
+        code: API_GENERATE_001,
+        devMessage: `generateBlueprint failed: ${err instanceof Error ? err.message : String(err)}`,
+        severity: "error",
+        metadata: { siteName: brief.siteName },
+        cause: err,
+      });
+    });
+
+    return Response.json({ blueprint });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[blueprint] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(err, requestId, API_GENERATE_001);
   }
 }

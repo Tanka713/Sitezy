@@ -2,16 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
 import type { Project } from "@/types";
 import { buildFullPageHtml } from "@/lib/utils";
+import {
+  handleRouteError,
+  parseRequestBody,
+  createAppError,
+  API_REQUEST_002,
+  SAVE_SERIALIZE_001,
+} from "@/lib/errors";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? null;
   try {
-    const body = await req.json();
-    const project: Project = body.project;
+    const body = await parseRequestBody<{ project?: Project }>(req);
+    const project = body.project;
 
     if (!project) {
-      return NextResponse.json({ error: "Missing project" }, { status: 400 });
+      throw createAppError({
+        code: API_REQUEST_002,
+        devMessage: "Export request missing project",
+        severity: "warn",
+      });
     }
 
     const zip = new JSZip();
@@ -125,9 +137,7 @@ img { max-width: 100%; height: auto; }
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[export] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(err, requestId, SAVE_SERIALIZE_001);
   }
 }
 

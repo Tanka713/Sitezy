@@ -78,7 +78,7 @@ export function Dashboard() {
               Describe your vision. Sitezy generates a unique, multi-page website in seconds.
             </p>
             <p className="text-white/25 text-sm mb-10">
-              Powered by Claude · No templates · Fully editable
+              AI-generated · No templates · Fully editable
             </p>
 
             <button

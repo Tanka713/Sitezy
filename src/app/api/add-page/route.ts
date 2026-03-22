@@ -1,27 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { generateNewPage } from "@/lib/ai/service";
+import {
+  handleRouteError,
+  parseRequestBody,
+  assertFields,
+  createAppError,
+  API_REQUEST_002,
+  API_GENERATE_001,
+} from "@/lib/errors";
 import type { SiteBlueprint, SiteBrief } from "@/types";
 
-export const runtime = "nodejs";
+export const runtime   = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") ?? null;
+
   try {
-    const body = await req.json();
-    const { blueprint, pageName, pageDescription, brief } = body as {
-      blueprint: SiteBlueprint;
-      pageName: string;
-      pageDescription: string;
-      brief: SiteBrief;
-    };
-    if (!blueprint || !pageName || !brief) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-    const result = await generateNewPage(blueprint, pageName, pageDescription || pageName, brief);
-    return NextResponse.json(result);
+    const body = await parseRequestBody<{
+      blueprint?: SiteBlueprint;
+      pageName?: string;
+      pageDescription?: string;
+      brief?: SiteBrief;
+    }>(req);
+
+    assertFields(body as Record<string, unknown>, ["blueprint", "pageName", "brief"], API_REQUEST_002);
+
+    const { blueprint, pageName, pageDescription, brief } = body;
+
+    const result = await generateNewPage(
+      blueprint!,
+      pageName!,
+      pageDescription || pageName!,
+      brief!
+    ).catch((err) => {
+      throw createAppError({
+        code: API_GENERATE_001,
+        devMessage: `generateNewPage failed for "${pageName}": ${err instanceof Error ? err.message : String(err)}`,
+        severity: "error",
+        metadata: { pageName },
+        cause: err,
+      });
+    });
+
+    return Response.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[add-page] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(err, requestId, API_GENERATE_001);
   }
 }

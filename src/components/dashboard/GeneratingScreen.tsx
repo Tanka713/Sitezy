@@ -1,31 +1,17 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/store";
 
-// ─── Web building animation phases ───────────────────────────────────────────
-const PHASES = [
-  { icon: "◈", label: "Analyzing brief",        detail: "Extracting brand essence and business goals" },
-  { icon: "⬡", label: "Designing architecture", detail: "Planning page structure and section hierarchy" },
-  { icon: "◉", label: "Building color system",  detail: "Creating typography and visual identity" },
-  { icon: "▣", label: "Generating layouts",     detail: "Crafting unique responsive page templates" },
-  { icon: "◈", label: "Writing content",         detail: "Producing copy for every section" },
-  { icon: "⬡", label: "Adding visuals",          detail: "Sourcing imagery matched to your industry" },
-  { icon: "◉", label: "Polishing details",       detail: "Refining interactions and micro-animations" },
-  { icon: "▣", label: "Final checks",            detail: "Validating output and optimising markup" },
-];
+const C = "#f97316"; // brand orange
 
-// Fake wireframe sections that animate in
-const WIREFRAME_SECTIONS = [
-  { h: 52, w: "100%", label: "navbar" },
-  { h: 180, w: "100%", label: "hero" },
-  { h: 80,  w: "100%", label: "logo cloud" },
-  { h: 140, w: "100%", label: "features" },
-  { h: 120, w: "100%", label: "testimonials" },
-  { h: 100, w: "100%", label: "cta" },
-  { h: 90,  w: "100%", label: "footer" },
+const STEPS = [
+  { id: "brief",    label: "Reading your brief",       icon: "◈" },
+  { id: "brand",    label: "Defining brand identity",  icon: "⬡" },
+  { id: "layout",   label: "Planning architecture",    icon: "▣" },
+  { id: "palette",  label: "Building color system",    icon: "◉" },
+  { id: "generate", label: "Generating pages",         icon: "◈" },
+  { id: "polish",   label: "Polishing details",        icon: "⬡" },
 ];
-
-const BRAND_COLOR = "#f97316";
 
 interface Props { projectName: string; pageCount: number; }
 
@@ -33,319 +19,434 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
   const genStatus   = useAppStore((s) => s.generationStatus);
   const genProgress = useAppStore((s) => s.generationProgress);
   const genLog      = useAppStore((s) => s.generationLog);
+  const projects    = useAppStore((s) => s.projects);
+  const currentId   = useAppStore((s) => s.currentProjectId);
+  const apiError    = useAppStore((s) => s.apiError);
 
-  const [tick,       setTick]       = useState(0);
-  const [phase,      setPhase]      = useState(0);
-  const [visibleSec, setVisibleSec] = useState(0);
-  const [scanLine,   setScanLine]   = useState(0);
-  const animRef = useRef<number | undefined>(undefined);
+  const project  = projects.find((p) => p.id === currentId);
+  const pages    = project?.pages ?? [];
+  const isDone   = genStatus === "done";
+  const isError  = genStatus === "error";
+
+  // Track which page is currently generating for live preview
+  const [previewPage, setPreviewPage] = useState<number>(0);
+  const [tick, setTick] = useState(0);
+  const [entered, setEntered] = useState(false);
 
   const successCount = genLog.filter((l) => l.type === "success").length;
   const totalSteps   = pageCount + 1;
-  const progress     = Math.min(98, Math.round((successCount / totalSteps) * 100));
-  const isDone       = genStatus === "done";
-  const isError      = genStatus === "error";
+  const pct          = isDone ? 100 : Math.min(97, Math.round((successCount / Math.max(totalSteps, 1)) * 100));
 
-  // Main animation loop
+  const errorMsg = genLog.filter((l) => l.type === "error").slice(-1)[0]?.msg?.replace(/^❌\s*/, "") ?? "";
+
+  // Entrance animation
+  useEffect(() => { const t = setTimeout(() => setEntered(true), 50); return () => clearTimeout(t); }, []);
+
+  // Tick for animations
   useEffect(() => {
     if (isDone) return;
-    const id = setInterval(() => setTick((t) => t + 1), 50);
+    const id = setInterval(() => setTick(t => t + 1), 60);
     return () => clearInterval(id);
   }, [isDone]);
 
-  // Phase cycling
+  // Auto-cycle preview pages
   useEffect(() => {
-    if (isDone || isError) return;
-    const id = setInterval(() => setPhase((p) => (p + 1) % PHASES.length), 2600);
+    if (pages.length === 0 || isDone) return;
+    const id = setInterval(() => setPreviewPage(p => (p + 1) % Math.max(pages.length, 1)), 3000);
     return () => clearInterval(id);
-  }, [isDone, isError]);
+  }, [pages.length, isDone]);
 
-  // Wireframe sections reveal
+  // Show the page that just completed
   useEffect(() => {
-    if (isDone || isError) return;
-    const id = setInterval(() => setVisibleSec((v) => Math.min(v + 1, WIREFRAME_SECTIONS.length)), 380);
-    return () => clearInterval(id);
-  }, [isDone, isError]);
+    const done = pages.findIndex((p) => p.status === "done");
+    if (done >= 0) setPreviewPage(done);
+  }, [successCount]);
 
-  // Scan line
-  useEffect(() => {
-    if (isDone || isError) return;
-    const id = setInterval(() => setScanLine((s) => (s + 3) % 100), 30);
-    return () => clearInterval(id);
-  }, [isDone, isError]);
-
-  const errorLogs = genLog.filter((l) => l.type === "error");
-  const lastError = errorLogs[errorLogs.length - 1]?.msg?.replace(/^❌\s*/, "") ?? "";
+  const currentPage  = pages[previewPage];
+  const hasAnyPage   = pages.some((p) => p.html);
+  const donePagesArr = pages.filter((p) => p.status === "done");
 
   return (
-    <div className="fixed inset-0 bg-[#06060a] flex items-center justify-center z-50 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 overflow-hidden flex"
+      style={{
+        background: "linear-gradient(135deg, #06060a 0%, #0a0814 50%, #06060a 100%)",
+        opacity: entered ? 1 : 0,
+        transition: "opacity 0.4s ease",
+      }}>
 
-      {/* ── Background grid ─────────────────────────────────── */}
-      <div className="absolute inset-0"
+      {/* ── Animated grid background ───────────────────────────────────────── */}
+      <div className="absolute inset-0 opacity-[0.06]"
         style={{
-          backgroundImage: `linear-gradient(${BRAND_COLOR}12 1px,transparent 1px),linear-gradient(90deg,${BRAND_COLOR}12 1px,transparent 1px)`,
-          backgroundSize: "40px 40px",
-        }} />
+          backgroundImage: `linear-gradient(${C}50 1px,transparent 1px),linear-gradient(90deg,${C}50 1px,transparent 1px)`,
+          backgroundSize: "48px 48px",
+          transform: `translateY(${(tick * 0.3) % 48}px)`,
+          transition: "none",
+        }}/>
 
-      {/* ── Radial glow ─────────────────────────────────────── */}
-      <div className="absolute inset-0 pointer-events-none"
+      {/* ── Glow orbs ─────────────────────────────────────────────────────── */}
+      <div className="absolute w-[600px] h-[600px] rounded-full opacity-[0.08] pointer-events-none"
         style={{
-          background: `radial-gradient(ellipse 70% 50% at 50% 45%,${BRAND_COLOR}14,transparent 70%)`,
-          transform: `scale(${1 + Math.sin(tick * 0.025) * 0.06})`,
-          transition: "transform 0.3s",
-        }} />
+          background: `radial-gradient(circle, ${C}, transparent 70%)`,
+          left: `${30 + Math.sin(tick * 0.015) * 10}%`,
+          top: `${20 + Math.cos(tick * 0.012) * 8}%`,
+          transform: "translate(-50%,-50%)",
+          transition: "none",
+        }}/>
+      <div className="absolute w-[400px] h-[400px] rounded-full opacity-[0.06] pointer-events-none"
+        style={{
+          background: `radial-gradient(circle, #6366f1, transparent 70%)`,
+          right: `${10 + Math.cos(tick * 0.018) * 8}%`,
+          bottom: `${15 + Math.sin(tick * 0.014) * 6}%`,
+          transform: "translate(50%,50%)",
+          transition: "none",
+        }}/>
 
-      {/* ── Corner decorations ──────────────────────────────── */}
-      {["top-0 left-0","top-0 right-0","bottom-0 left-0","bottom-0 right-0"].map((pos, i) => (
-        <div key={i} className={`absolute ${pos} w-16 h-16 opacity-30`}
-          style={{
-            background: `conic-gradient(from ${i*90}deg,${BRAND_COLOR}40,transparent 90deg)`,
-          }} />
-      ))}
+      {/* ── Left panel — live page preview ────────────────────────────────── */}
+      <div className="flex-1 flex flex-col p-8 pr-0 relative z-10">
 
-      {/* ── Main layout ─────────────────────────────────────── */}
-      <div className="relative z-10 flex gap-12 items-start max-w-4xl w-full px-8">
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[14px] font-black"
+            style={{ background: `${C}20`, color: C, border: `1px solid ${C}40` }}>✦</div>
+          <span className="text-[13px] font-semibold text-white/60">Sitezy</span>
+          <div className="flex-1"/>
+          {!isDone && !isError && (
+            <div className="flex items-center gap-2 text-[11px] text-white/30">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: C }}/>
+              Building…
+            </div>
+          )}
+        </div>
 
-        {/* LEFT — Animated wireframe browser */}
-        <div className="flex-shrink-0 w-[300px]">
+        {/* Browser mockup with live page */}
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Browser chrome */}
-          <div className="rounded-2xl overflow-hidden border border-white/[0.12] shadow-2xl"
-            style={{ boxShadow: `0 0 60px ${BRAND_COLOR}20` }}>
-            {/* Title bar */}
-            <div className="h-8 bg-[#111118] border-b border-white/[0.08] flex items-center gap-2 px-3">
+          <div className="rounded-t-2xl overflow-hidden border border-white/[0.1] border-b-0 flex-shrink-0"
+            style={{ background: "#111118" }}>
+            <div className="h-9 flex items-center gap-3 px-4 border-b border-white/[0.06]">
               <div className="flex gap-1.5">
                 {["#ef4444","#f59e0b","#22c55e"].map((c) => (
-                  <div key={c} className="w-2.5 h-2.5 rounded-full" style={{ background: c, opacity: 0.7 }} />
+                  <div key={c} style={{ width:10, height:10, borderRadius:"50%", background:c, opacity:0.7 }}/>
                 ))}
               </div>
-              <div className="flex-1 h-4 bg-white/[0.06] rounded-full mx-2 flex items-center px-2">
-                <span className="text-[9px] text-white/25 font-mono truncate">
-                  {isDone ? `${projectName.toLowerCase().replace(/\s+/g,"-")}.com` : "building…"}
+              {/* URL bar */}
+              <div className="flex-1 max-w-xs h-5 rounded-full flex items-center px-3 gap-2"
+                style={{ background: "rgba(255,255,255,0.06)" }}>
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: isDone ? "#22c55e" : C, opacity: 0.8 }}/>
+                <span className="text-[10px] text-white/30 font-mono truncate">
+                  {isDone
+                    ? `${projectName.toLowerCase().replace(/\s+/g,"-")}.com`
+                    : currentPage ? `/${currentPage.slug||currentPage.name.toLowerCase()}` : "generating…"}
                 </span>
               </div>
-            </div>
-
-            {/* Page content area */}
-            <div className="bg-[#0d0d12] relative overflow-hidden" style={{ height: 360 }}>
-              {/* Scan line */}
-              {!isDone && !isError && (
-                <div className="absolute left-0 right-0 h-[1px] pointer-events-none z-20"
-                  style={{
-                    top: `${scanLine}%`,
-                    background: `linear-gradient(90deg,transparent,${BRAND_COLOR}80,transparent)`,
-                    boxShadow: `0 0 8px ${BRAND_COLOR}60`,
-                  }} />
-              )}
-
-              {/* Wireframe sections */}
-              <div className="p-2 space-y-1.5">
-                {WIREFRAME_SECTIONS.slice(0, visibleSec).map((sec, i) => (
-                  <div key={sec.label}
-                    className="rounded overflow-hidden relative"
+              {/* Page tabs */}
+              <div className="flex gap-1 ml-auto">
+                {pages.slice(0,5).map((p, i) => (
+                  <button key={p.id} onClick={() => setPreviewPage(i)}
+                    className="text-[9px] px-2 py-0.5 rounded transition-all"
                     style={{
-                      height: sec.h,
-                      background: i === 0
-                        ? `linear-gradient(135deg,${BRAND_COLOR}18,${BRAND_COLOR}08)`
-                        : `rgba(255,255,255,0.03)`,
-                      border: `1px solid ${i === 0 ? BRAND_COLOR + "30" : "rgba(255,255,255,0.06)"}`,
-                      animation: "wireReveal 0.4s ease-out both",
+                      background: previewPage===i ? `${C}20` : "rgba(255,255,255,0.04)",
+                      color: previewPage===i ? C : "rgba(255,255,255,0.3)",
+                      border: `1px solid ${previewPage===i ? C+"40" : "transparent"}`,
                     }}>
-                    {/* Section label */}
-                    <div className="absolute top-1.5 left-2.5 flex items-center gap-1.5">
-                      <div className="w-1 h-1 rounded-full" style={{ background: BRAND_COLOR, opacity: 0.6 }} />
-                      <span className="text-[8px] uppercase tracking-widest font-medium"
-                        style={{ color: BRAND_COLOR, opacity: 0.5 }}>{sec.label}</span>
-                    </div>
-                    {/* Skeleton lines */}
-                    <div className="absolute inset-x-4 bottom-3 space-y-1.5">
-                      {Array.from({ length: Math.max(1, Math.floor(sec.h / 28)) }).map((_, j) => (
-                        <div key={j} className="h-1.5 rounded-full"
-                          style={{
-                            background: `rgba(255,255,255,0.07)`,
-                            width: `${60 + Math.sin(i * 3 + j * 7) * 30}%`,
-                            animationDelay: `${j * 0.1}s`,
-                          }} />
-                      ))}
-                    </div>
-                    {/* Shimmer overlay */}
-                    {!isDone && (
-                      <div className="absolute inset-0"
-                        style={{
-                          background: `linear-gradient(90deg,transparent ${((tick*2)%120)-20}%,rgba(255,255,255,0.04) ${((tick*2)%120)}%,transparent ${((tick*2)%120)+20}%)`,
-                        }} />
-                    )}
-                  </div>
+                    {p.name}
+                  </button>
                 ))}
               </div>
-
-              {/* Done overlay */}
-              {isDone && (
-                <div className="absolute inset-0 flex items-center justify-center"
-                  style={{ background: `radial-gradient(circle,${BRAND_COLOR}25,${BRAND_COLOR}08)` }}>
-                  <div className="text-center">
-                    <div className="text-5xl mb-3" style={{ color: BRAND_COLOR }}>✦</div>
-                    <p className="text-white/60 text-[11px] font-medium tracking-widest uppercase">Ready</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Page count indicators */}
-          <div className="flex justify-center gap-1.5 mt-3">
-            {Array.from({ length: Math.min(pageCount, 8) }).map((_, i) => (
-              <div key={i} className="h-1 rounded-full transition-all duration-500"
+          {/* Page content area */}
+          <div className="flex-1 min-h-0 rounded-b-2xl overflow-hidden border border-white/[0.1] border-t-0 relative"
+            style={{ background: "#0d0d14" }}>
+
+            {/* Scan line when generating */}
+            {!isDone && !isError && (
+              <div className="absolute left-0 right-0 h-px pointer-events-none z-10"
                 style={{
-                  width: i < successCount ? 20 : 8,
-                  background: i < successCount ? BRAND_COLOR : "rgba(255,255,255,0.15)",
-                }} />
-            ))}
+                  top: `${(tick * 1.5) % 100}%`,
+                  background: `linear-gradient(90deg,transparent,${C}60,transparent)`,
+                  boxShadow: `0 0 12px ${C}40`,
+                  transition: "none",
+                }}/>
+            )}
+
+            {/* Live iframe preview if page has HTML */}
+            {currentPage?.html ? (
+              <iframe
+                key={currentPage.id}
+                srcDoc={buildMinimalPreview(currentPage.html)}
+                className="w-full h-full border-none block"
+                style={{
+                  pointerEvents: "none",
+                  filter: currentPage.status === "generating" ? "brightness(0.7)" : "none",
+                  transition: "filter 0.5s",
+                  transform: `scale(0.75)`,
+                  transformOrigin: "top left",
+                  width: "133.33%",
+                  height: "133.33%",
+                }}
+                sandbox="allow-scripts"
+              />
+            ) : (
+              /* Wireframe skeleton */
+              <div className="p-4 space-y-3 overflow-hidden h-full">
+                {[
+                  { h: 48,  label: "navbar",       delay: 0 },
+                  { h: 200, label: "hero",          delay: 0.1 },
+                  { h: 72,  label: "logo cloud",    delay: 0.2 },
+                  { h: 160, label: "features",      delay: 0.3 },
+                  { h: 130, label: "testimonials",  delay: 0.4 },
+                  { h: 100, label: "cta",           delay: 0.5 },
+                  { h: 80,  label: "footer",        delay: 0.6 },
+                ].map((s) => (
+                  <div key={s.label} className="rounded-lg relative overflow-hidden"
+                    style={{
+                      height: s.h,
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      animationDelay: `${s.delay}s`,
+                    }}>
+                    <div className="absolute top-2 left-3 flex items-center gap-1.5">
+                      <div className="w-1 h-1 rounded-full" style={{ background: C, opacity: 0.4 }}/>
+                      <span className="text-[8px] uppercase tracking-widest" style={{ color: C, opacity: 0.35 }}>{s.label}</span>
+                    </div>
+                    {/* Skeleton lines */}
+                    <div className="absolute inset-x-3 bottom-3 space-y-1.5">
+                      {Array.from({ length: Math.max(1, Math.floor(s.h / 30)) }).map((_, j) => (
+                        <div key={j} className="h-1.5 rounded-full"
+                          style={{
+                            background: "rgba(255,255,255,0.06)",
+                            width: `${55 + Math.sin(j * 3.7) * 35}%`,
+                          }}/>
+                      ))}
+                    </div>
+                    {/* Shimmer */}
+                    <div className="absolute inset-0"
+                      style={{
+                        background: `linear-gradient(90deg,transparent ${((tick*2)%140)-30}%,rgba(255,255,255,0.04) ${((tick*2)%140)}%,transparent ${((tick*2)%140)+30}%)`,
+                        transition: "none",
+                      }}/>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Done overlay */}
+            {isDone && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                style={{ background: `radial-gradient(circle at 50% 50%, ${C}18, transparent 70%)` }}>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* RIGHT — Status and progress */}
-        <div className="flex-1 min-w-0 pt-2">
-
-          {/* Project name */}
-          <div className="mb-6">
-            <p className="text-[11px] uppercase tracking-widest font-medium mb-1"
-              style={{ color: BRAND_COLOR + "99" }}>Building</p>
-            <h1 className="text-3xl font-bold text-white tracking-tight leading-tight">
-              {projectName}
-            </h1>
-          </div>
-
-          {/* Current phase */}
-          {!isDone && !isError && (
-            <div className="mb-6 p-4 rounded-xl border"
+        {/* Page progress dots */}
+        <div className="flex items-center gap-2 mt-4 justify-center">
+          {pages.map((p, i) => (
+            <button key={p.id} onClick={() => setPreviewPage(i)}
+              className="rounded-full transition-all duration-300"
               style={{
-                background: `${BRAND_COLOR}08`,
-                borderColor: `${BRAND_COLOR}25`,
-              }}>
-              <div className="flex items-center gap-3 mb-1.5">
-                <span className="text-xl" style={{ color: BRAND_COLOR }}>
-                  {PHASES[phase].icon}
-                </span>
-                <span className="font-semibold text-white text-[14px]">
-                  {genProgress || PHASES[phase].label}
-                </span>
-              </div>
-              <p className="text-[12px] text-white/40 ml-9">
-                {PHASES[phase].detail}
-              </p>
-            </div>
-          )}
+                width: previewPage===i ? 20 : p.status==="done" ? 12 : 8,
+                height: 6,
+                background: p.status==="done" ? C
+                  : p.status==="generating" ? `${C}60`
+                  : "rgba(255,255,255,0.12)",
+              }}/>
+          ))}
+        </div>
+      </div>
 
-          {/* Error state */}
-          {isError && (
-            <div className="mb-6 p-4 rounded-xl border border-red-500/25 bg-red-500/8">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-red-400 text-lg">⚠</span>
-                <span className="font-semibold text-red-400 text-[14px]">Generation Failed</span>
-              </div>
-              <div className="bg-black/40 rounded-lg p-3 font-mono text-[11px] text-red-300/80 break-words leading-relaxed mb-3">
-                {lastError || "An unexpected error occurred. Check your API key and network connection."}
-              </div>
-              {/* All error logs */}
-              {errorLogs.length > 1 && (
-                <div className="space-y-1.5">
-                  {errorLogs.map((e) => (
-                    <div key={e.id} className="text-[11px] font-mono text-red-400/60">
-                      {e.msg.replace(/^❌\s*/, "")}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="mt-3 text-[11px] text-white/25">
-                Common causes: invalid API key · rate limit · network timeout
-              </div>
-            </div>
-          )}
+      {/* ── Right panel — status ────────────────────────────────────────────── */}
+      <div className="w-[360px] flex flex-col p-8 relative z-10 flex-shrink-0" style={{ borderLeft: "1px solid rgba(255,255,255,0.05)" }}>
 
-          {/* Done state */}
-          {isDone && (
-            <div className="mb-6 p-4 rounded-xl border"
-              style={{ borderColor: `${BRAND_COLOR}30`, background: `${BRAND_COLOR}08` }}>
-              <div className="flex items-center gap-2">
-                <span style={{ color: BRAND_COLOR }} className="text-lg">✦</span>
-                <span className="font-semibold text-white text-[14px]">Website Ready</span>
-              </div>
-              <p className="text-[12px] text-white/40 mt-1 ml-7">
-                {successCount} of {totalSteps} steps completed · Opening editor…
-              </p>
-            </div>
-          )}
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 mb-10">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-black"
+            style={{ background: `${C}18`, color: C, border: `1px solid ${C}30` }}>✦</div>
+          <span className="text-[12px] font-semibold tracking-tight" style={{ color: "rgba(255,255,255,0.35)" }}>Sitezy</span>
+        </div>
 
-          {/* Progress bar */}
-          <div className="mb-5">
-            <div className="flex justify-between mb-1.5">
-              <span className="text-[11px] text-white/30">
-                {isDone ? "Complete" : isError ? "Stopped" : `Step ${successCount} of ${totalSteps}`}
+        {/* Project title + status badge */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            {!isDone && !isError && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: `${C}15`, color: C, border: `1px solid ${C}30` }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: C }}/>
+                Building
               </span>
-              <span className="text-[11px] font-mono" style={{ color: BRAND_COLOR + "cc" }}>
-                {isDone ? "100" : isError ? progress : progress}%
+            )}
+            {isDone && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
+                <span>✓</span> Complete
               </span>
-            </div>
-            <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden"
+            )}
+            {isError && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}>
+                <span>✕</span> Failed
+              </span>
+            )}
+          </div>
+          <h1 className="text-[26px] font-black text-white leading-tight tracking-tight">
+            {projectName}
+          </h1>
+          {!isDone && !isError && genProgress && (
+            <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+              {genProgress}
+            </p>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        {!isError && (
+          <div className="mb-7">
+            <div className="h-[3px] rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div className="h-full rounded-full relative overflow-hidden transition-all duration-700 ease-out"
                 style={{
-                  width: isDone ? "100%" : `${progress}%`,
-                  background: isError
-                    ? "#ef4444"
-                    : `linear-gradient(90deg,${BRAND_COLOR}cc,${BRAND_COLOR})`,
-                  boxShadow: isError ? "none" : `0 0 10px ${BRAND_COLOR}80`,
+                  width: `${pct}%`,
+                  background: isDone
+                    ? "linear-gradient(90deg,#22c55e,#4ade80)"
+                    : `linear-gradient(90deg,${C}cc,${C})`,
+                  boxShadow: isDone ? "0 0 10px rgba(34,197,94,0.5)" : `0 0 10px ${C}50`,
                 }}>
-                {/* Shimmer on progress bar */}
-                {!isDone && !isError && (
+                {!isDone && (
                   <div className="absolute inset-0"
                     style={{
-                      background: `linear-gradient(90deg,transparent ${(tick*3)%200-50}%,rgba(255,255,255,0.3) ${(tick*3)%200}%,transparent ${(tick*3)%200+50}%)`,
-                    }} />
+                      background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.3) 50%,transparent 100%)",
+                      animation: "shimmer 1.5s infinite",
+                    }}/>
                 )}
               </div>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span style={{ color: "rgba(255,255,255,0.2)" }}>{isDone ? "All pages ready" : `${pct}% complete`}</span>
+              <span style={{ color: "rgba(255,255,255,0.2)" }}>{successCount} / {totalSteps}</span>
             </div>
           </div>
+        )}
 
-          {/* Live log */}
-          <div className="rounded-xl border border-white/[0.06] bg-black/25 overflow-hidden">
-            <div className="px-3 py-2 border-b border-white/[0.05] flex items-center gap-2">
-              <div className="flex gap-1">
-                {!isDone && !isError && (
-                  <>
-                    <div className="w-1 h-1 rounded-full bg-white/30" style={{ animation: "pulse 1s infinite" }} />
-                    <div className="w-1 h-1 rounded-full bg-white/30" style={{ animation: "pulse 1s infinite 0.3s" }} />
-                    <div className="w-1 h-1 rounded-full bg-white/30" style={{ animation: "pulse 1s infinite 0.6s" }} />
-                  </>
-                )}
+        {/* Steps */}
+        <div className="space-y-1 mb-6">
+          <Step label="Site blueprint" done={successCount >= 1} active={!isError && successCount === 0} color={C} />
+          {pages.map((p) => (
+            <Step key={p.id} label={p.name} done={p.status === "done"} active={p.status === "generating"} error={p.status === "error"} color={C} />
+          ))}
+        </div>
+
+        {/* Error panel */}
+        {isError && (
+          <div className="rounded-xl overflow-hidden mb-5" style={{ border: "1px solid rgba(239,68,68,0.2)" }}>
+            <div className="px-4 py-3.5" style={{ background: "rgba(239,68,68,0.07)" }}>
+              <p className="text-[12px] font-semibold mb-1" style={{ color: "#f87171" }}>Generation failed</p>
+              <p className="text-[11px] leading-relaxed" style={{ color: "rgba(239,100,100,0.65)" }}>
+                {apiError?.code === "ERR_BILLING"
+                  ? "API credit balance is too low. Please upgrade or add credits to continue."
+                  : errorMsg || "Check your API key and try again"}
+              </p>
+            </div>
+            {(apiError?.requestId || apiError?.code) && (
+              <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: "rgba(239,68,68,0.03)", borderTop: "1px solid rgba(239,68,68,0.1)" }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[9px] font-bold tracking-widest uppercase flex-shrink-0" style={{ color: "rgba(239,68,68,0.35)" }}>Ref</span>
+                  <code className="text-[10px] font-mono truncate" style={{ color: "rgba(239,100,100,0.45)" }}>{apiError?.requestId ?? apiError?.code}</code>
+                </div>
+                <CopyButton text={apiError?.requestId ?? apiError?.code ?? ""} />
               </div>
-              <span className="text-[10px] text-white/25 uppercase tracking-widest font-mono">Build log</span>
-            </div>
-            <div className="px-3 py-2.5 space-y-1.5 max-h-[160px] overflow-auto font-mono text-[11px]">
-              {genLog.length === 0 ? (
-                <span className="text-white/20">Initialising…</span>
-              ) : (
-                [...genLog].reverse().slice(0, 12).map((entry) => (
-                  <div key={entry.id} className={
-                    entry.type === "error"    ? "text-red-400"
-                    : entry.type === "success" ? "text-emerald-400"
-                    : entry.type === "progress"? "text-white/55"
-                    : "text-white/30"
-                  }>
-                    {entry.msg}
-                  </div>
-                ))
-              )}
-            </div>
+            )}
+          </div>
+        )}
+
+        {/* Build log */}
+        <div className="flex-1 min-h-0 rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.045)" }}>
+          <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            {!isDone && !isError && <span className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: C }}/>}
+            <span className="text-[9px] uppercase tracking-[0.12em] font-semibold" style={{ color: "rgba(255,255,255,0.18)" }}>Build log</span>
+          </div>
+          <div className="p-3 space-y-1.5 overflow-auto max-h-[160px] font-mono text-[10px]">
+            {[...genLog].reverse().slice(0, 15).map((e) => (
+              <div key={e.id} style={{
+                color: e.type==="error" ? "rgba(248,113,113,0.75)"
+                  : e.type==="success" ? "rgba(74,222,128,0.75)"
+                  : e.type==="progress" ? "rgba(255,255,255,0.4)"
+                  : "rgba(255,255,255,0.2)"
+              }}>{e.msg}</div>
+            ))}
+            {genLog.length === 0 && <span style={{ color: "rgba(255,255,255,0.18)" }}>Starting…</span>}
           </div>
         </div>
       </div>
 
       <style>{`
-        @keyframes wireReveal {
-          from { opacity:0; transform:translateY(-6px) scaleY(0.8); }
-          to   { opacity:1; transform:translateY(0) scaleY(1); }
-        }
+        @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(200%)} }
       `}</style>
     </div>
   );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
+      className="text-[10px] px-2 py-1 rounded-lg flex-shrink-0 transition-all"
+      style={{ background: "rgba(239,68,68,0.08)", color: copied ? "#4ade80" : "rgba(239,68,68,0.5)", border: "1px solid rgba(239,68,68,0.15)" }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function Step({ label, done, active, error, color }: {
+  label: string; done: boolean; active: boolean; error?: boolean; color: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      {/* Status dot */}
+      <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-500"
+        style={{
+          background: done ? "rgba(34,197,94,0.15)" : error ? "rgba(239,68,68,0.12)" : active ? `${color}15` : "rgba(255,255,255,0.04)",
+          border: `1.5px solid ${done ? "rgba(34,197,94,0.4)" : error ? "rgba(239,68,68,0.35)" : active ? `${color}45` : "rgba(255,255,255,0.08)"}`,
+          boxShadow: active ? `0 0 6px ${color}30` : "none",
+        }}>
+        {done && <span style={{ fontSize: 8, color: "#4ade80" }}>✓</span>}
+        {error && <span style={{ fontSize: 8, color: "#f87171" }}>✕</span>}
+        {active && <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "block", animation: "pulse 1s infinite" }}/>}
+      </div>
+      {/* Label */}
+      <span className="text-[12px] flex-1 transition-all duration-300"
+        style={{
+          color: done ? "rgba(255,255,255,0.7)" : error ? "rgba(248,113,113,0.8)" : active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.22)",
+          fontWeight: active ? 500 : 400,
+          letterSpacing: "-0.01em",
+        }}>
+        {label}
+      </span>
+      {/* State label */}
+      {active && (
+        <span className="text-[9px] font-mono" style={{ color: `${color}70`, animation: "pulse 1.5s infinite" }}>
+          working…
+        </span>
+      )}
+      {done && <span className="text-[9px]" style={{ color: "rgba(74,222,128,0.5)" }}>done</span>}
+      {error && <span className="text-[9px]" style={{ color: "rgba(248,113,113,0.5)" }}>failed</span>}
+    </div>
+  );
+}
+
+// Build a minimal preview of page HTML that loads instantly
+function buildMinimalPreview(html: string): string {
+  return `<!DOCTYPE html><html><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{overflow:hidden;pointer-events:none;background:#fff}
+  img{max-width:100%;height:auto}
+</style>
+</head><body>${html}</body></html>`;
 }

@@ -48,7 +48,8 @@ export function CreateProjectModal({ onClose }: Props) {
   const setGenStatus   = useAppStore((s) => s.setGenStatus);
   const addGenLog      = useAppStore((s) => s.addGenLog);
   const clearGenLog    = useAppStore((s) => s.clearGenLog);
-  const openProject    = useAppStore((s) => s.openProject);
+  const saveCurrentProject = useAppStore((s) => s.saveCurrentProject);
+  const setApiError    = useAppStore((s) => s.setApiError);
   const genStatus      = useAppStore((s) => s.generationStatus);
   const genLog         = useAppStore((s) => s.generationLog);
 
@@ -89,7 +90,7 @@ export function CreateProjectModal({ onClose }: Props) {
     clearGenLog();
     setStep(2);
 
-    const project = createProject(brief);
+    const project = await createProject(brief);
     projectIdRef.current = project.id;
 
     try {
@@ -104,8 +105,9 @@ export function CreateProjectModal({ onClose }: Props) {
         body: JSON.stringify({ brief }),
       });
       if (!bpRes.ok) {
-        const e = await bpRes.json();
-        throw new Error(e.detail ? `${e.error} — ${e.detail}` : e.error || "Blueprint failed");
+        const e = await bpRes.json() as { error?: string; requestId?: string; code?: string };
+        if (e.requestId || e.code) setApiError({ message: e.error ?? "Blueprint failed", requestId: e.requestId ?? null, code: e.code ?? "ERR_API" });
+        throw new Error(e.error || "Blueprint failed");
       }
       const { blueprint }: { blueprint: SiteBlueprint } = await bpRes.json();
       addGenLog(`✅ Blueprint — ${blueprint.layoutStyle} · ${blueprint.pages.length} pages`, "success");
@@ -136,7 +138,14 @@ export function CreateProjectModal({ onClose }: Props) {
           body: JSON.stringify({ blueprint, page: bpPage, brief }),
         });
         if (!pageRes.ok) {
-          const e = await pageRes.json();
+          const e = await pageRes.json() as { error?: string; requestId?: string; code?: string };
+          const errInfo = { message: e.error ?? "Page generation failed", requestId: e.requestId ?? null, code: e.code ?? "ERR_API" };
+          setApiError(errInfo);
+          // Billing/auth errors are fatal — abort entire generation
+          if (e.code === "ERR_BILLING" || e.code === "ERR_AUTH") {
+            addGenLog(`❌ ${e.error}`, "error");
+            throw new Error(e.error ?? "API error");
+          }
           addGenLog(`⚠️ ${bpPage.name}: ${e.error}`, "error");
           setPageStatus(localPage.id, "error");
           continue;
@@ -146,10 +155,18 @@ export function CreateProjectModal({ onClose }: Props) {
         addGenLog(`✅ ${bpPage.name} — ${(result.html.length/1000).toFixed(1)}k chars`, "success");
       }
 
+      // Don't open editor if no pages generated successfully
+      const successfulPages = pages.filter((p) => p.status === "done" || p.html);
+      if (successfulPages.length === 0) {
+        throw new Error("No pages could be generated. Please check your API key and credits.");
+      }
+
+      const saved = await saveCurrentProject({ manual: true });
+      if (!saved) throw new Error("The generated project could not be saved.");
+
       setGenStatus("done","Your website is ready!");
       addGenLog("🎉 All done! Opening editor...", "success");
       setTimeout(() => {
-        if (projectIdRef.current) openProject(projectIdRef.current);
         onClose();
       }, 1800);
     } catch (err) {

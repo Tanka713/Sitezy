@@ -31,11 +31,12 @@ export function buildFullPageHtml(
   pageHtml: string,
   blueprint: SiteBlueprint | null,
   pageName: string,
-  editorScript = ""
+  editorScript = "",
+  globalCss = ""
 ): string {
   const headingFont = blueprint?.typography?.headingFont || "Inter";
   const bodyFont    = blueprint?.typography?.bodyFont    || "Inter";
-  const colors      = blueprint?.colorScheme ?? {};
+  const colors = blueprint?.colorScheme;
 
   const googleFonts = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(headingFont)}:wght@400;500;600;700;800;900&family=${encodeURIComponent(bodyFont)}:wght@300;400;500;600&display=swap`;
 
@@ -51,13 +52,13 @@ export function buildFullPageHtml(
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root {
-      --primary:   ${colors.primary   || "#7c3aed"};
-      --secondary: ${colors.secondary || "#2563eb"};
-      --accent:    ${colors.accent    || "#f59e0b"};
-      --bg:        ${colors.bg        || "#ffffff"};
-      --text:      ${colors.text      || "#111111"};
-      --muted:     ${colors.muted     || "#6b7280"};
-      --border:    ${colors.border    || "#e5e7eb"};
+      --primary:   ${colors?.primary   || "#7c3aed"};
+      --secondary: ${colors?.secondary || "#2563eb"};
+      --accent:    ${colors?.accent    || "#f59e0b"};
+      --bg:        ${colors?.bg        || "#ffffff"};
+      --text:      ${colors?.text      || "#111111"};
+      --muted:     ${colors?.muted     || "#6b7280"};
+      --border:    ${colors?.border    || "#e5e7eb"};
     }
     *, *::before, *::after { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -76,6 +77,7 @@ export function buildFullPageHtml(
     img { max-width: 100%; height: auto; display: block; }
     ::selection { background: var(--primary); color: white; }
   </style>
+  ${globalCss ? `<style data-sitezy-global-css>\n${globalCss}\n  </style>` : ""}
 </head>
 <body>
 ${pageHtml}
@@ -101,5 +103,3 @@ export function downloadBlob(
 }
 
 export * from "./images";
-
-export { buildVisualEditorScript } from "./visualEditor";

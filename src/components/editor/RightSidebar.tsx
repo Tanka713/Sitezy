@@ -1,161 +1,149 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
+import { BLOCK_LIBRARY, BLOCK_CATS } from "@/lib/blocks/library";
+import { buildBlockHtml, buildInlineHtml } from "@/lib/blocks/factory";
 import { useAppStore } from "@/lib/store";
 import { uid } from "@/lib/utils";
 import {
   Bot, SlidersHorizontal, LayoutGrid, Send, Loader2,
-  RefreshCw, Check, X, GripVertical, Plus, Link,
-  Upload, Wand2, Palette, Type, Eye, EyeOff, Trash2,
-  ChevronDown, ChevronUp, ImageIcon, AlertCircle,
+  X, Wand2, ImageIcon, Link, Layers, ChevronDown, ChevronUp, Sparkles,
 } from "lucide-react";
-import type { Project, AIChatMessage, PageSection, SiteBlueprint } from "@/types";
-
-const BLOCK_LIBRARY = [
-  { type:"navbar",       label:"Navbar",       cat:"nav",        icon:"≡" },
-  { type:"hero",         label:"Hero",          cat:"layout",     icon:"⬛" },
-  { type:"features",     label:"Features",      cat:"content",    icon:"⊞" },
-  { type:"stats",        label:"Stats",         cat:"content",    icon:"▤" },
-  { type:"logo-cloud",   label:"Logo Cloud",    cat:"content",    icon:"◈" },
-  { type:"testimonials", label:"Testimonials",  cat:"content",    icon:"❝" },
-  { type:"gallery",      label:"Gallery",       cat:"media",      icon:"⊟" },
-  { type:"pricing",      label:"Pricing",       cat:"conversion", icon:"$" },
-  { type:"team",         label:"Team",          cat:"content",    icon:"⊕" },
-  { type:"faq",          label:"FAQ",           cat:"content",    icon:"?" },
-  { type:"cta",          label:"CTA",           cat:"conversion", icon:"→" },
-  { type:"contact",      label:"Contact",       cat:"conversion", icon:"✉" },
-  { type:"footer",       label:"Footer",        cat:"nav",        icon:"⊟" },
-  { type:"timeline",     label:"Timeline",      cat:"content",    icon:"⊸" },
-  { type:"menu-section", label:"Menu",          cat:"content",    icon:"≡" },
-  { type:"booking",      label:"Booking",       cat:"conversion", icon:"⊡" },
-  { type:"blog-preview", label:"Blog",          cat:"content",    icon:"✎" },
-  { type:"case-studies", label:"Case Studies",  cat:"content",    icon:"◉" },
-  { type:"newsletter",   label:"Newsletter",    cat:"conversion", icon:"✉" },
-  { type:"video",        label:"Video",         cat:"media",      icon:"▶" },
-];
-const BLOCK_CATS = ["layout","nav","content","media","conversion"];
-
-const GOOGLE_FONTS = [
-  "Inter","Plus Jakarta Sans","DM Sans","Outfit","Sora","Nunito",
-  "Playfair Display","Cormorant Garamond","Libre Baskerville","Lora",
-  "Space Grotesk","Manrope","Albert Sans","Epilogue","Cabinet Grotesk",
-  "Fraunces","Unbounded","Big Shoulders Display","Anton","Bebas Neue",
-];
+import { EditPanel } from "./EditPanel";
+import type { Project, AIChatMessage, PageSection } from "@/types";
 
 interface Props { project: Project; }
 
 export function RightSidebar({ project }: Props) {
   const rightPanelTab = useAppStore((s) => s.editor.rightPanelTab);
+  const selectedNode  = useAppStore((s) => s.editor.selectedNode);
   const setRightPanel = useAppStore((s) => s.setRightPanel);
 
+  // Stable iframe ref via MutationObserver
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  useEffect(() => {
+    function find() {
+      const el = document.querySelector('iframe[title^="Preview"]') as HTMLIFrameElement | null;
+      if (el) iframeRef.current = el;
+    }
+    find();
+    const obs = new MutationObserver(find);
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
+
+  // Auto-switch to style when element selected
+  useEffect(() => {
+    if (selectedNode && rightPanelTab !== "style") setRightPanel("style");
+  }, [selectedNode]); // eslint-disable-line
+
   const tabs = [
-    { key:"ai"         as const, icon:<Bot size={12}/>,              label:"AI" },
-    { key:"properties" as const, icon:<SlidersHorizontal size={12}/>, label:"Props" },
-    { key:"blocks"     as const, icon:<LayoutGrid size={12}/>,       label:"Blocks" },
+    { key: "style"  as const, icon: <Layers size={11}/>,     label: "Style"    },
+    { key: "blocks" as const, icon: <LayoutGrid size={11}/>, label: "Elements" },
   ];
 
   return (
-    <aside className="w-[300px] border-l border-white/[0.06] flex flex-col bg-[#0a0a0c] flex-shrink-0">
+    <aside className="w-[280px] border-l border-white/[0.06] flex flex-col bg-[#09090c] h-full flex-shrink-0">
       <div className="flex border-b border-white/[0.06] flex-shrink-0">
-        {tabs.map((tab) => (
-          <button key={tab.key} onClick={() => setRightPanel(tab.key)}
-            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[11px] font-medium transition-colors ${rightPanelTab === tab.key ? "text-white border-b-2 border-brand-500" : "text-white/30 hover:text-white/60 border-b-2 border-transparent"}`}>
-            {tab.icon}{tab.label}
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setRightPanel(t.key)}
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[10.5px] font-semibold transition-colors border-b-2 ${
+              rightPanelTab === t.key
+                ? "text-white border-indigo-500"
+                : "text-white/20 border-transparent hover:text-white/45"
+            }`}>
+            {t.icon} {t.label}
           </button>
         ))}
       </div>
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        {rightPanelTab === "style"      && <EditPanel iframeRef={iframeRef as React.RefObject<HTMLIFrameElement>} onClose={() => setRightPanel("ai")} project={project} />}
         {rightPanelTab === "ai"         && <AIPanel project={project} />}
-        {rightPanelTab === "properties" && <PropertiesPanel project={project} />}
+        {rightPanelTab === "properties" && <PropsPanel project={project} />}
         {rightPanelTab === "blocks"     && <BlocksPanel project={project} />}
       </div>
     </aside>
   );
 }
 
-// ─── AI Panel ─────────────────────────────────────────────────────────────────
+// ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ project }: Props) {
   const selectedPageId   = useAppStore((s) => s.editor.selectedPageId);
   const aiChats          = useAppStore((s) => s.aiChats);
   const addChatMessage   = useAppStore((s) => s.addChatMessage);
   const currentProjectId = useAppStore((s) => s.currentProjectId);
   const clearChat        = useAppStore((s) => s.clearChat);
+  const setApiError      = useAppStore((s) => s.setApiError);
 
   const pages    = project?.pages ?? [];
   const page     = pages.find((p) => p.id === selectedPageId) ?? null;
-  const messages: AIChatMessage[] = aiChats[currentProjectId ?? ""] ?? [];
+  const msgs: AIChatMessage[] = aiChats[currentProjectId ?? ""] ?? [];
 
   const [input,   setInput]   = useState("");
   const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
-  const suggestions = page ? [
-    `Improve the ${page.name} page copy`,
-    `Make the design more premium`,
-    `Add a stronger call-to-action`,
-    `Rewrite headings to be bolder`,
-    `Suggest layout improvements`,
-  ] : ["Improve the hero copy","Make it more minimal","Add a CTA section","Suggest colors","Better tagline ideas"];
+  const suggestions = page
+    ? [`Improve ${page.name} copy`, "Make it more premium", "Stronger CTA", "Bolder headings", "Layout improvements"]
+    : ["Improve hero copy", "Make it minimal", "Add a CTA", "Better tagline"];
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
-    setInput("");
-    setLoading(true);
-    const userMsgId = uid();
-    addChatMessage(currentProjectId ?? "", { id: userMsgId, role: "user", content: text, timestamp: Date.now(), pageId: selectedPageId ?? undefined });
-    const asstId = uid();
-    let full = "";
+    setInput(""); setLoading(true);
+    const uid1 = uid();
+    addChatMessage(currentProjectId ?? "", { id: uid1, role: "user", content: text, timestamp: Date.now(), pageId: selectedPageId ?? undefined });
+    const aid = uid(); let full = "";
     try {
       const res = await fetch("/api/assist", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instruction: text, context: { projectName: project.name, blueprint: project.blueprint, pageName: page?.name, pageHtml: page?.html?.slice(0, 2000), siteType: project.brief?.siteType } }),
       });
-      if (!res.ok) throw new Error("AI request failed");
-      addChatMessage(currentProjectId ?? "", { id: asstId, role: "assistant", content: "▌", timestamp: Date.now() });
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("No stream");
-      let buffer = "";
+      if (!res.ok) throw new Error("Failed");
+      addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: "▌", timestamp: Date.now() });
+      const reader = res.body?.getReader(); const dec = new TextDecoder();
+      if (!reader) throw new Error();
+      let buf = "";
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop() ?? "";
+        for (const l of lines) {
+          if (!l.startsWith("data: ")) continue;
           try {
-            const d = JSON.parse(line.slice(6));
-            if (d.type === "chunk") { full += d.chunk; addChatMessage(currentProjectId ?? "", { id: asstId, role: "assistant", content: full, timestamp: Date.now() }); }
+            const d = JSON.parse(l.slice(6)) as { type: string; chunk?: string; error?: string; requestId?: string; code?: string };
+            if (d.type === "chunk") { full += d.chunk; addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: full, timestamp: Date.now() }); }
+            if (d.type === "error") {
+              if (d.requestId || d.code) setApiError({ message: d.error ?? "AI error", requestId: d.requestId ?? null, code: d.code ?? "ERR_API" });
+              addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: `⚠️ ${d.error ?? "Something went wrong"}`, timestamp: Date.now() });
+            }
           } catch {}
         }
       }
     } catch (err) {
-      addChatMessage(currentProjectId ?? "", { id: uid(), role: "assistant", content: `Error: ${err instanceof Error ? err.message : "Unknown"}`, timestamp: Date.now() });
+      addChatMessage(currentProjectId ?? "", { id: uid(), role: "assistant", content: `⚠️ ${err instanceof Error ? err.message : "Unknown error"}`, timestamp: Date.now() });
     } finally { setLoading(false); }
   }
 
-  const deduped = messages.reduce<AIChatMessage[]>((acc, msg) => {
-    const idx = acc.findIndex((m) => m.id === msg.id);
-    if (idx >= 0) { acc[idx] = msg; return acc; }
-    return [...acc, msg];
+  const deduped = msgs.reduce<AIChatMessage[]>((acc, m) => {
+    const i = acc.findIndex((x) => x.id === m.id);
+    if (i >= 0) { acc[i] = m; return acc; }
+    return [...acc, m];
   }, []);
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div ref={scrollRef} className="flex-1 overflow-auto p-3 space-y-3 min-h-0">
+      <div className="flex-1 overflow-auto p-3 space-y-2 min-h-0">
         {deduped.length === 0 ? (
-          <div className="py-3 text-center">
-            <div className="w-9 h-9 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mx-auto mb-3">
-              <Bot size={16} className="text-brand-400" />
+          <div className="py-5 text-center space-y-3">
+            <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mx-auto">
+              <Sparkles size={15} className="text-white/25"/>
             </div>
-            <p className="text-[11px] text-white/30 mb-3">{page ? `Editing ${page.name}` : "Ask about your site"}</p>
-            <div className="space-y-1.5">
+            <p className="text-[11px] text-white/20">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
+            <div className="space-y-1.5 text-left">
               {suggestions.map((s) => (
                 <button key={s} onClick={() => send(s)}
-                  className="block w-full text-left px-3 py-2 text-[11px] text-brand-400/80 bg-brand-500/5 hover:bg-brand-500/10 border border-brand-500/15 rounded-lg transition-colors">
+                  className="block w-full text-left px-3 py-2 text-[11px] text-white/35 bg-white/[0.025] hover:bg-white/[0.05] border border-white/[0.05] hover:border-white/[0.09] rounded-lg transition-all">
                   {s}
                 </button>
               ))}
@@ -163,41 +151,41 @@ function AIPanel({ project }: Props) {
           </div>
         ) : (
           <>
-            <div className="flex justify-end">
-              <button onClick={() => clearChat(currentProjectId ?? "")} className="text-[10px] text-white/25 hover:text-white/50 flex items-center gap-1">
-                <X size={9}/> Clear
-              </button>
-            </div>
-            {deduped.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[92%] px-3 py-2 rounded-xl text-[11px] leading-relaxed whitespace-pre-wrap break-words ${msg.role === "user" ? "bg-brand-600/80 text-white" : "bg-white/[0.04] border border-white/[0.06] text-white/70"}`}>
-                  {msg.content === "▌" && loading ? <span className="flex items-center gap-1 text-white/30"><Loader2 size={10} className="spin"/>…</span> : msg.content}
+            <button onClick={() => clearChat(currentProjectId ?? "")}
+              className="flex items-center gap-1 text-[10px] text-white/16 hover:text-white/40 ml-auto transition-colors">
+              <X size={9}/> Clear
+            </button>
+            {deduped.map((m) => (
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[88%] px-3 py-2 text-[12px] leading-relaxed rounded-2xl ${
+                  m.role === "user"
+                    ? "bg-indigo-600/22 text-white/82 rounded-br-sm"
+                    : "bg-white/[0.04] text-white/60 rounded-bl-sm border border-white/[0.05]"
+                }`}>
+                  {m.content}
                 </div>
               </div>
             ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-white/[0.04] border border-white/[0.05] rounded-2xl rounded-bl-sm px-3 py-2">
+                  <Loader2 size={12} className="text-indigo-400 animate-spin"/>
+                </div>
+              </div>
+            )}
+            <div ref={endRef}/>
           </>
         )}
       </div>
-      {/* Quick actions */}
-      {page && (
-        <div className="px-3 pb-2 flex gap-1.5 flex-wrap border-t border-white/[0.04] pt-2">
-          {["Rewrite copy","Improve SEO","Add CTA"].map((a) => (
-            <button key={a} onClick={() => send(a + " for the " + page.name + " page")}
-              className="px-2 py-1 text-[10px] text-white/35 bg-white/[0.03] border border-white/[0.06] rounded-full hover:text-white/60 hover:border-white/[0.14] transition-colors">
-              {a}
-            </button>
-          ))}
-        </div>
-      )}
-      {/* Input */}
-      <div className="p-3 border-t border-white/[0.06] flex-shrink-0">
-        {page && <div className="flex items-center gap-1.5 mb-2"><span className="text-[10px] text-white/25">Page:</span><span className="text-[10px] text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-full border border-brand-500/15">{page.name}</span></div>}
-        <div className="flex gap-2">
-          <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }} placeholder="Ask anything… (Enter to send)" disabled={loading} rows={2}
-            className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[12px] text-white placeholder-white/20 focus:outline-none focus:border-brand-500/40 resize-none transition-colors" />
+      <div className="border-t border-white/[0.05] p-3 flex-shrink-0">
+        <div className="flex items-end gap-2">
+          <textarea value={input} onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+            placeholder="Ask AI to improve your site…" rows={2}
+            className="flex-1 bg-white/[0.04] border border-white/[0.07] rounded-xl px-3 py-2 text-[12px] text-white/70 placeholder-white/14 focus:outline-none focus:border-indigo-500/25 resize-none transition-colors"/>
           <button onClick={() => send(input)} disabled={!input.trim() || loading}
-            className="w-8 self-end flex items-center justify-center bg-brand-600 hover:bg-brand-500 disabled:opacity-30 text-white rounded-lg transition-colors flex-shrink-0 aspect-square">
-            {loading ? <Loader2 size={12} className="spin"/> : <Send size={12}/>}
+            className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 disabled:opacity-25 rounded-xl transition-colors flex-shrink-0">
+            {loading ? <Loader2 size={13} className="animate-spin"/> : <Send size={13}/>}
           </button>
         </div>
       </div>
@@ -205,604 +193,363 @@ function AIPanel({ project }: Props) {
   );
 }
 
-// ─── Properties Panel — fully functional ─────────────────────────────────────
-function PropertiesPanel({ project }: Props) {
-  const selectedPageId  = useAppStore((s) => s.editor.selectedPageId);
-  const renamePage      = useAppStore((s) => s.renamePage);
-  const setPageContent  = useAppStore((s) => s.setPageContent);
-  const addGenLog       = useAppStore((s) => s.addGenLog);
-  const setGenStatus    = useAppStore((s) => s.setGenStatus);
-  const updateProject   = useAppStore((s) => s.renameProject); // reuse for blueprint update hack
-  const currentProjectId = useAppStore((s) => s.currentProjectId);
+// ── Properties Panel ──────────────────────────────────────────────────────────
+function PropsPanel({ project }: Props) {
+  const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
+  const setPageContent = useAppStore((s) => s.setPageContent);
+  const addGenLog      = useAppStore((s) => s.addGenLog);
 
-  const pages = project?.pages ?? [];
-  const page  = pages.find((p) => p.id === selectedPageId) ?? null;
-  const bp    = project?.blueprint ?? null;
+  const page = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
+  const [open,    setOpen]    = useState<string | null>(null);
+  const [applying,setApplying]= useState<string | null>(null);
+  const [texts,   setTexts]   = useState<Record<string,string>>({});
+  const [imgs,    setImgs]    = useState<Record<string,string>>({});
 
-  // Local editable blueprint state
-  const [colors,      setColors]      = useState<Record<string,string>>(bp?.colorScheme as Record<string,string> ?? {});
-  const [headingFont, setHeadingFont] = useState(bp?.typography?.headingFont ?? "");
-  const [bodyFont,    setBodyFont]    = useState(bp?.typography?.bodyFont ?? "");
-  const [nameVal,     setNameVal]     = useState(page?.name ?? "");
-  const [nameSaved,   setNameSaved]   = useState(false);
-  const [activeSection, setActiveSection] = useState<"design"|"page"|"sections">("page");
-  const [regenSection, setRegenSection]   = useState<string|null>(null);
-  const [applyingDesign, setApplyingDesign] = useState(false);
+  useEffect(() => { setOpen(null); setTexts({}); setImgs({}); }, [selectedPageId]);
 
-  useEffect(() => { setNameVal(page?.name ?? ""); }, [page?.id]);
-  useEffect(() => {
-    if (bp?.colorScheme) setColors(bp.colorScheme as Record<string,string>);
-    if (bp?.typography?.headingFont) setHeadingFont(bp.typography.headingFont);
-    if (bp?.typography?.bodyFont)    setBodyFont(bp.typography.bodyFont);
-  }, [bp]);
-
-  function saveName() {
-    if (!page || !nameVal.trim() || nameVal === page.name) return;
-    renamePage(page.id, nameVal.trim());
-    setNameSaved(true);
-    setTimeout(() => setNameSaved(false), 1500);
-  }
-
-  // Apply design changes to page HTML via AI
-  async function applyDesignChanges() {
-    if (!page || !bp) return;
-    setApplyingDesign(true);
-    addGenLog("🎨 Applying design changes…", "progress");
-    const cssVars = Object.entries(colors).map(([k,v]) => `--${k}: ${v}`).join("; ");
-    const fontInstruction = `Use "${headingFont}" for headings and "${bodyFont}" for body text.`;
+  async function applyEdit(secId: string, secType: string, instr: string) {
+    if (!page || !project.blueprint || !instr.trim()) return;
+    setApplying(secId);
     try {
-      const res = await fetch("/api/assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction: `Update this page's CSS variables and font references. New CSS variables: ${cssVars}. ${fontInstruction} Update all :root variables and font-family references in inline styles. Return ONLY the updated full page HTML.`,
-          context: { projectName: project.name, blueprint: bp, pageName: page.name, pageHtml: page.html, siteType: project.brief?.siteType },
-        }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("No stream");
-      let buffer = "", fullText = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") fullText += d.chunk; } catch {}
-        }
-      }
-      if (fullText.includes("<") && fullText.length > 100) {
-        setPageContent(page.id, fullText, page.sections);
-        addGenLog("✅ Design updated", "success");
-        setGenStatus("done", "Design applied!");
-      }
-    } catch { addGenLog("⚠️ Could not apply design changes", "error"); }
-    finally { setApplyingDesign(false); }
-  }
-
-  // Regenerate a single section
-  async function regenerateSection(sectionType: string, customInstruction?: string) {
-    if (!page || !bp) return;
-    setRegenSection(sectionType);
-    addGenLog(`🔄 Regenerating ${sectionType}…`, "progress");
-    try {
-      const res = await fetch("/api/assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction: customInstruction
-            ? `Regenerate the ${sectionType} section: ${customInstruction}. Return ONLY the complete updated page HTML.`
-            : `Regenerate the ${sectionType} section with fresh content and improved design. Maintain the same overall style. Return ONLY the complete updated page HTML.`,
-          context: { projectName: project.name, blueprint: bp, pageName: page.name, pageHtml: page.html, siteType: project.brief?.siteType },
-        }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("No stream");
-      let buffer = "", fullText = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") fullText += d.chunk; } catch {}
-        }
-      }
-      if (fullText.includes("<") && fullText.length > 100) {
-        setPageContent(page.id, fullText, page.sections);
-        addGenLog(`✅ ${sectionType} updated`, "success");
-      }
-    } catch { addGenLog(`⚠️ ${sectionType} regen failed`, "error"); }
-    finally { setRegenSection(null); }
-  }
-
-  if (!page && !bp) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-white/20 text-[12px] gap-2 p-4 text-center">
-        <SlidersHorizontal size={22} className="text-white/10"/>
-        Select a page to edit properties
-      </div>
-    );
-  }
-
-  const subtabs = [
-    { key:"page"     as const, label:"Page" },
-    { key:"design"   as const, label:"Design" },
-    { key:"sections" as const, label:"Sections" },
-  ];
-
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Sub-tabs */}
-      <div className="flex border-b border-white/[0.05] flex-shrink-0">
-        {subtabs.map((t) => (
-          <button key={t.key} onClick={() => setActiveSection(t.key)}
-            className={`flex-1 py-2 text-[11px] font-medium transition-colors ${activeSection===t.key?"text-white border-b border-brand-500":"text-white/30 hover:text-white/60"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-auto min-h-0">
-
-        {/* ── PAGE TAB ── */}
-        {activeSection === "page" && page && (
-          <div className="p-4 space-y-4">
-            <div>
-              <label className={LC}>Page Name</label>
-              <div className="flex gap-2">
-                <input value={nameVal} onChange={e => setNameVal(e.target.value)}
-                  onBlur={saveName} onKeyDown={e => e.key==="Enter" && saveName()}
-                  className={`${IC} flex-1`}/>
-                {nameSaved && <span className="flex items-center text-emerald-400 flex-shrink-0"><Check size={13}/></span>}
-              </div>
-            </div>
-            <div>
-              <label className={LC}>URL Slug</label>
-              <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2">
-                <span className="text-white/25 text-[12px]">/</span>
-                <input defaultValue={page.slug} className="flex-1 bg-transparent text-[13px] text-white focus:outline-none ml-1 min-w-0"/>
-              </div>
-            </div>
-            <div>
-              <label className={LC}>Purpose</label>
-              <textarea defaultValue={page.purpose} rows={2}
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[12px] text-white/70 focus:outline-none focus:border-brand-500/40 resize-none transition-colors"/>
-            </div>
-            <div>
-              <label className={LC}>Status</label>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
-                page.status==="done"?"bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                :page.status==="error"?"bg-red-500/10 text-red-400 border-red-500/20"
-                :page.status==="generating"?"bg-brand-500/10 text-brand-400 border-brand-500/20"
-                :"bg-white/[0.04] text-white/30 border-white/[0.08]"}`}>
-                {page.status==="generating"&&<Loader2 size={9} className="spin"/>}
-                {page.status}{page.html ? ` · ${(page.html.length/1000).toFixed(1)}k` : ""}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* ── DESIGN TAB ── */}
-        {activeSection === "design" && (
-          <div className="p-4 space-y-5">
-            {/* Colors */}
-            <div>
-              <label className={LC}>Brand Colors</label>
-              <div className="space-y-2">
-                {Object.entries(colors).map(([key, val]) => (
-                  <div key={key} className="flex items-center gap-2.5">
-                    <div className="relative flex-shrink-0">
-                      <input type="color" value={val}
-                        onChange={e => setColors(c => ({...c, [key]: e.target.value}))}
-                        className="w-8 h-8 rounded-lg cursor-pointer border border-white/[0.1] bg-transparent"
-                        style={{ padding: 2 }}/>
-                    </div>
-                    <span className="text-[11px] text-white/50 capitalize flex-1 min-w-0">{key}</span>
-                    <input value={val} onChange={e => setColors(c => ({...c, [key]: e.target.value}))}
-                      maxLength={7} className="w-[80px] bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[11px] font-mono text-white/70 focus:outline-none focus:border-brand-500/40"/>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Fonts */}
-            <div>
-              <label className={LC}>Typography</label>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-[10px] text-white/30 mb-1">Heading Font</p>
-                  <select value={headingFont} onChange={e => setHeadingFont(e.target.value)}
-                    className={`${IC} appearance-none text-[12px] py-2`}>
-                    {GOOGLE_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-[10px] text-white/30 mb-1">Body Font</p>
-                  <select value={bodyFont} onChange={e => setBodyFont(e.target.value)}
-                    className={`${IC} appearance-none text-[12px] py-2`}>
-                    {GOOGLE_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Apply button */}
-            <button onClick={applyDesignChanges} disabled={applyingDesign || !page}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-medium transition-all ${!applyingDesign && page?"bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-500/20":"bg-white/[0.05] text-white/25 cursor-not-allowed"}`}>
-              {applyingDesign ? <><Loader2 size={13} className="spin"/>Applying…</> : <><Wand2 size={13}/>Apply to Page</>}
-            </button>
-            {!page && <p className="text-[11px] text-white/30 text-center">Select a page to apply design changes</p>}
-          </div>
-        )}
-
-        {/* ── SECTIONS TAB — drag & drop ── */}
-        {activeSection === "sections" && (
-          <SectionsEditor page={page} project={project} regenSection={regenerateSection} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Sections Editor with drag-and-drop + image/link/AI edit ─────────────────
-function SectionsEditor({
-  page, project, regenSection,
-}: {
-  page: ReturnType<Project["pages"]["find"]>;
-  project: Project;
-  regenSection: (type: string, instruction?: string) => Promise<void>;
-}) {
-  const setPageContent  = useAppStore((s) => s.setPageContent);
-  const addGenLog       = useAppStore((s) => s.addGenLog);
-
-  const [sections, setSections]         = useState<PageSection[]>(page?.sections ?? []);
-  const [dragIdx,  setDragIdx]          = useState<number|null>(null);
-  const [overIdx,  setOverIdx]          = useState<number|null>(null);
-  const [expanded, setExpanded]         = useState<string|null>(null);
-  const [editPrompt, setEditPrompt]     = useState<Record<string,string>>({});
-  const [imageUrl,   setImageUrl]       = useState<Record<string,string>>({});
-  const [applying,   setApplying]       = useState<string|null>(null);
-
-  useEffect(() => { setSections(page?.sections ?? []); }, [page?.id, page?.sections?.length]);
-
-  if (!page) return (
-    <div className="flex items-center justify-center h-full text-white/20 text-[12px] p-4 text-center">
-      Select a page to manage its sections
-    </div>
-  );
-
-  // ── Drag handlers ──────────────────────────────────────────────────────────
-  function onDragStart(i: number) { setDragIdx(i); }
-  function onDragOver(e: React.DragEvent, i: number) { e.preventDefault(); setOverIdx(i); }
-  function onDrop(e: React.DragEvent, i: number) {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === i) { setDragIdx(null); setOverIdx(null); return; }
-    const next = [...sections];
-    const [moved] = next.splice(dragIdx, 1);
-    next.splice(i, 0, moved);
-    setSections(next);
-    setDragIdx(null);
-    setOverIdx(null);
-    // Persist reorder via AI
-    applyReorder(next);
-  }
-
-  async function applyReorder(ordered: PageSection[]) {
-    if (!page || !project.blueprint) return;
-    addGenLog("🔀 Reordering sections…", "progress");
-    const sectionOrder = ordered.map(s => s.name || s.type).join(", ");
-    try {
-      const res = await fetch("/api/assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction: `Reorder the sections in this page to match this exact order: ${sectionOrder}. Keep all content identical, just reorder the HTML sections. Return ONLY the complete updated page HTML.`,
-          context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html, siteType: project.brief?.siteType },
-        }),
-      });
+      const res = await fetch("/api/assist", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: `Edit only the "${secType}" section. ${instr}. Return the complete updated page HTML.`, context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html } }) });
       if (!res.ok) throw new Error();
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) return;
+      const r = res.body?.getReader(); const d = new TextDecoder(); if (!r) throw new Error();
       let buf = "", full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try { const d = JSON.parse(line.slice(6)); if (d.type==="chunk") full+=d.chunk; } catch {}
-        }
-      }
-      if (full.includes("<") && full.length > 100) {
-        setPageContent(page.id, full, ordered);
-        addGenLog("✅ Sections reordered", "success");
-      }
-    } catch { addGenLog("⚠️ Reorder failed", "error"); }
-  }
-
-  async function applyImageToSection(sectionId: string, sectionType: string, url: string) {
-    if (!page || !project.blueprint || !url) return;
-    setApplying(sectionId);
-    addGenLog(`🖼️ Adding image to ${sectionType}…`, "progress");
-    try {
-      const res = await fetch("/api/assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction: `In the ${sectionType} section, replace the main image (or background image) with this URL: ${url}. Use it as an <img src="${url}"> or background-image CSS as appropriate for the section. Return ONLY the complete updated page HTML.`,
-          context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html, siteType: project.brief?.siteType },
-        }),
-      });
-      if (!res.ok) throw new Error();
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) return;
-      let buf = "", full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try { const d = JSON.parse(line.slice(6)); if (d.type==="chunk") full+=d.chunk; } catch {}
-        }
-      }
-      if (full.includes("<")) {
-        setPageContent(page.id, full, page.sections);
-        addGenLog(`✅ Image added to ${sectionType}`, "success");
-        setImageUrl(u => ({...u, [sectionId]: ""}));
-      }
-    } catch { addGenLog(`⚠️ Image add failed`, "error"); }
+      while (true) { const { done, value } = await r.read(); if (done) break; buf += d.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? ""; for (const l of ls) { if (!l.startsWith("data: ")) continue; try { const x = JSON.parse(l.slice(6)); if (x.type === "chunk") full += x.chunk; } catch {} } }
+      if (full.includes("<") && full.length > 100) { setPageContent(page.id, full, page.sections); addGenLog(`✅ ${secType} updated`, "success"); }
+    } catch { addGenLog(`❌ Edit failed`, "error"); }
     finally { setApplying(null); }
   }
 
-  async function aiEditSection(sectionId: string, sectionType: string) {
-    const prompt = editPrompt[sectionId];
-    if (!prompt?.trim()) return;
-    await regenSection(sectionType, prompt);
-    setEditPrompt(p => ({...p, [sectionId]: ""}));
+  async function applyImg(secId: string, secType: string, url: string) {
+    if (!url.trim() || !page) return;
+    const key = secId + "-img"; setApplying(key);
+    try {
+      const res = await fetch("/api/assist", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: `Replace the main image in "${secType}" with: ${url}. Return the complete updated page HTML.`, context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html } }) });
+      if (!res.ok) throw new Error();
+      const r = res.body?.getReader(); const d = new TextDecoder(); if (!r) throw new Error();
+      let buf = "", full = "";
+      while (true) { const { done, value } = await r.read(); if (done) break; buf += d.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? ""; for (const l of ls) { if (!l.startsWith("data: ")) continue; try { const x = JSON.parse(l.slice(6)); if (x.type === "chunk") full += x.chunk; } catch {} } }
+      if (full.includes("<") && full.length > 100) setPageContent(page.id, full, page.sections);
+    } catch {}
+    finally { setApplying(null); }
   }
 
+  if (!page) return (
+    <div className="flex items-center justify-center h-full text-[11px] text-white/18 px-4 text-center">
+      Select a page to edit sections.
+    </div>
+  );
+
   return (
-    <div className="p-3 space-y-1.5">
-      <p className="text-[10px] text-white/25 uppercase tracking-widest font-semibold px-1 mb-2">
-        Drag to reorder · {sections.length} sections
-      </p>
-
-      {sections.length === 0 && (
-        <div className="text-center py-6 text-white/20 text-[12px]">No sections detected on this page</div>
-      )}
-
-      {sections.map((sec, i) => (
-        <div key={sec.id}
-          draggable
-          onDragStart={() => onDragStart(i)}
-          onDragOver={(e) => onDragOver(e, i)}
-          onDrop={(e) => onDrop(e, i)}
-          onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-          className={`rounded-xl border transition-all ${
-            overIdx===i && dragIdx!==i
-              ? "border-brand-500/50 bg-brand-500/10 scale-[1.01]"
-              : dragIdx===i
-              ? "opacity-50 border-white/[0.06]"
-              : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12]"
-          }`}>
-          {/* Section header */}
-          <div className="flex items-center gap-2 px-3 py-2.5 cursor-grab active:cursor-grabbing">
-            <GripVertical size={13} className="text-white/20 flex-shrink-0"/>
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-500/50 flex-shrink-0"/>
-            <span className="text-[12px] text-white/65 capitalize flex-1 font-medium truncate">
-              {sec.name || sec.type}
-            </span>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {/* Regen */}
-              <button onClick={() => regenSection(sec.type)}
-                disabled={applying===sec.id}
-                title="Regenerate"
-                className="w-6 h-6 flex items-center justify-center text-white/25 hover:text-brand-400 rounded transition-colors">
-                <RefreshCw size={10}/>
-              </button>
-              {/* Expand */}
-              <button onClick={() => setExpanded(expanded===sec.id ? null : sec.id)}
-                className="w-6 h-6 flex items-center justify-center text-white/25 hover:text-white/60 rounded transition-colors">
-                {expanded===sec.id ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
-              </button>
-            </div>
-          </div>
-
-          {/* Expanded controls */}
-          {expanded===sec.id && (
-            <div className="px-3 pb-3 space-y-3 border-t border-white/[0.05] pt-3">
-
-              {/* AI edit instruction */}
-              <div>
-                <label className="text-[10px] text-white/30 font-medium uppercase tracking-wider mb-1.5 flex items-center gap-1.5 block">
-                  <Wand2 size={10}/> AI Edit
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    value={editPrompt[sec.id] ?? ""}
-                    onChange={e => setEditPrompt(p => ({...p, [sec.id]: e.target.value}))}
-                    onKeyDown={e => e.key==="Enter" && aiEditSection(sec.id, sec.type)}
-                    placeholder="e.g. make the heading bolder, add 3 bullet points…"
-                    className="flex-1 bg-black/30 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-brand-500/40 transition-colors"/>
-                  <button onClick={() => aiEditSection(sec.id, sec.type)}
-                    disabled={!editPrompt[sec.id]?.trim() || applying===sec.id}
-                    className="w-8 h-8 flex items-center justify-center bg-brand-600 hover:bg-brand-500 disabled:opacity-30 text-white rounded-lg transition-colors flex-shrink-0">
-                    {applying===sec.id ? <Loader2 size={11} className="spin"/> : <Wand2 size={11}/>}
-                  </button>
-                </div>
-              </div>
-
-              {/* Image URL / upload */}
-              <div>
-                <label className="text-[10px] text-white/30 font-medium uppercase tracking-wider mb-1.5 flex items-center gap-1.5 block">
-                  <ImageIcon size={10}/> Image
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex-1 flex items-center gap-1.5 bg-black/30 border border-white/[0.08] rounded-lg px-2.5 py-1.5">
-                    <Link size={10} className="text-white/30 flex-shrink-0"/>
-                    <input
-                      value={imageUrl[sec.id] ?? ""}
-                      onChange={e => setImageUrl(u => ({...u, [sec.id]: e.target.value}))}
-                      placeholder="Paste image URL…"
-                      className="flex-1 bg-transparent text-[11px] text-white placeholder-white/20 focus:outline-none min-w-0"/>
+    <div className="flex flex-col h-full overflow-auto">
+      <div className="px-3 py-2.5 border-b border-white/[0.05] flex-shrink-0">
+        <p className="text-[11px] font-medium text-white/40">{page.name}</p>
+        <p className="text-[10px] text-white/18 mt-0.5">{page.sections.length} sections</p>
+      </div>
+      <div className="p-2 space-y-1">
+        {page.sections.map((sec) => (
+          <div key={sec.id} className="rounded-xl border border-white/[0.05] bg-white/[0.015] overflow-hidden">
+            <button onClick={() => setOpen(open === sec.id ? null : sec.id)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/[0.025] transition-colors">
+              <span className="text-[11px] text-white/50 font-medium flex-1 truncate">{sec.name || sec.type}</span>
+              {open === sec.id ? <ChevronUp size={11} className="text-white/18 flex-shrink-0"/> : <ChevronDown size={11} className="text-white/18 flex-shrink-0"/>}
+            </button>
+            {open === sec.id && (
+              <div className="border-t border-white/[0.04] p-3 space-y-3">
+                <div>
+                  <label className="flex items-center gap-1.5 text-[9px] font-bold text-white/16 uppercase tracking-widest mb-1.5">
+                    <Wand2 size={9}/> AI Edit
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input value={texts[sec.id]??""} onChange={(e)=>setTexts((u)=>({...u,[sec.id]:e.target.value}))}
+                      onKeyDown={(e)=>{if(e.key==="Enter")applyEdit(sec.id,sec.type||sec.name,texts[sec.id]??"");}}
+                      placeholder={`e.g. "make headline bolder"`}
+                      className="flex-1 bg-black/18 border border-white/[0.07] rounded-lg px-2.5 py-1.5 text-[11px] text-white/70 placeholder-white/14 focus:outline-none focus:border-indigo-500/25 min-w-0"/>
+                    <button onClick={()=>applyEdit(sec.id,sec.type||sec.name,texts[sec.id]??"")}
+                      disabled={!texts[sec.id]?.trim()||applying===sec.id}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-25 text-white text-[11px] font-medium rounded-lg transition-colors whitespace-nowrap">
+                      {applying===sec.id?<Loader2 size={10} className="animate-spin inline"/>:"Apply"}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => applyImageToSection(sec.id, sec.type, imageUrl[sec.id] ?? "")}
-                    disabled={!imageUrl[sec.id]?.trim() || applying===sec.id}
-                    className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-white/60 hover:text-white text-[11px] rounded-lg disabled:opacity-30 transition-colors whitespace-nowrap">
-                    {applying===sec.id ? <Loader2 size={10} className="spin inline"/> : "Apply"}
-                  </button>
                 </div>
-                {/* Unsplash quick picks */}
-                <div className="flex gap-1.5 mt-2 flex-wrap">
-                  {["unsplash.com/?q=office","unsplash.com/?q=nature","unsplash.com/?q=tech","unsplash.com/?q=people"].map((hint) => (
-                    <a key={hint} href={`https://${hint}`} target="_blank" rel="noreferrer"
-                      className="text-[9px] text-white/25 hover:text-white/50 underline transition-colors">
-                      {hint.split("?q=")[1]}
-                    </a>
-                  ))}
+                <div>
+                  <label className="flex items-center gap-1.5 text-[9px] font-bold text-white/16 uppercase tracking-widest mb-1.5">
+                    <ImageIcon size={9}/> Image
+                  </label>
+                  <div className="flex gap-1.5">
+                    <div className="flex-1 flex items-center gap-1.5 bg-black/18 border border-white/[0.07] rounded-lg px-2.5 py-1.5 min-w-0">
+                      <Link size={9} className="text-white/18 flex-shrink-0"/>
+                      <input value={imgs[sec.id]??""} onChange={(e)=>setImgs((u)=>({...u,[sec.id]:e.target.value}))}
+                        placeholder="Paste image URL…"
+                        className="flex-1 bg-transparent text-[11px] text-white/70 placeholder-white/14 focus:outline-none min-w-0"/>
+                    </div>
+                    <button onClick={()=>applyImg(sec.id,sec.type,imgs[sec.id]??"")}
+                      disabled={!imgs[sec.id]?.trim()||applying===sec.id+"-img"}
+                      className="px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.07] text-white/45 hover:text-white text-[11px] rounded-lg disabled:opacity-25 transition-colors whitespace-nowrap">
+                      {applying===sec.id+"-img"?<Loader2 size={10} className="animate-spin inline"/>:"Apply"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      ))}
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─── Blocks Panel — drag-to-canvas ────────────────────────────────────────────
+// ── Blocks Panel ──────────────────────────────────────────────────────────────
 function BlocksPanel({ project }: Props) {
-  const [activeCat,   setActiveCat]   = useState("all");
-  const [adding,      setAdding]      = useState<string|null>(null);
-  const [position,    setPosition]    = useState<"before-first"|"after-last"|number>("after-last");
-  const setPageContent = useAppStore((s) => s.setPageContent);
-  const addGenLog      = useAppStore((s) => s.addGenLog);
-  const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
-  const pages          = project?.pages ?? [];
-  const page           = pages.find((p) => p.id === selectedPageId) ?? null;
+  const [cat,    setCat]    = useState("all");
+  const [adding, setAdding] = useState<string|null>(null);
+  const [useAI,  setUseAI]  = useState(false);
+  const insertBlock   = useAppStore((s) => s.insertBlock);
+  const selectSection = useAppStore((s) => s.selectSection);
+  const setPageContent= useAppStore((s) => s.setPageContent);
+  const addGenLog     = useAppStore((s) => s.addGenLog);
+  const selectedPageId= useAppStore((s) => s.editor.selectedPageId);
+  const page = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
 
-  const filtered = activeCat==="all" ? BLOCK_LIBRARY : BLOCK_LIBRARY.filter((b) => b.cat===activeCat);
+  const dragBlockId    = useRef<string | null>(null);
+  const dragOverlayRef = useRef<HTMLDivElement | null>(null);
+  const dropLineRef    = useRef<HTMLDivElement | null>(null);
+  const filtered = cat === "all" ? BLOCK_LIBRARY : BLOCK_LIBRARY.filter((b) => b.cat === cat);
 
-  async function handleAddBlock(blockType: string) {
-    if (!page || !project.blueprint || adding) return;
-    setAdding(blockType);
-    addGenLog(`🧩 Adding ${blockType} to ${page.name}…`, "progress");
-    const posInstr = position === "before-first"
-      ? "Insert this section at the very top of the page (after the navbar if present)."
-      : typeof position === "number"
-      ? `Insert this section after the ${page.sections[position]?.name ?? "current"} section.`
-      : "Append this section before the footer (or at the very end if no footer).";
+  function getIframe() {
+    return document.querySelector('iframe[title^="Preview"]') as HTMLIFrameElement | null;
+  }
 
-    try {
-      const res = await fetch("/api/assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction: `Add a new ${blockType} section to this page. ${posInstr} Generate high-quality content matching the site's brand and tone. Return ONLY the complete updated page HTML.`,
-          context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html, siteType: project.brief?.siteType },
-        }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error();
-      let buf = "", full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try { const d = JSON.parse(line.slice(6)); if (d.type==="chunk") full+=d.chunk; } catch {}
+  function getSections(iframe: HTMLIFrameElement): HTMLElement[] {
+    const doc = iframe.contentDocument;
+    if (!doc) return [];
+    return Array.from(doc.body.children).filter(
+      (el) => !["SCRIPT","STYLE","NOSCRIPT"].includes(el.tagName)
+    ) as HTMLElement[];
+  }
+
+  // Show an overlay that detects section boundaries (for "section" placement blocks).
+  // Calls onDrop(afterSectionId) where null = before first / before footer.
+  function showSectionOverlay(onDrop: (afterSectionId: string | null) => void) {
+    const iframe = getIframe();
+    if (!iframe) { onDrop(null); return; }
+    const r = iframe.getBoundingClientRect();
+
+    const line = document.createElement("div");
+    line.style.cssText = `position:fixed;left:${r.left}px;width:${r.width}px;height:3px;background:#4f7eff;border-radius:2px;z-index:100000;display:none;pointer-events:none;box-shadow:0 0 8px rgba(79,126,255,.55);`;
+    document.body.appendChild(line);
+    dropLineRef.current = line;
+
+    let afterSectionId: string | null = null;
+
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;z-index:99999;background:transparent;border:2px dashed rgba(79,126,255,.4);box-sizing:border-box;pointer-events:all;`;
+
+    overlay.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      const sections = getSections(iframe);
+      if (!sections.length) { afterSectionId = null; line.style.display = "none"; return; }
+      const mouseY = e.clientY;
+      let placed = false;
+      for (let i = 0; i < sections.length; i++) {
+        const sr = sections[i].getBoundingClientRect();
+        const midY = (r.top + sr.top + r.top + sr.bottom) / 2;
+        if (mouseY < midY) {
+          afterSectionId = i > 0 ? (sections[i-1].getAttribute("data-sz-section-id") ?? null) : null;
+          line.style.top = `${r.top + sr.top}px`;
+          line.style.display = "";
+          placed = true;
+          break;
         }
       }
-      if (full.includes("<") && full.length > 200) {
-        const sections: PageSection[] = [...page.sections, { id: uid(), type: blockType, name: blockType.charAt(0).toUpperCase()+blockType.slice(1).replace(/-/g," ") }];
-        setPageContent(page.id, full, sections);
-        addGenLog(`✅ ${blockType} added`, "success");
-      } else {
-        addGenLog(`⚠️ Could not parse response`, "error");
+      if (!placed) {
+        const last = sections[sections.length-1];
+        afterSectionId = last.getAttribute("data-sz-section-id") ?? null;
+        line.style.top = `${r.top + last.getBoundingClientRect().bottom}px`;
+        line.style.display = "";
       }
-    } catch { addGenLog(`❌ Failed to add ${blockType}`, "error"); }
+    });
+    overlay.addEventListener("dragleave", () => { line.style.display = "none"; });
+    overlay.addEventListener("drop", (e) => { e.preventDefault(); onDrop(afterSectionId); hideDropOverlay(); });
+    document.body.appendChild(overlay);
+    dragOverlayRef.current = overlay;
+  }
+
+  // Show an overlay that highlights the hovered section (for "inline" placement blocks).
+  // Calls onDrop(sectionId) with the section the mouse was over.
+  function showInlineOverlay(onDrop: (sectionId: string | null) => void) {
+    const iframe = getIframe();
+    if (!iframe) { onDrop(null); return; }
+    const r = iframe.getBoundingClientRect();
+
+    const highlight = document.createElement("div");
+    highlight.style.cssText = `position:fixed;background:rgba(79,126,255,.10);border:2px solid rgba(79,126,255,.5);border-radius:4px;z-index:100000;pointer-events:none;display:none;transition:top .08s,height .08s;`;
+    document.body.appendChild(highlight);
+    dropLineRef.current = highlight;
+
+    let hoveredSectionId: string | null = null;
+
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;z-index:99999;background:transparent;border:2px dashed rgba(79,126,255,.4);box-sizing:border-box;pointer-events:all;`;
+
+    overlay.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      const sections = getSections(iframe);
+      const mouseY = e.clientY;
+      for (const sec of sections) {
+        const sr = sec.getBoundingClientRect();
+        if (mouseY >= r.top + sr.top && mouseY <= r.top + sr.bottom) {
+          hoveredSectionId = sec.getAttribute("data-sz-section-id") ?? null;
+          highlight.style.left = `${r.left}px`;
+          highlight.style.top = `${r.top + sr.top}px`;
+          highlight.style.width = `${r.width}px`;
+          highlight.style.height = `${sr.height}px`;
+          highlight.style.display = "";
+          return;
+        }
+      }
+      hoveredSectionId = null;
+      highlight.style.display = "none";
+    });
+    overlay.addEventListener("dragleave", () => { highlight.style.display = "none"; });
+    overlay.addEventListener("drop", (e) => { e.preventDefault(); onDrop(hoveredSectionId); hideDropOverlay(); });
+    document.body.appendChild(overlay);
+    dragOverlayRef.current = overlay;
+  }
+
+  // Simple overlay for top/bottom blocks — any drop calls onDrop(null).
+  function showSimpleOverlay(onDrop: () => void) {
+    const iframe = getIframe();
+    if (!iframe) { onDrop(); return; }
+    const r = iframe.getBoundingClientRect();
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;z-index:99999;background:rgba(79,126,255,.06);border:2px dashed rgba(79,126,255,.4);box-sizing:border-box;pointer-events:all;`;
+    overlay.addEventListener("dragover", (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; });
+    overlay.addEventListener("drop", (e) => { e.preventDefault(); onDrop(); hideDropOverlay(); });
+    document.body.appendChild(overlay);
+    dragOverlayRef.current = overlay;
+  }
+
+  function hideDropOverlay() {
+    dropLineRef.current?.remove();
+    dropLineRef.current = null;
+    dragOverlayRef.current?.remove();
+    dragOverlayRef.current = null;
+  }
+
+  function sendToIframe(type: string, html: string, sectionId?: string | null) {
+    const iframe = getIframe();
+    if (!iframe?.contentWindow) {
+      // Fallback: use store
+      insertBlock("");
+      return;
+    }
+    iframe.contentWindow.postMessage({ target: "sitezy-iframe", type, html, sectionId: sectionId ?? null }, "*");
+  }
+
+  async function add(block: typeof BLOCK_LIBRARY[0], targetId?: string | null) {
+    if (adding) return;
+    setAdding(block.id);
+    if (!useAI) {
+      const html = block.placement === "inline"
+        ? buildInlineHtml(block.id, project)
+        : buildBlockHtml(block.id, project);
+
+      switch (block.placement) {
+        case "top":
+          sendToIframe("insert-top", html);
+          break;
+        case "bottom":
+          sendToIframe("insert-bottom", html);
+          break;
+        case "inline":
+          sendToIframe("insert-in-section", html, targetId ?? null);
+          break;
+        case "section":
+        default:
+          sendToIframe("insert-after-section", html, targetId ?? null);
+          break;
+      }
+      addGenLog(`✅ ${block.label} added`, "success");
+      setAdding(null);
+      return;
+    }
+    if (!page || !project.blueprint) { setAdding(null); return; }
+    addGenLog(`🤖 Generating ${block.label}…`, "progress");
+    try {
+      const res = await fetch("/api/assist", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: `Generate a new ${block.label} section. Match the brand style. Return the complete updated page HTML with it added before the footer.`, context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html } }) });
+      if (!res.ok) throw new Error();
+      const r = res.body?.getReader(); const d = new TextDecoder(); if (!r) throw new Error();
+      let buf = "", full = "";
+      while (true) { const { done, value } = await r.read(); if (done) break; buf += d.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? ""; for (const l of ls) { if (!l.startsWith("data: ")) continue; try { const x = JSON.parse(l.slice(6)); if (x.type === "chunk") full += x.chunk; } catch {} } }
+      if (full.includes("<") && full.length > 200) { setPageContent(page.id, full, [...page.sections, { id: uid(), type: block.id, name: block.label }]); addGenLog(`✅ ${block.label} added`, "success"); }
+    } catch { addGenLog(`❌ Failed`, "error"); }
     finally { setAdding(null); }
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Position picker */}
-      {page && page.sections.length > 0 && (
-        <div className="p-3 border-b border-white/[0.06] flex-shrink-0">
-          <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold mb-2">Insert position</p>
-          <select
-            value={typeof position==="number" ? `after-${position}` : position}
-            onChange={e => {
-              const v = e.target.value;
-              if (v==="before-first" || v==="after-last") setPosition(v);
-              else setPosition(parseInt(v.replace("after-","")));
-            }}
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none appearance-none">
-            <option value="before-first">⬆ At the top</option>
-            {page.sections.map((s, i) => (
-              <option key={s.id} value={`after-${i}`}>After · {s.name||s.type}</option>
-            ))}
-            <option value="after-last">⬇ At the bottom</option>
-          </select>
+      <div className="px-3 py-2.5 border-b border-white/[0.05] flex items-center justify-between flex-shrink-0">
+        <div>
+          <p className="text-[11px] font-semibold text-white/50">{useAI ? "AI Elements" : "Quick Elements"}</p>
+          <p className="text-[9px] text-white/20 mt-0.5">{useAI ? "Styled to match brand" : "Drag onto canvas or click to insert"}</p>
         </div>
-      )}
-
-      {/* Category filter */}
-      <div className="p-3 border-b border-white/[0.06] flex-shrink-0">
-        <div className="flex flex-wrap gap-1.5">
-          {["all",...BLOCK_CATS].map((cat) => (
-            <button key={cat} onClick={() => setActiveCat(cat)}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-medium capitalize transition-colors ${activeCat===cat?"bg-brand-500/20 text-brand-300 border border-brand-500/30":"text-white/30 hover:text-white/60 bg-white/[0.03] border border-white/[0.06]"}`}>
-              {cat}
-            </button>
-          ))}
-        </div>
+        <button onClick={() => setUseAI(!useAI)}
+          className={`relative w-9 h-5 rounded-full transition-colors ${useAI?"bg-indigo-600":"bg-white/[0.07]"}`}>
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${useAI?"translate-x-[18px]":"translate-x-0.5"}`}/>
+        </button>
       </div>
-
-      {!page && (
-        <div className="flex items-center justify-center flex-1 text-white/20 text-[12px] p-4 text-center">
-          Select a page to add blocks
-        </div>
-      )}
-
-      {page && (
-        <div className="flex-1 overflow-auto p-3">
-          <div className="grid grid-cols-2 gap-2">
-            {filtered.map((block) => (
-              <button key={block.type} onClick={() => handleAddBlock(block.type)}
-                disabled={!!adding}
-                className="p-3 bg-white/[0.02] border border-white/[0.07] rounded-xl text-left hover:border-brand-500/35 hover:bg-brand-500/5 transition-all group disabled:opacity-40 disabled:cursor-not-allowed active:scale-95">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-base leading-none text-white/30 group-hover:text-brand-400 transition-colors">{block.icon}</span>
-                  {adding===block.type
-                    ? <Loader2 size={9} className="spin text-brand-400"/>
-                    : <span className="text-[9px] text-brand-400 opacity-0 group-hover:opacity-100 transition-opacity">+ Add</span>}
-                </div>
-                <div className="text-[11px] text-white/55 group-hover:text-white/80 capitalize font-medium transition-colors">{block.label}</div>
-                <div className="text-[9px] text-white/20 capitalize mt-0.5">{block.cat}</div>
-              </button>
-            ))}
+      <div className="px-3 py-2 border-b border-white/[0.05] flex gap-1 flex-wrap flex-shrink-0">
+        {[{key:"all",label:"All"},...BLOCK_CATS].map((c) => (
+          <button key={c.key} onClick={() => setCat(c.key)}
+            className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${
+              cat===c.key
+                ? "bg-indigo-500/16 text-indigo-300 border-indigo-500/20"
+                : "text-white/22 border-white/[0.05] hover:text-white/50 hover:border-white/[0.09]"
+            }`}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-auto p-2.5 grid grid-cols-2 gap-1.5 content-start">
+        {filtered.map((b) => (
+          <div
+            key={b.id}
+            draggable
+            onDragStart={(e) => {
+              dragBlockId.current = b.id;
+              e.dataTransfer.effectAllowed = "copy";
+              e.dataTransfer.setData("text/plain", b.id);
+              // Show placement-aware overlay after a tick so drag image renders first
+              setTimeout(() => {
+                if (b.placement === "top" || b.placement === "bottom") {
+                  showSimpleOverlay(() => add({ ...b }));
+                } else if (b.placement === "inline") {
+                  showInlineOverlay((sectionId) => add({ ...b }, sectionId));
+                } else {
+                  showSectionOverlay((afterId) => add({ ...b }, afterId));
+                }
+              }, 0);
+            }}
+            onDragEnd={() => {
+              hideDropOverlay();
+              dragBlockId.current = null;
+            }}
+            onClick={() => add(b)}
+            className={`p-2.5 rounded-xl border border-white/[0.05] bg-white/[0.015] text-left hover:border-indigo-500/22 hover:bg-indigo-500/[0.04] transition-all group cursor-grab active:cursor-grabbing select-none ${adding===b.id?"opacity-35":""}`}
+          >
+            <span className="text-[15px] leading-none text-white/18 group-hover:text-indigo-400 transition-colors block mb-1.5">{b.icon}</span>
+            <p className="text-[11px] text-white/50 font-semibold group-hover:text-white/75 transition-colors">{b.label}</p>
+            <p className="text-[9px] text-white/18 mt-0.5 line-clamp-1">{b.preview}</p>
           </div>
-          <p className="text-[10px] text-white/20 text-center mt-4">
-            Blocks are AI-generated to match<br/>your brand and content style
-          </p>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
-
-const LC = "block text-[10px] font-semibold text-white/25 uppercase tracking-widest mb-2";
-const IC = "w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[13px] text-white focus:outline-none focus:border-brand-500/40 transition-colors";

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAppStore } from "@/lib/store";
 import { formatDate } from "@/lib/utils";
 import { MoreHorizontal, Pencil, Trash2, ExternalLink, FileCode2 } from "lucide-react";
@@ -14,9 +14,11 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
   const openProject = useAppStore((s) => s.openProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const renameProject = useAppStore((s) => s.renameProject);
-  const [showMenu, setShowMenu] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [nameVal, setNameVal] = useState(project.name);
+  const [showMenu, setShowMenu]   = useState(false);
+  const [editing, setEditing]     = useState(false);
+  const [nameVal, setNameVal]     = useState(project.name);
+  const [armedDelete, setArmedDelete] = useState(false);
+  const armRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bp = project?.blueprint ?? null;
   const pageCount = project?.pages?.length ?? 0;
@@ -26,9 +28,22 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
   const primaryColor = bp?.colorScheme?.primary ?? "#7c3aed";
   const secondaryColor = bp?.colorScheme?.secondary ?? "#2563eb";
 
+  function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!armedDelete) {
+      setArmedDelete(true);
+      armRef.current = setTimeout(() => setArmedDelete(false), 2400);
+      return;
+    }
+    if (armRef.current) clearTimeout(armRef.current);
+    setArmedDelete(false);
+    setShowMenu(false);
+    void deleteProject(project.id);
+  }
+
   function handleRename() {
     if (nameVal.trim() && nameVal !== project.name) {
-      renameProject(project.id, nameVal.trim());
+      void renameProject(project.id, nameVal.trim());
     }
     setEditing(false);
   }
@@ -51,14 +66,15 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
         </div>
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={() => openProject(project.id)}
+            onClick={() => void openProject(project.id)}
             className="px-3 py-1.5 text-[12px] bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-colors"
           >
             Open
           </button>
           <button
-            onClick={() => deleteProject(project.id)}
-            className="w-7 h-7 flex items-center justify-center text-white/30 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+            onClick={handleDelete}
+            title={armedDelete ? "Click again to confirm" : "Delete project"}
+            className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${armedDelete ? "text-red-400 bg-red-500/15" : "text-white/30 hover:text-red-400 hover:bg-red-500/10"}`}
           >
             <Trash2 size={13} />
           </button>
@@ -117,7 +133,7 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
           {showMenu && (
             <div className="absolute right-0 top-8 w-44 bg-[#111116] border border-white/10 rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
               <button
-                onClick={() => { openProject(project.id); setShowMenu(false); }}
+                onClick={() => { void openProject(project.id); setShowMenu(false); }}
                 className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.05] hover:text-white transition-colors"
               >
                 <ExternalLink size={13} /> Open Editor
@@ -130,10 +146,10 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
               </button>
               <div className="h-px bg-white/[0.06] my-1" />
               <button
-                onClick={() => { deleteProject(project.id); setShowMenu(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                onClick={handleDelete}
+                className={`flex items-center gap-2.5 w-full px-3 py-2 text-[13px] transition-colors ${armedDelete ? "text-red-400 bg-red-500/10" : "text-red-400/80 hover:bg-red-500/10 hover:text-red-400"}`}
               >
-                <Trash2 size={13} /> Delete
+                <Trash2 size={13} /> {armedDelete ? "Confirm delete?" : "Delete"}
               </button>
             </div>
           )}
@@ -174,7 +190,7 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
           {bp?.typography?.headingFont ? ` · ${bp.typography.headingFont}` : ""}
         </p>
         <button
-          onClick={() => openProject(project.id)}
+          onClick={() => void openProject(project.id)}
           className="w-full flex items-center justify-center gap-1.5 py-2 bg-brand-600/90 hover:bg-brand-600 text-white text-[13px] font-medium rounded-lg transition-colors"
         >
           Open Editor

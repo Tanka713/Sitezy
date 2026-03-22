@@ -1,381 +1,459 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/lib/store";
 import {
-  Layers, FileCode2, Puzzle, CheckCircle2, Loader2,
-  Clock, AlertCircle, ChevronRight, Plus, RefreshCw,
-  Copy, Trash2, MoreHorizontal, Pencil, X, Zap,
+  Layers, FolderTree, Plus, FileCode2,
+  ChevronRight, MoreHorizontal, RefreshCw, Pencil, Copy, Trash2, X,
+  AlertCircle, CheckCircle2, Clock, Loader2, Sparkles,
 } from "lucide-react";
-import type { Project, ProjectPage, PageSection } from "@/types";
+import type { PageSection, Project, ProjectPage } from "@/types";
 
 interface Props { project: Project; }
 
 export function LeftSidebar({ project }: Props) {
-  const leftPanelTab  = useAppStore((s) => s.editor.leftPanelTab);
-  const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
-  const selectedFileId = useAppStore((s) => s.editor.selectedFileId);
-  const setLeftPanel  = useAppStore((s) => s.setLeftPanel);
-  const selectPage    = useAppStore((s) => s.selectPage);
-  const selectFile    = useAppStore((s) => s.selectFile);
+  const leftPanelTab      = useAppStore((s) => s.editor.leftPanelTab);
+  const selectedPageId    = useAppStore((s) => s.editor.selectedPageId);
+  const selectedFileId    = useAppStore((s) => s.editor.selectedFileId);
+  const selectedSectionId = useAppStore((s) => s.editor.selectedSectionId);
+  const visualEditMode    = useAppStore((s) => s.editor.visualEditMode);
+  const setLeftPanel      = useAppStore((s) => s.setLeftPanel);
+  const selectPage        = useAppStore((s) => s.selectPage);
+  const selectFile        = useAppStore((s) => s.selectFile);
+  const selectSection     = useAppStore((s) => s.selectSection);
+  const updateFileContent = useAppStore((s) => s.updateFileContent);
 
-  const pages    = project?.pages ?? [];
-  const files    = project?.files ?? {};
-  const blueprint = project?.blueprint ?? null;
-
-  const [showAddPage, setShowAddPage] = useState(false);
+  const pages = project.pages ?? [];
+  const files = project.files ?? {};
+  const [showAdd, setShowAdd] = useState(false);
 
   const tabs = [
-    { key: "pages"      as const, icon: <Layers size={14} />,   label: "Pages" },
-    { key: "files"      as const, icon: <FileCode2 size={14} />, label: "Files" },
-    { key: "components" as const, icon: <Puzzle size={14} />,   label: "Assets" },
+    { key: "pages"     as const, icon: <Layers size={11}/>,    label: "Pages" },
+    { key: "navigator" as const, icon: <FolderTree size={11}/>, label: "Layers" },
+    { key: "files"     as const, icon: <FileCode2 size={11}/>,  label: "Files" },
   ];
 
   return (
-    <aside className="w-[220px] border-r border-white/[0.06] flex flex-col bg-[#0a0a0c] flex-shrink-0">
-      {/* Tabs */}
-      <div className="flex border-b border-white/[0.06]">
-        {tabs.map((tab) => (
-          <button key={tab.key} onClick={() => setLeftPanel(tab.key)} title={tab.label}
-            className={`flex-1 py-2.5 flex items-center justify-center transition-colors ${leftPanelTab === tab.key ? "text-white border-b-2 border-brand-500" : "text-white/30 hover:text-white/60 border-b-2 border-transparent"}`}>
-            {tab.icon}
+    <aside className="w-[240px] border-r border-white/[0.06] flex flex-col bg-[#09090c] h-full flex-shrink-0">
+      <div className="flex border-b border-white/[0.06] flex-shrink-0">
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setLeftPanel(t.key)}
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[10.5px] font-semibold transition-colors border-b-2 ${
+              leftPanelTab === t.key
+                ? "text-white border-indigo-500"
+                : "text-white/20 border-transparent hover:text-white/45"
+            }`}>
+            {t.icon}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-auto py-2">
-        {/* ── Pages ── */}
-        {leftPanelTab === "pages" && (
-          <div>
-            <div className="px-3 py-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-white/25 uppercase tracking-widest">Pages</span>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-white/25">{pages.length}</span>
-                <button onClick={() => setShowAddPage(true)} title="Add new page"
-                  className="w-5 h-5 flex items-center justify-center rounded text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors ml-1">
-                  <Plus size={11} />
-                </button>
-              </div>
-            </div>
-
-            {pages.length === 0 ? (
-              <div className="px-3 py-4 text-center text-white/20 text-[12px]">
-                No pages yet.<br />Generate a site first.
-              </div>
-            ) : (
-              pages.map((page) => (
-                <PageRow key={page.id} page={page} project={project}
-                  isSelected={selectedPageId === page.id}
-                  onSelect={() => selectPage(page.id)} />
-              ))
-            )}
-
-            {/* Add Page button at bottom */}
-            {pages.length > 0 && (
-              <button onClick={() => setShowAddPage(true)}
-                className="flex items-center gap-2 w-full px-3 py-2 mt-1 text-white/30 hover:text-white/70 hover:bg-white/[0.04] rounded-lg mx-1 text-[12px] transition-colors">
-                <Plus size={12} />
-                Add page
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── Files ── */}
-        {leftPanelTab === "files" && (
-          <div>
-            <div className="px-3 py-1.5">
-              <span className="text-[10px] font-semibold text-white/25 uppercase tracking-widest">Files</span>
-            </div>
-            {pages.length === 0 ? (
-              <div className="px-3 py-4 text-center text-white/20 text-[12px]">No files yet.</div>
-            ) : (
-              <div className="px-1 mb-1">
-                <div className="px-2 py-1 text-[10px] text-white/20 font-medium">/pages</div>
-                {pages.map((page) => {
-                  const slug = page.slug || page.name.toLowerCase().replace(/\s+/g, "-");
-                  return (
-                    <button key={page.id} onClick={() => selectFile(page.id)}
-                      className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-left text-[12px] transition-colors ${selectedFileId === page.id ? "bg-brand-500/15 text-brand-300" : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"}`}>
-                      <FileCode2 size={11} className="flex-shrink-0" />
-                      <span className="truncate">{slug}.html</span>
-                      {page.status === "done" && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {Object.values(files).filter((f) => f.type === "css").map((file) => (
-              <button key={file.id} onClick={() => selectFile(file.id)}
-                className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-left text-[12px] transition-colors mx-1 ${selectedFileId === file.id ? "bg-brand-500/15 text-brand-300" : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"}`}>
-                <FileCode2 size={11} className="flex-shrink-0" />
-                <span className="truncate">{file.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── Assets / Blueprint ── */}
-        {leftPanelTab === "components" && (
-          <div className="px-3 py-4">
-            <div className="text-[10px] font-semibold text-white/25 uppercase tracking-widest mb-3">Blueprint</div>
-            {blueprint ? (
-              <div className="space-y-3">
-                <InfoRow label="Layout"       value={blueprint.layoutStyle ?? "—"} />
-                <InfoRow label="Heading Font" value={blueprint.typography?.headingFont ?? "—"} />
-                <InfoRow label="Body Font"    value={blueprint.typography?.bodyFont ?? "—"} />
-                <InfoRow label="Animation"    value={blueprint.animationStyle ?? "—"} />
-                {blueprint.brandPersonality && (
-                  <InfoRow label="Brand" value={blueprint.brandPersonality.slice(0, 60) + "…"} />
-                )}
-                {blueprint.colorScheme && (
-                  <div>
-                    <span className="text-[10px] text-white/25">Colors</span>
-                    <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                      {Object.entries(blueprint.colorScheme).map(([key, color]) => (
-                        <div key={key} title={`${key}: ${color}`}
-                          className="w-5 h-5 rounded border border-black/30 cursor-default"
-                          style={{ background: color as string }} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-white/20 text-[12px]">Generate a site to see blueprint info.</div>
-            )}
-          </div>
-        )}
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        {leftPanelTab === "pages"     && <PagesPanel project={project} pages={pages} selectedPageId={selectedPageId} onSelectPage={selectPage} onAddPage={() => setShowAdd(true)} />}
+        {leftPanelTab === "navigator" && <NavPanel pages={pages} selectedPageId={selectedPageId} selectedSectionId={selectedSectionId} visualEditMode={visualEditMode} updateFileContent={updateFileContent} onSelectPage={selectPage} onSelectSection={selectSection} />}
+        {leftPanelTab === "files"     && <FilesPanel pages={pages} files={files} selectedFileId={selectedFileId} onSelectFile={selectFile} />}
       </div>
 
-      {showAddPage && (
-        <AddPageModal project={project} onClose={() => setShowAddPage(false)} />
-      )}
+      {showAdd && <AddPageModal project={project} onClose={() => setShowAdd(false)} />}
     </aside>
   );
 }
 
-// ─── Page Row with context menu ───────────────────────────────────────────────
-function PageRow({ page, project, isSelected, onSelect }: { page: ProjectPage; project: Project; isSelected: boolean; onSelect: () => void }) {
+// ── Pages ─────────────────────────────────────────────────────────────────────
+function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }: {
+  project: Project; pages: ProjectPage[]; selectedPageId: string | null;
+  onSelectPage: (id: string|null)=>void; onAddPage: ()=>void;
+}) {
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.05] flex-shrink-0">
+        <span className="text-[10px] font-bold text-white/22 uppercase tracking-widest">
+          Pages <span className="text-white/14 font-normal">{pages.length}</span>
+        </span>
+        <button onClick={onAddPage} className="w-6 h-6 flex items-center justify-center rounded-md text-white/25 hover:text-white hover:bg-white/[0.07] transition-all">
+          <Plus size={12}/>
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto py-1.5">
+        {pages.length === 0 ? (
+          <div className="px-4 py-8 text-center text-[11px] text-white/18">No pages yet.</div>
+        ) : (
+          <div className="px-2 space-y-0.5">
+            {pages.map((p) => (
+              <PageRow key={p.id} page={p} project={project} isSelected={selectedPageId===p.id} onSelect={() => onSelectPage(p.id)}/>
+            ))}
+          </div>
+        )}
+        {pages.length > 0 && (
+          <button onClick={onAddPage} className="flex items-center gap-2 mx-2 mt-1 px-2.5 py-2 w-[calc(100%-16px)] rounded-lg text-[11px] text-white/22 hover:text-white/50 hover:bg-white/[0.035] transition-all">
+            <Plus size={11}/> Add page
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PageRow({ page, project, isSelected, onSelect }: { page: ProjectPage; project: Project; isSelected: boolean; onSelect: ()=>void }) {
   const deletePage    = useAppStore((s) => s.deletePage);
   const duplicatePage = useAppStore((s) => s.duplicatePage);
   const renamePage    = useAppStore((s) => s.renamePage);
+  const setPageContent  = useAppStore((s) => s.setPageContent);
+  const setPageStatus   = useAppStore((s) => s.setPageStatus);
+  const setGenStatus    = useAppStore((s) => s.setGenStatus);
+  const addGenLog       = useAppStore((s) => s.addGenLog);
+
+  const [menu,        setMenu]        = useState(false);
+  const [ren,         setRen]         = useState(false);
+  const [name,        setName]        = useState(page.name);
+  const [regen,       setRegen]       = useState(false);
+  const [armedDelete, setArmedDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const armRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleDeletePage() {
+    if (!armedDelete) {
+      setArmedDelete(true);
+      armRef.current = setTimeout(() => setArmedDelete(false), 2400);
+      return;
+    }
+    if (armRef.current) clearTimeout(armRef.current);
+    setArmedDelete(false);
+    setMenu(false);
+    deletePage(page.id);
+  }
+
+  useEffect(() => {
+    if (!menu) return;
+    function h(e: MouseEvent) { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [menu]);
+
+  function status() {
+    if (regen || page.status === "generating") return <Loader2 size={10} className="text-indigo-400 animate-spin"/>;
+    if (page.status === "done")  return <CheckCircle2 size={10} className="text-emerald-500"/>;
+    if (page.status === "error") return <AlertCircle  size={10} className="text-red-400"/>;
+    return <Clock size={10} className="text-white/18"/>;
+  }
+
+  async function handleRegen() {
+    if (!project.blueprint) return;
+    setMenu(false); setRegen(true); setPageStatus(page.id, "generating");
+    setGenStatus("pages", `Regenerating ${page.name}…`);
+    try {
+      const bp = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map((s) => s.type || s.name), purpose: page.purpose };
+      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blueprint: project.blueprint, page: bp, brief: project.brief }) });
+      if (!res.ok) throw new Error();
+      const result: { html: string; sections: PageSection[] } = await res.json();
+      setPageContent(page.id, result.html, result.sections);
+      setGenStatus("done", "Done!");
+    } catch { setPageStatus(page.id, "error"); setGenStatus("error", "Failed"); }
+    finally { setRegen(false); }
+  }
+
+  function commitRename() {
+    if (name.trim() && name !== page.name) renamePage(page.id, name.trim());
+    setRen(false);
+  }
+
+  return (
+    <div className="relative group/row">
+      {ren ? (
+        <div className="flex items-center gap-1 px-2 py-1">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRen(false); }}
+            className="flex-1 bg-white/[0.07] border border-indigo-500/35 rounded-md px-2 py-1 text-[12px] text-white focus:outline-none min-w-0"/>
+          <button onClick={() => setRen(false)} className="text-white/25 hover:text-white transition-colors"><X size={10}/></button>
+        </div>
+      ) : (
+        <div onClick={onSelect} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect()}
+          className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-left text-[12px] transition-all cursor-pointer ${
+            isSelected ? "bg-indigo-500/10 text-white" : "text-white/42 hover:text-white/75 hover:bg-white/[0.035]"
+          }`}>
+          <span className="flex-shrink-0">{status()}</span>
+          <span className="flex-1 truncate font-medium">{page.name}</span>
+          <div role="button" tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}
+            onKeyDown={(e) => e.key === "Enter" && (e.stopPropagation(), setMenu(!menu))}
+            className="opacity-0 group-hover/row:opacity-100 w-5 h-5 flex items-center justify-center rounded text-white/28 hover:text-white hover:bg-white/[0.09] transition-all flex-shrink-0 cursor-pointer">
+            <MoreHorizontal size={11}/>
+          </div>
+        </div>
+      )}
+      {menu && (
+        <div ref={menuRef} className="absolute right-2 top-8 w-40 bg-[#0f0f14] border border-white/[0.08] rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
+          <MI icon={<RefreshCw size={11}/>} label="Regenerate" onClick={handleRegen} disabled={!project.blueprint}/>
+          <MI icon={<Pencil size={11}/>}    label="Rename"     onClick={() => { setRen(true); setMenu(false); }}/>
+          <MI icon={<Copy size={11}/>}      label="Duplicate"  onClick={() => { duplicatePage(page.id); setMenu(false); }}/>
+          <div className="h-px bg-white/[0.06] my-1"/>
+          <MI icon={<Trash2 size={11}/>}    label={armedDelete ? "Confirm delete?" : "Delete"} danger onClick={handleDeletePage} disabled={(project.pages?.length??0)<=1}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MI({ icon, label, onClick, danger, disabled }: { icon: React.ReactNode; label: string; onClick: ()=>void; danger?: boolean; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`flex items-center gap-2 w-full px-3 py-2 text-[11px] transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${
+        danger ? "text-red-400/65 hover:bg-red-500/10 hover:text-red-400" : "text-white/50 hover:bg-white/[0.05] hover:text-white"
+      }`}>
+      {icon} {label}
+    </button>
+  );
+}
+
+// ── Navigator ─────────────────────────────────────────────────────────────────
+function NavPanel({ pages, selectedPageId, selectedSectionId, visualEditMode, updateFileContent, onSelectPage, onSelectSection }: {
+  pages: ProjectPage[]; selectedPageId: string|null; selectedSectionId: string|null;
+  visualEditMode: boolean; updateFileContent: (fileId: string, content: string) => void;
+  onSelectPage: (id: string|null)=>void; onSelectSection: (id: string|null)=>void;
+}) {
+  const [exp, setExp] = useState<Record<string,boolean>>(() =>
+    Object.fromEntries(pages.map((p) => [p.id, true]))
+  );
+  const [confirmDelete, setConfirmDelete] = useState<string|null>(null);
+
+  function confirmDeleteSection(sectionId: string) {
+    setConfirmDelete(null);
+    if (selectedSectionId === sectionId) onSelectSection(null);
+    if (visualEditMode) {
+      const iframe = document.querySelector('iframe[title^="Preview"]') as HTMLIFrameElement | null;
+      iframe?.contentWindow?.postMessage({ target: "sitezy-iframe", type: "delete-section", sectionId }, "*");
+    } else {
+      const page = pages.find((p) => p.id === selectedPageId);
+      if (!page?.html || !selectedPageId) return;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<body>${page.html}</body>`, "text/html");
+      const el = doc.querySelector(`[data-sz-section-id="${sectionId.replace(/"/g, '\\"')}"]`);
+      if (el) { el.remove(); updateFileContent(selectedPageId, doc.body.innerHTML); }
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="px-3 py-2.5 border-b border-white/[0.05] flex-shrink-0">
+        <span className="text-[10px] font-bold text-white/22 uppercase tracking-widest">Layers</span>
+      </div>
+      <div className="flex-1 overflow-auto py-1.5 px-2 space-y-0.5">
+        {pages.map((page) => {
+          const open = exp[page.id] ?? true;
+          return (
+            <div key={page.id}>
+              <button
+                onClick={() => setExp((e) => ({ ...e, [page.id]: !open }))}
+                className={`flex items-center w-full px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all hover:bg-white/[0.03] ${selectedPageId===page.id?"text-white/80":"text-white/35"}`}>
+                <ChevronRight size={11} className={`text-white/25 transition-transform flex-shrink-0 ${open?"rotate-90":""}`}/>
+                <span className="flex-1 text-left truncate px-1">{page.name}</span>
+                <span className="text-[9px] text-white/14 font-normal ml-1">{page.sections.length}</span>
+              </button>
+              {open && (
+                <div className="ml-4 border-l border-white/[0.04] pl-2 space-y-0.5 mb-1">
+                  {page.sections.length === 0
+                    ? <div className="py-1 text-[10px] text-white/16">No sections</div>
+                    : page.sections.map((sec, i) => (
+                      <div key={sec.id} className="group/sec">
+                        {confirmDelete === sec.id ? (
+                          /* Inline delete confirmation */
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-red-500/8 border border-red-500/20">
+                            <Trash2 size={10} className="text-red-400 flex-shrink-0" />
+                            <span className="flex-1 text-[10px] text-red-300/80 truncate">Delete "{sec.name||sec.type}"?</span>
+                            <button
+                              onClick={() => setConfirmDelete(null)}
+                              className="px-1.5 py-0.5 text-[10px] text-white/35 hover:text-white/70 rounded transition-colors">
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => confirmDeleteSection(sec.id)}
+                              className="px-1.5 py-0.5 text-[10px] text-red-400 bg-red-500/15 hover:bg-red-500/25 rounded transition-colors font-medium">
+                              Delete
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <button
+                              onClick={() => {
+                                onSelectSection(sec.id);
+                                const iframe = document.querySelector('iframe[title^="Preview"]') as HTMLIFrameElement | null;
+                                const target = iframe?.contentDocument?.querySelector(`[data-sz-section-id="${sec.id}"]`);
+                                target?.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }}
+                              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-all pr-7 ${
+                                selectedSectionId===sec.id
+                                  ? "bg-indigo-500/10 text-white"
+                                  : "text-white/32 hover:text-white/62 hover:bg-white/[0.025]"
+                              }`}>
+                              <span className="text-[9px] text-white/14 font-mono w-4 flex-shrink-0">{i+1}</span>
+                              <span className="truncate">{sec.name||sec.type}</span>
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDelete(sec.id); }}
+                              title="Delete section"
+                              className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover/sec:opacity-100 text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                              <Trash2 size={10} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Files ─────────────────────────────────────────────────────────────────────
+function FilesPanel({ pages, files, selectedFileId, onSelectFile }: {
+  pages: ProjectPage[]; files: Record<string,{id:string;name:string;type:string}>;
+  selectedFileId: string|null; onSelectFile: (id:string|null)=>void;
+}) {
+  const css = Object.values(files).filter((f) => f.type === "css");
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="px-3 py-2.5 border-b border-white/[0.05] flex-shrink-0">
+        <p className="text-[10px] font-bold text-white/22 uppercase tracking-widest">Files</p>
+      </div>
+      <div className="flex-1 overflow-auto py-2 px-2 space-y-0.5">
+        <div className="px-2 py-1 text-[9px] font-bold text-white/14 uppercase tracking-widest">Pages</div>
+        {pages.map((p) => {
+          const slug = p.slug || p.name.toLowerCase().replace(/\s+/g,"-");
+          return (
+            <button key={p.id} onClick={() => onSelectFile(p.id)}
+              className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-[11px] transition-all ${
+                selectedFileId===p.id ? "bg-indigo-500/10 text-indigo-300" : "text-white/38 hover:text-white/65 hover:bg-white/[0.035]"
+              }`}>
+              <FileCode2 size={11} className="flex-shrink-0 text-indigo-400/50"/>
+              <span className="truncate font-mono">{slug}.html</span>
+            </button>
+          );
+        })}
+        {css.length > 0 && (
+          <>
+            <div className="px-2 py-1 mt-2 text-[9px] font-bold text-white/14 uppercase tracking-widest">Styles</div>
+            {css.map((f) => (
+              <button key={f.id} onClick={() => onSelectFile(f.id)}
+                className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-[11px] transition-all ${
+                  selectedFileId===f.id ? "bg-teal-500/10 text-teal-300" : "text-white/38 hover:text-white/65 hover:bg-white/[0.035]"
+                }`}>
+                <FileCode2 size={11} className="flex-shrink-0 text-teal-400/50"/>
+                <span className="truncate font-mono">{f.name}</span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Add Page Modal ─────────────────────────────────────────────────────────────
+function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>void }) {
+  const addPage        = useAppStore((s) => s.addPage);
   const setPageContent = useAppStore((s) => s.setPageContent);
   const setPageStatus  = useAppStore((s) => s.setPageStatus);
   const setGenStatus   = useAppStore((s) => s.setGenStatus);
   const addGenLog      = useAppStore((s) => s.addGenLog);
 
-  const [showMenu,    setShowMenu]    = useState(false);
-  const [renaming,    setRenaming]    = useState(false);
-  const [nameVal,     setNameVal]     = useState(page.name);
-  const [regenerating, setRegenerating] = useState(false);
+  const [name,     setName]     = useState("");
+  const [purpose,  setPurpose]  = useState("");
+  const [useAI,    setUseAI]    = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
 
-  const StatusIcon = () => {
-    if (regenerating) return <Loader2 size={10} className="text-brand-400 spin" />;
-    switch (page.status) {
-      case "done":      return <CheckCircle2 size={10} className="text-emerald-500" />;
-      case "generating":return <Loader2 size={10} className="text-brand-400 spin" />;
-      case "error":     return <AlertCircle size={10} className="text-red-400" />;
-      default:          return <Clock size={10} className="text-white/20" />;
-    }
-  };
+  async function create() {
+    if (!name.trim()) return;
+    setError(null);
+    const id   = crypto.randomUUID();
+    const slug = name.trim().toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"");
+    addPage({ id, name: name.trim(), slug, sections: [], purpose: purpose.trim() || name.trim(), html: "", status: useAI ? "generating" : "done" });
 
-  async function handleRegenerate() {
-    if (!project.blueprint) return;
-    setShowMenu(false);
-    setRegenerating(true);
-    setGenStatus("pages", `Regenerating ${page.name}...`);
-    addGenLog(`🔄 Regenerating ${page.name}...`, "progress");
+    if (!useAI) { onClose(); return; }
+
+    setCreating(true);
+    setGenStatus("pages", `Generating ${name.trim()}…`);
+    addGenLog(`📄 Generating page: ${name.trim()}…`, "progress");
     try {
-      setPageStatus(page.id, "generating");
-      const bpPage = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map(s=>s.type||s.name), purpose: page.purpose };
       const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blueprint: project.blueprint, page: bpPage, brief: project.brief }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blueprint: project.blueprint,
+          page: { id, name: name.trim(), slug, sections: ["hero","content","cta"], purpose: purpose.trim()||name.trim() },
+          brief: project.brief,
+        }),
       });
-      if (!res.ok) throw new Error("Regeneration failed");
-      const result: { html: string; sections: PageSection[] } = await res.json();
-      setPageContent(page.id, result.html, result.sections);
-      addGenLog(`✅ ${page.name} regenerated`, "success");
-      setGenStatus("done", "Page regenerated!");
-    } catch (err) {
-      setPageStatus(page.id, "error");
-      addGenLog(`❌ Failed to regenerate ${page.name}`, "error");
-      setGenStatus("error", "Regeneration failed");
-    } finally {
-      setRegenerating(false);
-    }
-  }
-
-  function handleRename() {
-    if (nameVal.trim() && nameVal !== page.name) renamePage(page.id, nameVal.trim());
-    setRenaming(false);
-  }
-
-  const canDelete = (project?.pages?.length ?? 0) > 1;
-
-  return (
-    <div className="relative group/row" onMouseLeave={() => setShowMenu(false)}>
-      {renaming ? (
-        <div className="flex items-center gap-1 px-2 py-1 mx-1">
-          <input autoFocus value={nameVal} onChange={e=>setNameVal(e.target.value)}
-            onBlur={handleRename} onKeyDown={e=>{if(e.key==="Enter")handleRename();if(e.key==="Escape")setRenaming(false);}}
-            className="flex-1 bg-white/[0.08] border border-brand-500/40 rounded px-2 py-1 text-[12px] text-white focus:outline-none min-w-0" />
-          <button onClick={()=>setRenaming(false)} className="text-white/30 hover:text-white"><X size={11}/></button>
-        </div>
-      ) : (
-        <button onClick={onSelect}
-          className={`flex items-center gap-2.5 w-full px-3 py-2 text-left rounded-lg mx-1 transition-colors text-[13px] ${isSelected ? "bg-brand-500/15 text-white border-l-2 border-brand-500 pl-2.5" : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"}`}>
-          <StatusIcon />
-          <span className="flex-1 truncate">{page.name}</span>
-          <button onClick={e=>{e.stopPropagation();setShowMenu(!showMenu);}}
-            className="opacity-0 group-hover/row:opacity-100 w-5 h-5 flex items-center justify-center rounded text-white/40 hover:text-white hover:bg-white/[0.1] transition-all flex-shrink-0">
-            <MoreHorizontal size={11}/>
-          </button>
-        </button>
-      )}
-
-      {/* Context menu */}
-      {showMenu && (
-        <div className="absolute right-1 top-7 w-44 bg-[#131318] border border-white/[0.1] rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
-          <MenuItem icon={<RefreshCw size={12}/>} label="Regenerate" onClick={handleRegenerate} disabled={!project.blueprint} />
-          <MenuItem icon={<Pencil size={12}/>} label="Rename" onClick={()=>{setRenaming(true);setShowMenu(false);}} />
-          <MenuItem icon={<Copy size={12}/>} label="Duplicate" onClick={()=>{duplicatePage(page.id);setShowMenu(false);}} />
-          <div className="h-px bg-white/[0.06] my-1"/>
-          <MenuItem icon={<Trash2 size={12}/>} label="Delete" onClick={()=>{if(canDelete)deletePage(page.id);setShowMenu(false);}} danger disabled={!canDelete} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MenuItem({ icon, label, onClick, danger=false, disabled=false }: { icon:React.ReactNode; label:string; onClick:()=>void; danger?:boolean; disabled?:boolean }) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={`flex items-center gap-2.5 w-full px-3 py-2 text-[12px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${danger?"text-red-400/80 hover:bg-red-500/10 hover:text-red-400":"text-white/60 hover:bg-white/[0.05] hover:text-white"}`}>
-      {icon}{label}
-    </button>
-  );
-}
-
-// ─── Add Page Modal ───────────────────────────────────────────────────────────
-function AddPageModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const addPage       = useAppStore((s) => s.addPage);
-  const setPageContent = useAppStore((s) => s.setPageContent);
-  const setGenStatus   = useAppStore((s) => s.setGenStatus);
-  const addGenLog      = useAppStore((s) => s.addGenLog);
-
-  const [pageName, setPageName]   = useState("");
-  const [pageDesc, setPageDesc]   = useState("");
-  const [loading,  setLoading]    = useState(false);
-  const [error,    setError]      = useState("");
-
-  async function handleAdd() {
-    if (!pageName.trim()) return;
-    setLoading(true);
-    setError("");
-
-    const newId   = Math.random().toString(36).slice(2,10);
-    const newSlug = pageName.toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"");
-    const newPage = { id:newId, name:pageName.trim(), slug:newSlug, sections:[], purpose:pageDesc||pageName, html:"", status:"pending" as const };
-
-    addPage(newPage);
-    addGenLog(`📄 Adding page: ${pageName}...`, "progress");
-
-    if (project.blueprint) {
-      setGenStatus("pages", `Generating ${pageName}...`);
-      try {
-        const res = await fetch("/api/add-page", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ blueprint:project.blueprint, pageName:pageName.trim(), pageDescription:pageDesc, brief:project.brief }),
-        });
-        if (!res.ok) { const e=await res.json(); throw new Error(e.error||"Failed"); }
-        const result: { html:string; sections:PageSection[]; page:{sections:string[]} } = await res.json();
-        setPageContent(newId, result.html, result.sections ?? []);
-        addGenLog(`✅ ${pageName} generated`, "success");
-        setGenStatus("done", `${pageName} added!`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Generation failed");
-        addGenLog(`⚠️ ${pageName} generation failed`, "error");
-        setGenStatus("error", "Page generation failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `API error ${res.status}`);
       }
+      const result: { html: string; sections: PageSection[] } = await res.json();
+      setPageContent(id, result.html, result.sections);
+      addGenLog(`✅ ${name.trim()} generated`, "success");
+      setGenStatus("done", "Done!");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Generation failed";
+      setError(msg);
+      setPageStatus(id, "error");
+      addGenLog(`❌ ${msg}`, "error");
+      setGenStatus("error", "Failed");
+    } finally {
+      setCreating(false);
     }
-
-    setLoading(false);
-    if (!error) onClose();
   }
 
-  const SUGGESTIONS = ["Gallery","Careers","Partners","Press","Legal","Privacy","Terms","Login","Signup","Checkout"];
-
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0e0e12] border border-white/[0.08] rounded-2xl w-full max-w-[420px] shadow-2xl animate-fade-in">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-lg bg-brand-500/20 flex items-center justify-center">
-              <Plus size={13} className="text-brand-400" />
-            </div>
-            <h3 className="font-semibold text-[14px]">Add New Page</h3>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.05] transition-colors">
-            <X size={14}/>
-          </button>
+    <div className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#0f0f14] shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+          <h3 className="text-[13px] font-semibold text-white">New page</h3>
+          <button onClick={onClose} className="text-white/28 hover:text-white/65 transition-colors"><X size={13}/></button>
         </div>
-
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-[11px] font-medium text-white/40 uppercase tracking-wider mb-2">Page Name *</label>
-            <input autoFocus value={pageName} onChange={e=>setPageName(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleAdd()}
-              placeholder="e.g. Gallery, Careers, Press..."
-              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-[14px] text-white placeholder-white/20 focus:outline-none focus:border-brand-500/50 transition-colors"/>
+        <div className="p-4 space-y-3">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !creating && create()}
+            placeholder="Page name (e.g. About, Pricing)"
+            className="w-full bg-white/[0.05] border border-white/[0.07] rounded-xl px-3 py-2 text-[13px] text-white placeholder-white/18 focus:outline-none focus:border-indigo-500/35 transition-colors"/>
+          {useAI && (
+            <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)}
+              placeholder="Describe what this page should contain (optional)"
+              rows={2}
+              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-xl px-3 py-2 text-[13px] text-white placeholder-white/18 focus:outline-none focus:border-indigo-500/35 resize-none transition-colors"/>
+          )}
+          {/* AI toggle */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-[12px] text-white/60 font-medium">Generate with AI</p>
+              <p className="text-[10px] text-white/25 mt-0.5">
+                {useAI ? "AI will build this page matching your brand" : "Creates a blank page"}
+              </p>
+            </div>
+            <button onClick={() => setUseAI(!useAI)}
+              className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${useAI ? "bg-indigo-600" : "bg-white/[0.1]"}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${useAI ? "translate-x-[18px]" : "translate-x-0.5"}`}/>
+            </button>
           </div>
-
-          {/* Quick picks */}
-          <div className="flex flex-wrap gap-1.5">
-            {SUGGESTIONS.filter(s=>!project.pages.map(p=>p.name).includes(s)).slice(0,8).map(s=>(
-              <button key={s} onClick={()=>setPageName(s)}
-                className="px-2.5 py-1 text-[11px] bg-white/[0.04] border border-white/[0.07] text-white/40 hover:text-white/70 hover:border-white/[0.15] rounded-lg transition-colors">
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-medium text-white/40 uppercase tracking-wider mb-2">Description (optional)</label>
-            <input value={pageDesc} onChange={e=>setPageDesc(e.target.value)}
-              placeholder="What should this page contain or achieve?"
-              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-[14px] text-white placeholder-white/20 focus:outline-none focus:border-brand-500/50 transition-colors"/>
-          </div>
-
-          {error && <p className="text-red-400 text-[12px]">{error}</p>}
-
-          {project.blueprint ? (
-            <p className="text-[11px] text-white/30">AI will generate this page to match your existing design.</p>
-          ) : (
-            <p className="text-[11px] text-amber-500/60">Generate a site first to auto-generate page content.</p>
+          {error && (
+            <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-400">
+              {error}
+            </div>
           )}
         </div>
-
-        <div className="px-5 pb-5 flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 text-[13px] text-white/50 border border-white/[0.08] rounded-xl hover:bg-white/[0.04] transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleAdd} disabled={!pageName.trim()||loading}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[13px] font-medium rounded-xl transition-all ${pageName.trim()&&!loading?"bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-500/20":"bg-white/[0.05] text-white/20 cursor-not-allowed"}`}>
-            {loading?<><Loader2 size={13} className="spin"/>Generating...</>:<><Zap size={13}/>Add Page</>}
+        <div className="px-4 py-3 border-t border-white/[0.06] flex justify-end gap-2">
+          <button onClick={onClose} disabled={creating} className="px-3 py-1.5 text-[12px] text-white/32 hover:text-white/60 rounded-lg transition-colors disabled:opacity-50">Cancel</button>
+          <button onClick={create} disabled={!name.trim() || creating}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-[12px] font-semibold transition-colors">
+            {creating && <Loader2 size={11} className="animate-spin"/>}
+            {creating ? "Generating…" : useAI ? "Generate page" : "Create blank"}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="text-[10px] text-white/25">{label}</span>
-      <p className="text-[12px] text-white/60 capitalize mt-0.5">{value}</p>
     </div>
   );
 }
