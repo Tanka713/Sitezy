@@ -23,6 +23,7 @@ export interface ColorScheme {
   text: string;
   muted?: string;
   border?: string;
+  [key: string]: string | undefined;
 }
 
 export interface Typography {
