@@ -354,12 +354,12 @@ export function CreateProjectModal({ onClose }: Props) {
 
   // ── Step 1 ──────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02080d]/84 p-4 backdrop-blur-xl">
-      <div className="relative w-full max-w-[1320px] max-h-[calc(100vh-2rem)] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#02080d]/84 p-4 backdrop-blur-xl lg:items-center">
+      <div className="relative my-4 w-full max-w-[1320px] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in lg:my-0 lg:max-h-[calc(100vh-2rem)]">
         <div className="pointer-events-none absolute left-[-8rem] top-[-7rem] h-[20rem] w-[20rem] rounded-full bg-[radial-gradient(circle,rgba(84,213,200,0.18),rgba(84,213,200,0)_70%)] blur-3xl" />
         <div className="pointer-events-none absolute bottom-[-8rem] right-[-7rem] h-[22rem] w-[22rem] rounded-full bg-[radial-gradient(circle,rgba(245,184,75,0.12),rgba(245,184,75,0)_72%)] blur-3xl" />
 
-        <div className="grid h-[calc(100vh-2rem)] max-h-[860px] min-h-0 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid min-h-0 lg:h-[calc(100vh-2rem)] lg:max-h-[860px] lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="relative flex min-h-0 flex-col">
             <div className="border-b border-white/8 px-5 py-4 sm:px-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -433,7 +433,7 @@ export function CreateProjectModal({ onClose }: Props) {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden px-5 py-4 sm:px-6">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
               {activeTab === "content" ? (
                 <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
                   <div className="grid content-start gap-4">
@@ -731,7 +731,7 @@ export function CreateProjectModal({ onClose }: Props) {
             </div>
           </div>
 
-          <aside className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-5 lg:border-l lg:border-t-0 lg:p-6">
+          <aside className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-5 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:p-6">
             <div className="grid h-full content-start gap-4">
               <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-slate-300/42">
