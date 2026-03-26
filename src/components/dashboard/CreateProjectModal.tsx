@@ -354,12 +354,12 @@ export function CreateProjectModal({ onClose }: Props) {
 
   // ── Step 1 ──────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02080d]/84 p-4 backdrop-blur-xl">
-      <div className="relative w-full max-w-[1160px] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#02080d]/84 p-4 backdrop-blur-xl">
+      <div className="relative my-auto w-full max-w-[1160px] max-h-[calc(100vh-2rem)] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
         <div className="pointer-events-none absolute left-[-8rem] top-[-7rem] h-[20rem] w-[20rem] rounded-full bg-[radial-gradient(circle,rgba(84,213,200,0.18),rgba(84,213,200,0)_70%)] blur-3xl" />
         <div className="pointer-events-none absolute bottom-[-8rem] right-[-7rem] h-[22rem] w-[22rem] rounded-full bg-[radial-gradient(circle,rgba(245,184,75,0.12),rgba(245,184,75,0)_72%)] blur-3xl" />
 
-        <div className="grid max-h-[92vh] lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid h-[calc(100vh-2rem)] max-h-[920px] min-h-0 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="relative flex min-h-0 flex-col">
             <div className="border-b border-white/8 px-6 pb-5 pt-6 sm:px-7">
               <div className="flex items-start justify-between gap-4">
@@ -430,7 +430,7 @@ export function CreateProjectModal({ onClose }: Props) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto px-6 py-6 sm:px-7">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
               {activeTab === "content" ? (
                 <div className="space-y-5">
 
@@ -753,7 +753,7 @@ export function CreateProjectModal({ onClose }: Props) {
             </div>
           </div>
 
-          <aside className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-6 lg:border-l lg:border-t-0 lg:p-7">
+          <aside className="min-h-0 overflow-y-auto border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-6 lg:border-l lg:border-t-0 lg:p-7">
             <div className="space-y-5">
               <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
