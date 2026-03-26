@@ -324,6 +324,12 @@ export function CreateProjectModal({ onClose }: Props) {
 
   const canSubmit = brief.siteName.trim().length > 0 && brief.description.trim().length > 10;
   const activeTone = TONES.find(t => t.label === brief.tone);
+  const summaryPalette = (brief.colorPalette?.length
+    ? brief.colorPalette
+    : (colorPreset >= 0 ? COLOR_PRESETS[colorPreset]?.colors ?? [] : [])) ?? [];
+  const colorLabel = colorPreset === -1
+    ? "From logo"
+    : COLOR_PRESETS[colorPreset]?.label ?? (brief.colorPreference ? "Custom" : "AI Pick");
 
   // ── Step 2 ──────────────────────────────────────────────────────────────────
   if (step === 2) {
@@ -333,11 +339,11 @@ export function CreateProjectModal({ onClose }: Props) {
         {genStatus === "error" && (
           <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex gap-3">
             <button onClick={() => setStep(1)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white/[0.08] border border-white/[0.15] text-white text-[13px] rounded-xl hover:bg-white/[0.12] transition-colors backdrop-blur-sm">
+              className="flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-5 py-2.5 text-[13px] text-white transition-colors hover:bg-white/[0.1] backdrop-blur-sm">
               <ChevronLeft size={14} /> Go back
             </button>
             <button onClick={handleGenerate}
-              className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-[13px] rounded-xl transition-colors shadow-lg shadow-brand-500/30">
+              className="flex items-center gap-2 rounded-full border border-[#54d5c833] bg-[linear-gradient(135deg,rgba(84,213,200,0.28),rgba(130,184,255,0.18))] px-5 py-2.5 text-[13px] font-medium text-white shadow-[0_18px_34px_rgba(84,213,200,0.18)] transition-transform duration-200 hover:-translate-y-0.5">
               <Zap size={14} /> Retry
             </button>
           </div>
@@ -348,99 +354,124 @@ export function CreateProjectModal({ onClose }: Props) {
 
   // ── Step 1 ──────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="relative w-full max-w-[640px] max-h-[92vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl shadow-black/70 border border-white/[0.07] animate-fade-in"
-        style={{ background: "radial-gradient(ellipse 80% 40% at 50% 0%, #130f1f 0%, #0a0a0e 55%)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02080d]/84 p-4 backdrop-blur-xl">
+      <div className="relative w-full max-w-[1160px] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
+        <div className="pointer-events-none absolute left-[-8rem] top-[-7rem] h-[20rem] w-[20rem] rounded-full bg-[radial-gradient(circle,rgba(84,213,200,0.18),rgba(84,213,200,0)_70%)] blur-3xl" />
+        <div className="pointer-events-none absolute bottom-[-8rem] right-[-7rem] h-[22rem] w-[22rem] rounded-full bg-[radial-gradient(circle,rgba(245,184,75,0.12),rgba(245,184,75,0)_72%)] blur-3xl" />
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-0.5">
-              <div className="w-6 h-6 rounded-md bg-brand-500/25 flex items-center justify-center flex-shrink-0">
-                <Zap size={12} className="text-brand-400" />
+        <div className="grid max-h-[92vh] lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="relative flex min-h-0 flex-col">
+            <div className="border-b border-white/8 px-6 pb-5 pt-6 sm:px-7">
+              <div className="flex items-start justify-between gap-4">
+                <div className="max-w-[34rem]">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.28em] text-slate-200/64">
+                    <Zap size={12} className="text-[#54d5c8]" />
+                    Project generator
+                  </div>
+                  <h2 className="mt-4 text-[clamp(1.9rem,4vw,2.8rem)] font-semibold leading-[0.94] tracking-[-0.05em] text-white">
+                    Shape the brief.
+                    <br />
+                    Let Sitezy build the structure.
+                  </h2>
+                  <p className="mt-3 max-w-[32rem] text-sm leading-7 text-slate-300/62">
+                    The generator keeps the workflow tight: define the business, set the design direction, then move straight into the editor once the pages are assembled.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded-full border border-white/10 bg-white/[0.04] p-1">
+                    <button
+                      onClick={() => setGeneratorMode("quick")}
+                      className={`flex h-10 items-center gap-2 rounded-full px-4 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                        generatorMode === "quick"
+                          ? "bg-white/[0.08] text-white"
+                          : "text-white/38 hover:text-white/62"
+                      }`}
+                    >
+                      <Zap size={11} className={generatorMode === "quick" ? "text-[#54d5c8]" : "opacity-50"} />
+                      Quick
+                    </button>
+                    <button
+                      onClick={() => setGeneratorMode("smart")}
+                      className={`flex h-10 items-center gap-2 rounded-full px-4 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                        generatorMode === "smart"
+                          ? "bg-[linear-gradient(135deg,rgba(84,213,200,0.22),rgba(130,184,255,0.18))] text-white"
+                          : "text-white/38 hover:text-white/62"
+                      }`}
+                    >
+                      <Sparkles size={11} className={generatorMode === "smart" ? "text-[#f5b84b]" : "opacity-50"} />
+                      Smart
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={onClose}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/38 transition-colors hover:text-white hover:bg-white/[0.08]"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
-              <h2 className="font-semibold text-[15px] text-white">New Project</h2>
-            </div>
-            <p className="text-[11px] text-white/25 ml-8.5 pl-[34px]">Fill in the brief — AI does the rest</p>
-          </div>
 
-          <div className="flex items-center gap-2.5">
-            {/* Mode toggle */}
-            <div className="flex items-center p-[3px] rounded-lg bg-white/[0.05] border border-white/[0.07]">
-              <button onClick={() => setGeneratorMode("quick")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all duration-150 ${
-                  generatorMode === "quick" ? "bg-white/[0.08] text-white" : "text-white/30 hover:text-white/55"
-                }`}>
-                <Zap size={9} className={generatorMode === "quick" ? "text-brand-400" : "opacity-50"} />
-                Quick
-              </button>
-              <button onClick={() => setGeneratorMode("smart")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all duration-150 ${
-                  generatorMode === "smart" ? "bg-brand-500/25 text-brand-300" : "text-white/30 hover:text-white/55"
-                }`}>
-                <Sparkles size={9} />
-                Smart
-              </button>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {(["content","design"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                      activeTab === tab
+                        ? "border border-[#54d5c833] bg-[#54d5c814] text-[#54d5c8]"
+                        : "border border-white/10 bg-white/[0.03] text-white/42 hover:text-white/68"
+                    }`}
+                  >
+                    {tab === "content" ? "Content" : "Design & Style"}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <button onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-colors">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-0 px-5 border-b border-white/[0.06]">
-          {(["content","design"] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`py-2.5 px-1 mr-5 text-[12px] font-medium capitalize border-b-2 -mb-px transition-all ${
-                activeTab === tab ? "text-white border-brand-500" : "text-white/30 border-transparent hover:text-white/55"
-              }`}>
-              {tab === "content" ? "Content" : "Design & Style"}
-            </button>
-          ))}
-        </div>
-
-        {/* Body */}
-        <div className="overflow-auto flex-1 px-5 py-5">
-          {activeTab === "content" ? (
-            <div className="space-y-7">
+            <div className="flex-1 overflow-auto px-6 py-6 sm:px-7">
+              {activeTab === "content" ? (
+                <div className="space-y-5">
 
               {/* Core */}
-              <div className="space-y-3">
+              <Section label="Core Brief">
+                <div className="space-y-3">
                 <input
                   value={brief.siteName}
                   onChange={e => setBrief({...brief, siteName: e.target.value})}
                   placeholder="Project name…"
-                  className="w-full bg-transparent text-[22px] font-semibold text-white placeholder-white/15 focus:outline-none border-b border-white/[0.06] pb-3 focus:border-brand-500/30 transition-colors"
+                  className="w-full border-b border-white/8 bg-transparent pb-3 text-[24px] font-semibold tracking-[-0.04em] text-white placeholder:text-white/16 focus:border-[#54d5c84d] focus:outline-none transition-colors"
                 />
                 <textarea
                   value={brief.description}
                   onChange={e => setBrief({...brief, description: e.target.value})}
                   placeholder="Describe your website — what it's for, who it's for, what makes it unique…"
                   rows={3}
-                  className="w-full bg-transparent text-[13.5px] text-white/80 placeholder-white/20 focus:outline-none resize-none leading-relaxed"
+                  className="w-full resize-none bg-transparent text-[14px] leading-7 text-white/80 placeholder:text-white/24 focus:outline-none"
                 />
-              </div>
+                </div>
+              </Section>
 
               <Separator />
 
               {/* Industry */}
               <Section label="Industry">
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
                   {INDUSTRIES.map(({ label, Icon }) => {
                     const active = brief.siteType === label;
                     return (
                       <button key={label}
                         onClick={() => setBrief(b => ({...b, siteType: b.siteType === label ? "" : label}))}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all duration-150 ${
+                        className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all duration-150 ${
                           active
-                            ? "bg-brand-500/12 border-brand-500/40 text-white"
-                            : "bg-white/[0.025] border-white/[0.07] text-white/45 hover:border-white/[0.18] hover:text-white/75 hover:bg-white/[0.04]"
+                            ? "border-[#54d5c840] bg-[#54d5c814] text-white"
+                            : "border-white/10 bg-white/[0.03] text-white/48 hover:border-white/16 hover:text-white/76 hover:bg-white/[0.05]"
                         }`}>
-                        <Icon size={11} className={`flex-shrink-0 ${active ? "text-brand-400" : "text-white/30"}`} />
-                        <span className="text-[11px] font-medium leading-snug">{label}</span>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-2xl border ${active ? "border-[#54d5c833] bg-[#54d5c814]" : "border-white/10 bg-white/[0.03]"}`}>
+                          <Icon size={12} className={`flex-shrink-0 ${active ? "text-[#54d5c8]" : "text-white/34"}`} />
+                        </div>
+                        <span className="text-[11.5px] font-medium leading-snug">{label}</span>
                       </button>
                     );
                   })}
@@ -451,15 +482,15 @@ export function CreateProjectModal({ onClose }: Props) {
 
               {/* Tone */}
               <Section label="Tone & Voice">
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {TONES.map(({ label, color }) => {
                     const active = brief.tone === label;
                     return (
                       <button key={label}
                         onClick={() => setBrief({...brief, tone: label})}
                         style={active ? { borderColor: color + "55", backgroundColor: color + "14" } : {}}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-medium border transition-all duration-150 ${
-                          active ? "text-white" : "bg-white/[0.025] border-white/[0.08] text-white/35 hover:border-white/20 hover:text-white/65"
+                        className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-medium transition-all duration-150 ${
+                          active ? "text-white" : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/20 hover:text-white/68"
                         }`}>
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color, opacity: active ? 1 : 0.4 }} />
                         {label}
@@ -473,15 +504,15 @@ export function CreateProjectModal({ onClose }: Props) {
 
               {/* Pages */}
               <Section label="Pages to include">
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                <div className="mb-3 flex flex-wrap gap-2">
                   {COMMON_PAGES.map(page => {
                     const active = brief.pages.includes(page);
                     return (
                       <button key={page} onClick={() => togglePage(page)}
-                        className={`px-3 py-1.5 rounded-lg text-[11.5px] font-medium border transition-all duration-150 ${
+                        className={`rounded-xl border px-3 py-2 text-[11.5px] font-medium transition-all duration-150 ${
                           active
-                            ? "bg-brand-500/12 border-brand-500/35 text-brand-300"
-                            : "bg-white/[0.025] border-white/[0.07] text-white/35 hover:border-white/[0.18] hover:text-white/65"
+                            ? "bg-[#54d5c814] border-[#54d5c838] text-[#54d5c8]"
+                            : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/18 hover:text-white/66"
                         }`}>
                         {page}
                       </button>
@@ -493,14 +524,14 @@ export function CreateProjectModal({ onClose }: Props) {
                     onKeyDown={e => e.key === "Enter" && addCustomPage()}
                     placeholder="Add custom page…" className={`${IC} text-[12px] py-2`} />
                   <button onClick={addCustomPage} disabled={!customPage.trim()}
-                    className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] text-white/40 hover:text-white text-[12px] rounded-xl disabled:opacity-30 transition-colors whitespace-nowrap">
+                    className="whitespace-nowrap rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[12px] text-white/44 transition-colors hover:text-white disabled:opacity-30">
                     + Add
                   </button>
                 </div>
                 {brief.pages.filter(p => !COMMON_PAGES.includes(p)).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+                  <div className="mt-2 flex flex-wrap gap-2">
                     {brief.pages.filter(p => !COMMON_PAGES.includes(p)).map(p => (
-                      <span key={p} className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+                      <span key={p} className="flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] text-emerald-300">
                         {p}
                         <button onClick={() => togglePage(p)} className="hover:text-white ml-0.5">×</button>
                       </span>
@@ -529,11 +560,10 @@ export function CreateProjectModal({ onClose }: Props) {
               {generatorMode === "smart" && (
                 <>
                   <Separator />
-                  <div className="rounded-2xl border border-brand-500/20 overflow-hidden"
-                    style={{ background: "linear-gradient(135deg, rgba(109,40,217,0.06) 0%, rgba(109,40,217,0.02) 100%)" }}>
-                    <div className="flex items-center gap-2 px-4 py-3 border-b border-brand-500/10">
-                      <Sparkles size={11} className="text-brand-400" />
-                      <span className="text-[10.5px] font-bold tracking-widest uppercase text-brand-400/90">Smart Details</span>
+                  <div className="overflow-hidden rounded-[26px] border border-[#54d5c822] bg-[linear-gradient(180deg,rgba(84,213,200,0.08),rgba(255,255,255,0.02))]">
+                    <div className="flex items-center gap-2 border-b border-[#54d5c818] px-4 py-3">
+                      <Sparkles size={11} className="text-[#54d5c8]" />
+                      <span className="text-[10.5px] font-bold uppercase tracking-[0.24em] text-[#54d5c8]/90">Smart Details</span>
                       <span className="ml-auto text-[10px] text-white/20">Enriches generation context</span>
                     </div>
                     <div className="p-4 space-y-5">
@@ -560,7 +590,7 @@ export function CreateProjectModal({ onClose }: Props) {
                             onDragLeave={() => setLogoDragging(false)}
                             onDrop={e => { e.preventDefault(); setLogoDragging(false); const f = e.dataTransfer.files[0]; if (f) handleLogoFile(f); }}
                             className={`w-full flex items-center gap-3 px-4 py-3.5 border border-dashed rounded-xl transition-all duration-150 ${
-                              logoDragging ? "border-brand-500/50 bg-brand-500/[0.08]" : "border-white/[0.10] hover:border-brand-500/30 hover:bg-brand-500/[0.04]"
+                              logoDragging ? "border-[#54d5c84d] bg-[#54d5c812]" : "border-white/[0.10] hover:border-[#54d5c833] hover:bg-[#54d5c80a]"
                             }`}>
                             <Upload size={14} className="text-white/20 flex-shrink-0" />
                             <div className="text-left">
@@ -585,7 +615,7 @@ export function CreateProjectModal({ onClose }: Props) {
                                   offeringsText: s.offeringsType === ot.value ? "" : s.offeringsText,
                                 }))}
                                 className={`p-2 rounded-xl border text-center transition-all ${
-                                  active ? "border-brand-500/40 bg-brand-500/10 text-brand-300" : "border-white/[0.07] text-white/35 hover:border-white/15 hover:text-white/60"
+                                  active ? "border-[#54d5c838] bg-[#54d5c814] text-[#54d5c8]" : "border-white/[0.07] text-white/35 hover:border-white/15 hover:text-white/60"
                                 }`}>
                                 <div className="text-[11px] font-medium">{ot.label}</div>
                                 <div className="text-[9px] text-white/20 mt-0.5 leading-tight">{ot.desc}</div>
@@ -618,19 +648,19 @@ export function CreateProjectModal({ onClose }: Props) {
               )}
             </div>
           ) : (
-            <div className="space-y-7">
+            <div className="space-y-5">
 
               {/* Color */}
               <Section label="Color Palette">
-                <p className="text-[11px] text-white/25 mb-3">Pick a mood or let AI choose based on your industry.</p>
-                <div className="grid grid-cols-3 gap-1.5 mb-3">
+                <p className="mb-3 text-[11px] text-white/28">Pick a mood or let AI choose based on your industry.</p>
+                <div className="mb-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
                   {COLOR_PRESETS.map((preset, idx) => (
                     <button key={preset.label} onClick={() => pickColorPreset(idx)}
-                      className={`relative p-3 rounded-xl border text-left transition-all duration-150 ${
-                        colorPreset === idx ? "border-brand-500/45 bg-brand-500/[0.07]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.15]"
+                      className={`relative rounded-2xl border p-3 text-left transition-all duration-150 ${
+                        colorPreset === idx ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
                       }`}>
                       {colorPreset === idx && (
-                        <span className="absolute top-1.5 right-1.5 w-3.5 h-3.5 rounded-full bg-brand-500 flex items-center justify-center">
+                        <span className="absolute top-1.5 right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#54d5c8]">
                           <Check size={8} className="text-white" />
                         </span>
                       )}
@@ -640,7 +670,7 @@ export function CreateProjectModal({ onClose }: Props) {
                             style={{ background: c, opacity: preset.colors.length === 0 ? 0.28 : 1 }} />
                         ))}
                       </div>
-                      <span className="text-[11px] font-medium text-white/55">{preset.label}</span>
+                      <span className="text-[11px] font-medium text-white/62">{preset.label}</span>
                     </button>
                   ))}
                 </div>
@@ -653,15 +683,15 @@ export function CreateProjectModal({ onClose }: Props) {
 
               {/* Image style */}
               <Section label="Image Style">
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   {IMAGE_STYLES.map(style => (
                     <button key={style.value} onClick={() => setBrief({...brief, imageStyle: style.value as SiteBrief["imageStyle"]})}
-                      className={`p-3 rounded-xl border text-left transition-all duration-150 ${
-                        brief.imageStyle === style.value ? "border-brand-500/45 bg-brand-500/[0.07]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.15]"
+                      className={`rounded-2xl border p-3 text-left transition-all duration-150 ${
+                        brief.imageStyle === style.value ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
                       }`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[12px] font-medium text-white/75">{style.label}</span>
-                        {brief.imageStyle === style.value && <Check size={9} className="text-brand-400 ml-auto" />}
+                        {brief.imageStyle === style.value && <Check size={9} className="ml-auto text-[#54d5c8]" />}
                       </div>
                       <p className="text-[10.5px] text-white/28 leading-snug">{style.desc}</p>
                     </button>
@@ -683,9 +713,9 @@ export function CreateProjectModal({ onClose }: Props) {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-white/20">
+            <div className="border-t border-white/8 px-6 py-4 sm:px-7">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-white/20">
             <span>{brief.pages.length} page{brief.pages.length !== 1 ? "s" : ""}</span>
             {brief.siteType && <><span className="text-white/10">·</span><span>{brief.siteType}</span></>}
             {activeTone && (
@@ -695,27 +725,124 @@ export function CreateProjectModal({ onClose }: Props) {
                 <span>{brief.tone}</span>
               </>
             )}
-            {colorPreset > 0 && <><span className="text-white/10">·</span><span className="text-brand-500/50">{COLOR_PRESETS[colorPreset].label}</span></>}
+            {colorPreset !== 0 && <><span className="text-white/10">·</span><span className="text-[#54d5c8]/68">{colorLabel}</span></>}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveTab(activeTab === "content" ? "design" : "content")}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11.5px] text-white/42 transition-colors hover:text-white/68 whitespace-nowrap"
+                  >
+                    {activeTab === "content" ? "Design →" : "← Content"}
+                  </button>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!canSubmit}
+                    className={`flex items-center gap-2 rounded-full px-6 py-3 text-[13px] font-semibold transition-all duration-200 ${
+                      canSubmit
+                        ? "border border-[#54d5c833] bg-[linear-gradient(135deg,rgba(84,213,200,0.28),rgba(130,184,255,0.18))] text-white shadow-[0_20px_36px_rgba(84,213,200,0.18)] hover:-translate-y-0.5"
+                        : "border border-white/8 bg-white/[0.04] text-white/18 cursor-not-allowed"
+                    }`}
+                  >
+                    {generatorMode === "smart" ? <Sparkles size={13} /> : <Zap size={13} />}
+                    Generate
+                    <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setActiveTab(activeTab === "content" ? "design" : "content")}
-              className="px-3 py-2 text-[11.5px] text-white/30 hover:text-white/60 border border-white/[0.07] rounded-lg transition-colors whitespace-nowrap">
-              {activeTab === "content" ? "Design →" : "← Content"}
-            </button>
-            <button onClick={handleGenerate} disabled={!canSubmit}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                canSubmit
-                  ? "bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40"
-                  : "bg-white/[0.04] text-white/18 cursor-not-allowed"
-              }`}>
-              {generatorMode === "smart" ? <Sparkles size={13} /> : <Zap size={13} />}
-              Generate
-              <ChevronRight size={13} />
-            </button>
-          </div>
+          <aside className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-6 lg:border-l lg:border-t-0 lg:p-7">
+            <div className="space-y-5">
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+                  Generator summary
+                </p>
+                <h3 className="mt-4 text-[1.6rem] font-semibold leading-[1.02] tracking-[-0.04em] text-white">
+                  {brief.siteName.trim() || "Untitled project"}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-slate-300/60">
+                  {brief.description.trim() || "Describe the project and the generator will shape the site blueprint, page set, and design direction from the same brief."}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                    {generatorMode === "smart" ? "Smart mode" : "Quick mode"}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                    {brief.pages.length} pages
+                  </span>
+                  {brief.siteType && (
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                      {brief.siteType}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+                  Direction
+                </p>
+                <div className="mt-4 space-y-3">
+                  {[
+                    ["Tone", brief.tone],
+                    ["Palette", colorLabel],
+                    ["Images", IMAGE_STYLES.find((style) => style.value === brief.imageStyle)?.label ?? "Real Photos"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                      <p className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-slate-300/40">{label}</p>
+                      <p className="mt-2 text-sm text-slate-100/80">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+                  Page map
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {brief.pages.map((page) => (
+                    <span
+                      key={page}
+                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/70"
+                    >
+                      {page}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(84,213,200,0.08),rgba(255,255,255,0.02))] p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+                    Palette preview
+                  </p>
+                  {generatorMode === "smart" && smartBrief.logoUrl && (
+                    <span className="rounded-full border border-[#54d5c822] bg-[#54d5c812] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[#54d5c8]">
+                      Logo linked
+                    </span>
+                  )}
+                </div>
+                <div className="mt-5 flex gap-2">
+                  {(summaryPalette.length ? summaryPalette : ["#0f172a", "#54d5c8", "#82b8ff", "#f5b84b"]).slice(0, 4).map((color, index) => (
+                    <div key={`${color}-${index}`} className="flex-1 rounded-[20px] border border-white/8 p-3" style={{ background: color }}>
+                      <span className="rounded-full bg-black/20 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                        {index + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[11px] leading-6 text-slate-300/56">
+                  {generatorMode === "smart"
+                    ? "Smart mode uses the uploaded logo and extra business context to sharpen the brand palette and structure."
+                    : "Quick mode keeps the brief narrow and moves straight into the first generated site structure."}
+                </p>
+              </div>
+            </div>
+          </aside>
         </div>
-
       </div>
     </div>
   );
@@ -723,7 +850,7 @@ export function CreateProjectModal({ onClose }: Props) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4 sm:p-5">
       <p className={LBL}>{label}</p>
       {children}
     </div>
@@ -731,8 +858,8 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 function Separator() {
-  return <div className="border-t border-white/[0.05]" />;
+  return <div className="h-px bg-white/[0.06]" />;
 }
 
-const LBL = "block text-[10px] font-bold text-white/28 uppercase tracking-[0.11em] mb-2.5";
-const IC  = "w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white placeholder-white/18 focus:outline-none focus:border-brand-500/40 focus:bg-white/[0.07] transition-all";
+const LBL = "mb-3 block text-[10px] font-bold uppercase tracking-[0.16em] text-white/32";
+const IC  = "w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-white placeholder-white/22 transition-all focus:border-[#54d5c840] focus:bg-white/[0.06] focus:outline-none";
