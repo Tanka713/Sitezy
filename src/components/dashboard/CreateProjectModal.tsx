@@ -531,7 +531,7 @@ export function CreateProjectModal({ onClose }: Props) {
                           <div className="grid gap-3">
                             <div>
                               <label className={LBL}>Offerings</label>
-                              <div className="mb-3 grid grid-cols-5 gap-1.5">
+                              <div className="mb-3 grid grid-cols-[repeat(auto-fit,minmax(108px,1fr))] gap-2">
                                 {OFFERINGS_TYPES.map(ot => {
                                   const active = smartBrief.offeringsType === ot.value;
                                   return (
@@ -541,7 +541,7 @@ export function CreateProjectModal({ onClose }: Props) {
                                         offeringsType: s.offeringsType === ot.value ? "" : ot.value,
                                         offeringsText: s.offeringsType === ot.value ? "" : s.offeringsText,
                                       }))}
-                                      className={`rounded-xl border px-2 py-2 text-center text-[10px] font-medium transition-all ${
+                                      className={`min-h-[52px] rounded-xl border px-3 py-2 text-center text-[10px] font-medium leading-tight transition-all ${
                                         active ? "border-[#54d5c838] bg-[#54d5c814] text-[#54d5c8]" : "border-white/[0.07] text-white/42 hover:border-white/15 hover:text-white/60"
                                       }`}>
                                       {ot.label}
