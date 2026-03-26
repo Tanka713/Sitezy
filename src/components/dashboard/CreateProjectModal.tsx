@@ -354,35 +354,38 @@ export function CreateProjectModal({ onClose }: Props) {
 
   // ── Step 1 ──────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#02080d]/84 p-4 backdrop-blur-xl">
-      <div className="relative my-auto w-full max-w-[1160px] max-h-[calc(100vh-2rem)] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02080d]/84 p-4 backdrop-blur-xl">
+      <div className="relative w-full max-w-[1320px] max-h-[calc(100vh-2rem)] overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,29,42,0.98),rgba(9,17,27,0.98))] shadow-[0_40px_120px_rgba(0,0,0,0.42)] animate-fade-in">
         <div className="pointer-events-none absolute left-[-8rem] top-[-7rem] h-[20rem] w-[20rem] rounded-full bg-[radial-gradient(circle,rgba(84,213,200,0.18),rgba(84,213,200,0)_70%)] blur-3xl" />
         <div className="pointer-events-none absolute bottom-[-8rem] right-[-7rem] h-[22rem] w-[22rem] rounded-full bg-[radial-gradient(circle,rgba(245,184,75,0.12),rgba(245,184,75,0)_72%)] blur-3xl" />
 
-        <div className="grid h-[calc(100vh-2rem)] max-h-[920px] min-h-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid h-[calc(100vh-2rem)] max-h-[860px] min-h-0 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="relative flex min-h-0 flex-col">
-            <div className="border-b border-white/8 px-6 pb-5 pt-6 sm:px-7">
-              <div className="flex items-start justify-between gap-4">
-                <div className="max-w-[34rem]">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.28em] text-slate-200/64">
+            <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 max-w-[34rem]">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-slate-200/64">
                     <Zap size={12} className="text-[#54d5c8]" />
                     Project generator
                   </div>
-                  <h2 className="mt-4 text-[clamp(1.9rem,4vw,2.8rem)] font-semibold leading-[0.94] tracking-[-0.05em] text-white">
-                    Shape the brief.
-                    <br />
-                    Let Sitezy build the structure.
-                  </h2>
-                  <p className="mt-3 max-w-[32rem] text-sm leading-7 text-slate-300/62">
-                    The generator keeps the workflow tight: define the business, set the design direction, then move straight into the editor once the pages are assembled.
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <h2 className="text-[1.45rem] font-semibold leading-none tracking-[-0.05em] text-white">
+                      Project setup
+                    </h2>
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200/52">
+                      {brief.pages.length} pages
+                    </span>
+                  </div>
+                  <p className="mt-2 max-w-[32rem] text-[13px] leading-6 text-slate-300/58">
+                    Define the business, choose the visual direction, and move straight into generation.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <div className="flex items-center rounded-full border border-white/10 bg-white/[0.04] p-1">
                     <button
                       onClick={() => setGeneratorMode("quick")}
-                      className={`flex h-10 items-center gap-2 rounded-full px-4 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                      className={`flex h-9 items-center gap-2 rounded-full px-4 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors ${
                         generatorMode === "quick"
                           ? "bg-white/[0.08] text-white"
                           : "text-white/38 hover:text-white/62"
@@ -393,7 +396,7 @@ export function CreateProjectModal({ onClose }: Props) {
                     </button>
                     <button
                       onClick={() => setGeneratorMode("smart")}
-                      className={`flex h-10 items-center gap-2 rounded-full px-4 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                      className={`flex h-9 items-center gap-2 rounded-full px-4 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors ${
                         generatorMode === "smart"
                           ? "bg-[linear-gradient(135deg,rgba(84,213,200,0.22),rgba(130,184,255,0.18))] text-white"
                           : "text-white/38 hover:text-white/62"
@@ -404,341 +407,316 @@ export function CreateProjectModal({ onClose }: Props) {
                     </button>
                   </div>
 
+                  <div className="flex items-center rounded-full border border-white/10 bg-white/[0.04] p-1">
+                    {(["content","design"] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+                          activeTab === tab
+                            ? "border border-[#54d5c833] bg-[#54d5c814] text-[#54d5c8]"
+                            : "text-white/42 hover:text-white/68"
+                        }`}
+                      >
+                        {tab === "content" ? "Content" : "Design"}
+                      </button>
+                    ))}
+                  </div>
+
                   <button
                     onClick={onClose}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/38 transition-colors hover:text-white hover:bg-white/[0.08]"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/38 transition-colors hover:text-white hover:bg-white/[0.08]"
                   >
                     <X size={14} />
                   </button>
                 </div>
               </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                {(["content","design"] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors ${
-                      activeTab === tab
-                        ? "border border-[#54d5c833] bg-[#54d5c814] text-[#54d5c8]"
-                        : "border border-white/10 bg-white/[0.03] text-white/42 hover:text-white/68"
-                    }`}
-                  >
-                    {tab === "content" ? "Content" : "Design & Style"}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
+            <div className="min-h-0 flex-1 overflow-hidden px-5 py-4 sm:px-6">
               {activeTab === "content" ? (
-                <div className="space-y-5">
-
-              {/* Core */}
-              <Section label="Core Brief">
-                <div className="space-y-3">
-                <input
-                  value={brief.siteName}
-                  onChange={e => setBrief({...brief, siteName: e.target.value})}
-                  placeholder="Project name…"
-                  className="w-full border-b border-white/8 bg-transparent pb-3 text-[24px] font-semibold tracking-[-0.04em] text-white placeholder:text-white/16 focus:border-[#54d5c84d] focus:outline-none transition-colors"
-                />
-                <textarea
-                  value={brief.description}
-                  onChange={e => setBrief({...brief, description: e.target.value})}
-                  placeholder="Describe your website — what it's for, who it's for, what makes it unique…"
-                  rows={3}
-                  className="w-full resize-none bg-transparent text-[14px] leading-7 text-white/80 placeholder:text-white/24 focus:outline-none"
-                />
-                </div>
-              </Section>
-
-              <Separator />
-
-              {/* Industry */}
-              <Section label="Industry">
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
-                  {INDUSTRIES.map(({ label, Icon }) => {
-                    const active = brief.siteType === label;
-                    return (
-                      <button key={label}
-                        onClick={() => setBrief(b => ({...b, siteType: b.siteType === label ? "" : label}))}
-                        className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all duration-150 ${
-                          active
-                            ? "border-[#54d5c840] bg-[#54d5c814] text-white"
-                            : "border-white/10 bg-white/[0.03] text-white/48 hover:border-white/16 hover:text-white/76 hover:bg-white/[0.05]"
-                        }`}>
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-2xl border ${active ? "border-[#54d5c833] bg-[#54d5c814]" : "border-white/10 bg-white/[0.03]"}`}>
-                          <Icon size={12} className={`flex-shrink-0 ${active ? "text-[#54d5c8]" : "text-white/34"}`} />
-                        </div>
-                        <span className="text-[11.5px] font-medium leading-snug">{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Section>
-
-              <Separator />
-
-              {/* Tone */}
-              <Section label="Tone & Voice">
-                <div className="flex flex-wrap gap-2">
-                  {TONES.map(({ label, color }) => {
-                    const active = brief.tone === label;
-                    return (
-                      <button key={label}
-                        onClick={() => setBrief({...brief, tone: label})}
-                        style={active ? { borderColor: color + "55", backgroundColor: color + "14" } : {}}
-                        className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-medium transition-all duration-150 ${
-                          active ? "text-white" : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/20 hover:text-white/68"
-                        }`}>
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color, opacity: active ? 1 : 0.4 }} />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Section>
-
-              <Separator />
-
-              {/* Pages */}
-              <Section label="Pages to include">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {COMMON_PAGES.map(page => {
-                    const active = brief.pages.includes(page);
-                    return (
-                      <button key={page} onClick={() => togglePage(page)}
-                        className={`rounded-xl border px-3 py-2 text-[11.5px] font-medium transition-all duration-150 ${
-                          active
-                            ? "bg-[#54d5c814] border-[#54d5c838] text-[#54d5c8]"
-                            : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/18 hover:text-white/66"
-                        }`}>
-                        {page}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex gap-2">
-                  <input value={customPage} onChange={e => setCustomPage(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && addCustomPage()}
-                    placeholder="Add custom page…" className={`${IC} text-[12px] py-2`} />
-                  <button onClick={addCustomPage} disabled={!customPage.trim()}
-                    className="whitespace-nowrap rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[12px] text-white/44 transition-colors hover:text-white disabled:opacity-30">
-                    + Add
-                  </button>
-                </div>
-                {brief.pages.filter(p => !COMMON_PAGES.includes(p)).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {brief.pages.filter(p => !COMMON_PAGES.includes(p)).map(p => (
-                      <span key={p} className="flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] text-emerald-300">
-                        {p}
-                        <button onClick={() => togglePage(p)} className="hover:text-white ml-0.5">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </Section>
-
-              <Separator />
-
-              {/* Optional extras */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LBL}>Features (optional)</label>
-                  <input value={brief.features} onChange={e => setBrief({...brief, features: e.target.value})}
-                    placeholder="Booking, menu, pricing…" className={IC} />
-                </div>
-                <div>
-                  <label className={LBL}>Target Audience (optional)</label>
-                  <input value={brief.targetAudience} onChange={e => setBrief({...brief, targetAudience: e.target.value})}
-                    placeholder="Small business owners…" className={IC} />
-                </div>
-              </div>
-
-              {/* Smart Details */}
-              {generatorMode === "smart" && (
-                <>
-                  <Separator />
-                  <div className="overflow-hidden rounded-[26px] border border-[#54d5c822] bg-[linear-gradient(180deg,rgba(84,213,200,0.08),rgba(255,255,255,0.02))]">
-                    <div className="flex items-center gap-2 border-b border-[#54d5c818] px-4 py-3">
-                      <Sparkles size={11} className="text-[#54d5c8]" />
-                      <span className="text-[10.5px] font-bold uppercase tracking-[0.24em] text-[#54d5c8]/90">Smart Details</span>
-                      <span className="ml-auto text-[10px] text-white/20">Enriches generation context</span>
-                    </div>
-                    <div className="p-4 space-y-5">
-
-                      {/* Logo */}
-                      <div>
-                        <label className={LBL}>Logo (optional)</label>
-                        <input ref={logoInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp" className="hidden"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoFile(f); }} />
-                        {smartBrief.logoUrl ? (
-                          <div className="flex items-center gap-3 p-3 bg-white/[0.04] border border-white/[0.08] rounded-xl">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={smartBrief.logoUrl} alt="Logo" className="w-9 h-9 object-contain rounded-lg bg-white/5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[12px] text-white/55">Logo ready</p>
-                              <p className="text-[10px] text-white/20 mt-0.5">Referenced during generation</p>
-                            </div>
-                            <button onClick={() => { setSmartBrief(s => ({...s, logoUrl: ""})); if (logoInputRef.current) logoInputRef.current.value = ""; }}
-                              className="text-white/20 hover:text-white/60 transition-colors p-1"><X size={12} /></button>
-                          </div>
-                        ) : (
-                          <button onClick={() => logoInputRef.current?.click()}
-                            onDragOver={e => { e.preventDefault(); setLogoDragging(true); }}
-                            onDragLeave={() => setLogoDragging(false)}
-                            onDrop={e => { e.preventDefault(); setLogoDragging(false); const f = e.dataTransfer.files[0]; if (f) handleLogoFile(f); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 border border-dashed rounded-xl transition-all duration-150 ${
-                              logoDragging ? "border-[#54d5c84d] bg-[#54d5c812]" : "border-white/[0.10] hover:border-[#54d5c833] hover:bg-[#54d5c80a]"
-                            }`}>
-                            <Upload size={14} className="text-white/20 flex-shrink-0" />
-                            <div className="text-left">
-                              <p className="text-[12px] text-white/45">Click or drag to upload logo</p>
-                              <p className="text-[10px] text-white/20 mt-0.5">PNG · JPG · SVG · WebP</p>
-                            </div>
-                          </button>
-                        )}
+                <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                  <div className="grid content-start gap-4">
+                    <Section label="Core Brief">
+                      <div className="space-y-3">
+                        <input
+                          value={brief.siteName}
+                          onChange={e => setBrief({...brief, siteName: e.target.value})}
+                          placeholder="Project name…"
+                          className="w-full border-b border-white/8 bg-transparent pb-2.5 text-[22px] font-semibold tracking-[-0.04em] text-white placeholder:text-white/16 focus:border-[#54d5c84d] focus:outline-none transition-colors"
+                        />
+                        <textarea
+                          value={brief.description}
+                          onChange={e => setBrief({...brief, description: e.target.value})}
+                          placeholder="Describe your website — what it's for, who it's for, what makes it unique…"
+                          rows={2}
+                          className="w-full resize-none bg-transparent text-[13px] leading-6 text-white/80 placeholder:text-white/24 focus:outline-none"
+                        />
                       </div>
+                    </Section>
 
-                      {/* Offerings */}
-                      <div>
-                        <label className={LBL}>What do you offer?</label>
-                        <div className="grid grid-cols-5 gap-1.5 mb-3">
-                          {OFFERINGS_TYPES.map(ot => {
-                            const active = smartBrief.offeringsType === ot.value;
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <Section label="Tone & Voice">
+                        <div className="flex flex-wrap gap-2">
+                          {TONES.map(({ label, color }) => {
+                            const active = brief.tone === label;
                             return (
-                              <button key={ot.value}
-                                onClick={() => setSmartBrief(s => ({
-                                  ...s,
-                                  offeringsType: s.offeringsType === ot.value ? "" : ot.value,
-                                  offeringsText: s.offeringsType === ot.value ? "" : s.offeringsText,
-                                }))}
-                                className={`p-2 rounded-xl border text-center transition-all ${
-                                  active ? "border-[#54d5c838] bg-[#54d5c814] text-[#54d5c8]" : "border-white/[0.07] text-white/35 hover:border-white/15 hover:text-white/60"
+                              <button key={label}
+                                onClick={() => setBrief({...brief, tone: label})}
+                                style={active ? { borderColor: color + "55", backgroundColor: color + "14" } : {}}
+                                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10.5px] font-medium transition-all duration-150 ${
+                                  active ? "text-white" : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/20 hover:text-white/68"
                                 }`}>
-                                <div className="text-[11px] font-medium">{ot.label}</div>
-                                <div className="text-[9px] text-white/20 mt-0.5 leading-tight">{ot.desc}</div>
+                                <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: color, opacity: active ? 1 : 0.4 }} />
+                                {label}
                               </button>
                             );
                           })}
                         </div>
-                        {smartBrief.offeringsType && (
-                          <textarea value={smartBrief.offeringsText}
-                            onChange={e => setSmartBrief(s => ({...s, offeringsText: e.target.value}))}
-                            placeholder={getOfferingsPlaceholder(smartBrief.offeringsType!)}
-                            rows={4} className={`${IC} resize-none leading-relaxed`} />
-                        )}
-                      </div>
+                      </Section>
 
-                      {/* Contact */}
-                      <div>
-                        <label className={LBL}>Contact Details (optional)</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <input value={smartBrief.contactDetails?.phone} onChange={e => patchSmartContact("phone", e.target.value)} placeholder="Phone" className={IC} />
-                          <input value={smartBrief.contactDetails?.email} onChange={e => patchSmartContact("email", e.target.value)} placeholder="Email" className={IC} />
-                          <input value={smartBrief.contactDetails?.address} onChange={e => patchSmartContact("address", e.target.value)} placeholder="Address" className={`${IC} col-span-2`} />
-                          <input value={smartBrief.contactDetails?.hours} onChange={e => patchSmartContact("hours", e.target.value)} placeholder='Hours — e.g. "Mon–Fri 9am–6pm"' className={`${IC} col-span-2`} />
+                      <Section label="Optional Details">
+                        <div className="grid gap-3">
+                          <div>
+                            <label className={LBL}>Features</label>
+                            <input value={brief.features} onChange={e => setBrief({...brief, features: e.target.value})}
+                              placeholder="Booking, menu, pricing…" className={IC} />
+                          </div>
+                          <div>
+                            <label className={LBL}>Audience</label>
+                            <input value={brief.targetAudience} onChange={e => setBrief({...brief, targetAudience: e.target.value})}
+                              placeholder="Small business owners…" className={IC} />
+                          </div>
                         </div>
-                      </div>
-
+                      </Section>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-5">
 
-              {/* Color */}
-              <Section label="Color Palette">
-                <p className="mb-3 text-[11px] text-white/28">Pick a mood or let AI choose based on your industry.</p>
-                <div className="mb-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
-                  {COLOR_PRESETS.map((preset, idx) => (
-                    <button key={preset.label} onClick={() => pickColorPreset(idx)}
-                      className={`relative rounded-2xl border p-3 text-left transition-all duration-150 ${
-                        colorPreset === idx ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
-                      }`}>
-                      {colorPreset === idx && (
-                        <span className="absolute top-1.5 right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#54d5c8]">
-                          <Check size={8} className="text-white" />
-                        </span>
+                    {generatorMode === "smart" && (
+                      <Section label="Smart Details">
+                        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+                          <div>
+                            <label className={LBL}>Logo</label>
+                            <input ref={logoInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp" className="hidden"
+                              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoFile(f); }} />
+                            {smartBrief.logoUrl ? (
+                              <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] p-3">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={smartBrief.logoUrl} alt="Logo" className="h-9 w-9 flex-shrink-0 rounded-lg bg-white/5 object-contain" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[12px] text-white/55">Logo ready</p>
+                                  <p className="mt-0.5 text-[10px] text-white/20">Used for generation</p>
+                                </div>
+                                <button onClick={() => { setSmartBrief(s => ({...s, logoUrl: ""})); if (logoInputRef.current) logoInputRef.current.value = ""; }}
+                                  className="p-1 text-white/20 transition-colors hover:text-white/60"><X size={12} /></button>
+                              </div>
+                            ) : (
+                              <button onClick={() => logoInputRef.current?.click()}
+                                onDragOver={e => { e.preventDefault(); setLogoDragging(true); }}
+                                onDragLeave={() => setLogoDragging(false)}
+                                onDrop={e => { e.preventDefault(); setLogoDragging(false); const f = e.dataTransfer.files[0]; if (f) handleLogoFile(f); }}
+                                className={`w-full rounded-xl border border-dashed px-4 py-3 text-left transition-all duration-150 ${
+                                  logoDragging ? "border-[#54d5c84d] bg-[#54d5c812]" : "border-white/[0.10] hover:border-[#54d5c833] hover:bg-[#54d5c80a]"
+                                }`}>
+                                <div className="flex items-center gap-3">
+                                  <Upload size={14} className="flex-shrink-0 text-white/20" />
+                                  <div>
+                                    <p className="text-[12px] text-white/45">Upload logo</p>
+                                    <p className="mt-0.5 text-[10px] text-white/20">PNG · JPG · SVG · WebP</p>
+                                  </div>
+                                </div>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid gap-3">
+                            <div>
+                              <label className={LBL}>Offerings</label>
+                              <div className="mb-3 grid grid-cols-5 gap-1.5">
+                                {OFFERINGS_TYPES.map(ot => {
+                                  const active = smartBrief.offeringsType === ot.value;
+                                  return (
+                                    <button key={ot.value}
+                                      onClick={() => setSmartBrief(s => ({
+                                        ...s,
+                                        offeringsType: s.offeringsType === ot.value ? "" : ot.value,
+                                        offeringsText: s.offeringsType === ot.value ? "" : s.offeringsText,
+                                      }))}
+                                      className={`rounded-xl border px-2 py-2 text-center text-[10px] font-medium transition-all ${
+                                        active ? "border-[#54d5c838] bg-[#54d5c814] text-[#54d5c8]" : "border-white/[0.07] text-white/42 hover:border-white/15 hover:text-white/60"
+                                      }`}>
+                                      {ot.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {smartBrief.offeringsType && (
+                                <textarea value={smartBrief.offeringsText}
+                                  onChange={e => setSmartBrief(s => ({...s, offeringsText: e.target.value}))}
+                                  placeholder={getOfferingsPlaceholder(smartBrief.offeringsType!)}
+                                  rows={3} className={`${IC} resize-none leading-6`} />
+                              )}
+                            </div>
+
+                            <div>
+                              <label className={LBL}>Contact Details</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <input value={smartBrief.contactDetails?.phone} onChange={e => patchSmartContact("phone", e.target.value)} placeholder="Phone" className={IC} />
+                                <input value={smartBrief.contactDetails?.email} onChange={e => patchSmartContact("email", e.target.value)} placeholder="Email" className={IC} />
+                                <input value={smartBrief.contactDetails?.address} onChange={e => patchSmartContact("address", e.target.value)} placeholder="Address" className={`${IC} col-span-2`} />
+                                <input value={smartBrief.contactDetails?.hours} onChange={e => patchSmartContact("hours", e.target.value)} placeholder='Hours — e.g. "Mon–Fri 9am–6pm"' className={`${IC} col-span-2`} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Section>
+                    )}
+                  </div>
+
+                  <div className="grid content-start gap-4">
+                    <Section label="Industry">
+                      <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+                        {INDUSTRIES.map(({ label, Icon }) => {
+                          const active = brief.siteType === label;
+                          return (
+                            <button key={label}
+                              onClick={() => setBrief(b => ({...b, siteType: b.siteType === label ? "" : label}))}
+                              className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-left transition-all duration-150 ${
+                                active
+                                  ? "border-[#54d5c840] bg-[#54d5c814] text-white"
+                                  : "border-white/10 bg-white/[0.03] text-white/48 hover:border-white/16 hover:text-white/76 hover:bg-white/[0.05]"
+                              }`}>
+                              <div className={`flex h-7 w-7 items-center justify-center rounded-xl border ${active ? "border-[#54d5c833] bg-[#54d5c814]" : "border-white/10 bg-white/[0.03]"}`}>
+                                <Icon size={11} className={`flex-shrink-0 ${active ? "text-[#54d5c8]" : "text-white/34"}`} />
+                              </div>
+                              <span className="text-[10.5px] font-medium leading-snug">{label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Section>
+
+                    <Section label="Pages to Include">
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {COMMON_PAGES.map(page => {
+                          const active = brief.pages.includes(page);
+                          return (
+                            <button key={page} onClick={() => togglePage(page)}
+                              className={`rounded-xl border px-3 py-1.5 text-[10.5px] font-medium transition-all duration-150 ${
+                                active
+                                  ? "bg-[#54d5c814] border-[#54d5c838] text-[#54d5c8]"
+                                  : "bg-white/[0.03] border-white/[0.1] text-white/38 hover:border-white/18 hover:text-white/66"
+                              }`}>
+                              {page}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
+                        <input value={customPage} onChange={e => setCustomPage(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && addCustomPage()}
+                          placeholder="Add custom page…" className={`${IC} text-[12px]`} />
+                        <button onClick={addCustomPage} disabled={!customPage.trim()}
+                          className="whitespace-nowrap rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[12px] text-white/44 transition-colors hover:text-white disabled:opacity-30">
+                          + Add
+                        </button>
+                      </div>
+                      {brief.pages.filter(p => !COMMON_PAGES.includes(p)).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {brief.pages.filter(p => !COMMON_PAGES.includes(p)).map(p => (
+                            <span key={p} className="flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] text-emerald-300">
+                              {p}
+                              <button onClick={() => togglePage(p)} className="ml-0.5 hover:text-white">×</button>
+                            </span>
+                          ))}
+                        </div>
                       )}
-                      <div className="flex gap-1 mb-2">
-                        {(preset.colors.length > 0 ? preset.colors : ["#7c3aed","#2563eb","#10b981","#f59e0b"]).map((c,i) => (
-                          <div key={i} className="w-3.5 h-3.5 rounded-full border border-black/20 flex-shrink-0"
-                            style={{ background: c, opacity: preset.colors.length === 0 ? 0.28 : 1 }} />
+                    </Section>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <Section label="Color Palette">
+                    <p className="mb-3 text-[10.5px] text-white/28">Pick a mood or let AI choose based on your industry.</p>
+                    <div className="mb-3 grid grid-cols-3 gap-2">
+                      {COLOR_PRESETS.map((preset, idx) => (
+                        <button key={preset.label} onClick={() => pickColorPreset(idx)}
+                          className={`relative rounded-2xl border p-2.5 text-left transition-all duration-150 ${
+                            colorPreset === idx ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
+                          }`}>
+                          {colorPreset === idx && (
+                            <span className="absolute right-1.5 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#54d5c8]">
+                              <Check size={8} className="text-white" />
+                            </span>
+                          )}
+                          <div className="mb-2 flex gap-1">
+                            {(preset.colors.length > 0 ? preset.colors : ["#7c3aed","#2563eb","#10b981","#f59e0b"]).map((c,i) => (
+                              <div key={i} className="h-3.5 w-3.5 flex-shrink-0 rounded-full border border-black/20"
+                                style={{ background: c, opacity: preset.colors.length === 0 ? 0.28 : 1 }} />
+                            ))}
+                          </div>
+                          <span className="text-[10px] font-medium text-white/62">{preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <input value={colorPreset === 0 ? (brief.colorPreference ?? "") : ""}
+                      onChange={e => { setColorPreset(0); setBrief({...brief, colorPreference: e.target.value, colorPalette: []}); }}
+                      placeholder='Custom: "warm terracotta with sage green accents"' className={IC} />
+                  </Section>
+
+                  <div className="grid content-start gap-4">
+                    <Section label="Image Style">
+                      <div className="grid grid-cols-2 gap-2">
+                        {IMAGE_STYLES.map(style => (
+                          <button key={style.value} onClick={() => setBrief({...brief, imageStyle: style.value as SiteBrief["imageStyle"]})}
+                            className={`rounded-2xl border p-3 text-left transition-all duration-150 ${
+                              brief.imageStyle === style.value ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
+                            }`}>
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="text-[11px] font-medium text-white/75">{style.label}</span>
+                              {brief.imageStyle === style.value && <Check size={9} className="ml-auto text-[#54d5c8]" />}
+                            </div>
+                            <p className="text-[10px] leading-5 text-white/28">{style.desc}</p>
+                          </button>
                         ))}
                       </div>
-                      <span className="text-[11px] font-medium text-white/62">{preset.label}</span>
-                    </button>
-                  ))}
+                    </Section>
+
+                    <Section label="Design Direction (optional)">
+                      <input value={smartBrief.stylePreference ?? ""}
+                        onChange={e => setSmartBrief(s => ({...s, stylePreference: e.target.value}))}
+                        placeholder='e.g. "editorial magazine feel" or "warm like Kinfolk"'
+                        className={IC} />
+                    </Section>
+                  </div>
                 </div>
-                <input value={colorPreset === 0 ? (brief.colorPreference ?? "") : ""}
-                  onChange={e => { setColorPreset(0); setBrief({...brief, colorPreference: e.target.value, colorPalette: []}); }}
-                  placeholder='Custom: "warm terracotta with sage green accents"' className={IC} />
-              </Section>
-
-              <Separator />
-
-              {/* Image style */}
-              <Section label="Image Style">
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {IMAGE_STYLES.map(style => (
-                    <button key={style.value} onClick={() => setBrief({...brief, imageStyle: style.value as SiteBrief["imageStyle"]})}
-                      className={`rounded-2xl border p-3 text-left transition-all duration-150 ${
-                        brief.imageStyle === style.value ? "border-[#54d5c840] bg-[#54d5c814]" : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]"
-                      }`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[12px] font-medium text-white/75">{style.label}</span>
-                        {brief.imageStyle === style.value && <Check size={9} className="ml-auto text-[#54d5c8]" />}
-                      </div>
-                      <p className="text-[10.5px] text-white/28 leading-snug">{style.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </Section>
-
-              <Separator />
-
-              {/* Design direction */}
-              <Section label="Design Direction (optional)">
-                <input value={smartBrief.stylePreference ?? ""}
-                  onChange={e => setSmartBrief(s => ({...s, stylePreference: e.target.value}))}
-                  placeholder='e.g. "editorial magazine feel" or "warm like Kinfolk"'
-                  className={IC} />
-              </Section>
-
+              )}
             </div>
-          )}
-        </div>
-
-            <div className="border-t border-white/8 px-6 py-4 sm:px-7">
+            <div className="border-t border-white/8 px-5 py-3 sm:px-6">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-white/20">
-            <span>{brief.pages.length} page{brief.pages.length !== 1 ? "s" : ""}</span>
-            {brief.siteType && <><span className="text-white/10">·</span><span>{brief.siteType}</span></>}
-            {activeTone && (
-              <>
-                <span className="text-white/10">·</span>
-                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: activeTone.color + "99" }} />
-                <span>{brief.tone}</span>
-              </>
-            )}
-            {colorPreset !== 0 && <><span className="text-white/10">·</span><span className="text-[#54d5c8]/68">{colorLabel}</span></>}
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/22">
+                  <span>{brief.pages.length} page{brief.pages.length !== 1 ? "s" : ""}</span>
+                  {brief.siteType && <><span className="text-white/10">·</span><span>{brief.siteType}</span></>}
+                  {activeTone && (
+                    <>
+                      <span className="text-white/10">·</span>
+                      <span className="h-1.5 w-1.5 rounded-full inline-block" style={{ background: activeTone.color + "99" }} />
+                      <span>{brief.tone}</span>
+                    </>
+                  )}
+                  {colorPreset !== 0 && <><span className="text-white/10">·</span><span className="text-[#54d5c8]/68">{colorLabel}</span></>}
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setActiveTab(activeTab === "content" ? "design" : "content")}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11.5px] text-white/42 transition-colors hover:text-white/68 whitespace-nowrap"
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] text-white/42 transition-colors hover:text-white/68 whitespace-nowrap"
                   >
                     {activeTab === "content" ? "Design →" : "← Content"}
                   </button>
                   <button
                     onClick={handleGenerate}
                     disabled={!canSubmit}
-                    className={`flex items-center gap-2 rounded-full px-6 py-3 text-[13px] font-semibold transition-all duration-200 ${
+                    className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
                       canSubmit
                         ? "border border-[#54d5c833] bg-[linear-gradient(135deg,rgba(84,213,200,0.28),rgba(130,184,255,0.18))] text-white shadow-[0_20px_36px_rgba(84,213,200,0.18)] hover:-translate-y-0.5"
                         : "border border-white/8 bg-white/[0.04] text-white/18 cursor-not-allowed"
@@ -753,91 +731,85 @@ export function CreateProjectModal({ onClose }: Props) {
             </div>
           </div>
 
-          <aside className="min-h-0 overflow-y-auto border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-6 lg:border-l lg:border-t-0 lg:p-7">
-            <div className="space-y-5">
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+          <aside className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,15,24,0.82),rgba(6,11,18,0.9))] p-5 lg:border-l lg:border-t-0 lg:p-6">
+            <div className="grid h-full content-start gap-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-slate-300/42">
                   Generator summary
                 </p>
-                <h3 className="mt-4 text-[1.6rem] font-semibold leading-[1.02] tracking-[-0.04em] text-white">
+                <h3 className="mt-3 text-[1.45rem] font-semibold leading-[1.02] tracking-[-0.04em] text-white">
                   {brief.siteName.trim() || "Untitled project"}
                 </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-300/60">
-                  {brief.description.trim() || "Describe the project and the generator will shape the site blueprint, page set, and design direction from the same brief."}
+                <p className="mt-2 text-[12px] leading-6 text-slate-300/56">
+                  {brief.description.trim() || "Describe the project and the generator will shape the site blueprint and visual direction from the same brief."}
                 </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] text-slate-200/68">
                     {generatorMode === "smart" ? "Smart mode" : "Quick mode"}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] text-slate-200/68">
                     {brief.pages.length} pages
                   </span>
                   {brief.siteType && (
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/68">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] text-slate-200/68">
                       {brief.siteType}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-slate-300/42">
                   Direction
                 </p>
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-2.5">
                   {[
                     ["Tone", brief.tone],
                     ["Palette", colorLabel],
                     ["Images", IMAGE_STYLES.find((style) => style.value === brief.imageStyle)?.label ?? "Real Photos"],
                   ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-slate-300/40">{label}</p>
-                      <p className="mt-2 text-sm text-slate-100/80">{value}</p>
+                    <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] px-3.5 py-3">
+                      <p className="text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-slate-300/38">{label}</p>
+                      <p className="mt-1.5 text-[13px] text-slate-100/80">{value}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
-                  Page map
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
+              <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(84,213,200,0.06),rgba(255,255,255,0.02))] p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-slate-300/42">
+                    Map & palette
+                  </p>
+                  {generatorMode === "smart" && smartBrief.logoUrl && (
+                    <span className="rounded-full border border-[#54d5c822] bg-[#54d5c812] px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-[#54d5c8]">
+                      Logo linked
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   {brief.pages.map((page) => (
                     <span
                       key={page}
-                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-200/70"
+                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] text-slate-200/70"
                     >
                       {page}
                     </span>
                   ))}
                 </div>
-              </div>
-
-              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(84,213,200,0.08),rgba(255,255,255,0.02))] p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-slate-300/42">
-                    Palette preview
-                  </p>
-                  {generatorMode === "smart" && smartBrief.logoUrl && (
-                    <span className="rounded-full border border-[#54d5c822] bg-[#54d5c812] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[#54d5c8]">
-                      Logo linked
-                    </span>
-                  )}
-                </div>
-                <div className="mt-5 flex gap-2">
+                <div className="mt-4 flex gap-2">
                   {(summaryPalette.length ? summaryPalette : ["#0f172a", "#54d5c8", "#82b8ff", "#f5b84b"]).slice(0, 4).map((color, index) => (
-                    <div key={`${color}-${index}`} className="flex-1 rounded-[20px] border border-white/8 p-3" style={{ background: color }}>
-                      <span className="rounded-full bg-black/20 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/84">
+                    <div key={`${color}-${index}`} className="flex-1 rounded-[18px] border border-white/8 p-2.5" style={{ background: color }}>
+                      <span className="rounded-full bg-black/20 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.18em] text-white/84">
                         {index + 1}
                       </span>
                     </div>
                   ))}
                 </div>
-                <p className="mt-4 text-[11px] leading-6 text-slate-300/56">
+                <p className="mt-3 text-[10px] leading-5 text-slate-300/52">
                   {generatorMode === "smart"
-                    ? "Smart mode uses the uploaded logo and extra business context to sharpen the brand palette and structure."
-                    : "Quick mode keeps the brief narrow and moves straight into the first generated site structure."}
+                    ? "Smart mode uses the logo and extra business context to sharpen the build."
+                    : "Quick mode keeps the brief narrow and moves straight into the first generated structure."}
                 </p>
               </div>
             </div>
@@ -850,16 +822,12 @@ export function CreateProjectModal({ onClose }: Props) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4 sm:p-5">
+    <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4">
       <p className={LBL}>{label}</p>
       {children}
     </div>
   );
 }
 
-function Separator() {
-  return <div className="h-px bg-white/[0.06]" />;
-}
-
-const LBL = "mb-3 block text-[10px] font-bold uppercase tracking-[0.16em] text-white/32";
-const IC  = "w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-white placeholder-white/22 transition-all focus:border-[#54d5c840] focus:bg-white/[0.06] focus:outline-none";
+const LBL = "mb-2 block text-[9px] font-bold uppercase tracking-[0.16em] text-white/30";
+const IC  = "w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[12px] text-white placeholder-white/22 transition-all focus:border-[#54d5c840] focus:bg-white/[0.06] focus:outline-none";
