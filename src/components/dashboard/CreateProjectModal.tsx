@@ -215,8 +215,10 @@ export function CreateProjectModal({ onClose }: Props) {
 
   async function handleGenerate() {
     if (!brief.siteName.trim() || !brief.description.trim()) return;
+    setApiError(null);
     clearGenLog();
     setStep(2);
+    setGenStatus("normalizing", "Preparing project...");
 
     const currency = detectCurrency(
       brief.description,
@@ -235,10 +237,9 @@ export function CreateProjectModal({ onClose }: Props) {
       }),
     };
 
-    const project = await createProject(fullBrief);
-    projectIdRef.current = project.id;
-
     try {
+      const project = await createProject(fullBrief);
+      projectIdRef.current = project.id;
       setGenStatus("blueprint","Analyzing your brief...");
       addGenLog("🔍 Extracting brand direction and visual identity...","info");
       if (brief.colorPreference) addGenLog(`🎨 Color: ${COLOR_PRESETS[colorPreset]?.label ?? "custom"}`, "info");

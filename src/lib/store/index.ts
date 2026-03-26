@@ -17,6 +17,7 @@ import type {
 } from "@/types";
 
 const LAST_PROJECT_KEY = "sitezy-last-project-id";
+const LOCAL_PROJECT_SNAPSHOTS_KEY = "sitezy-local-project-snapshots-v1";
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -87,6 +88,65 @@ const defaultEditorState: EditorState = {
 
 function mergeEditorState(editorState?: Partial<EditorState> | null): EditorState {
   return { ...defaultEditorState, ...(editorState ?? {}) };
+}
+
+function normalizeSnapshot(snapshot: Partial<ProjectSnapshot>): ProjectSnapshot {
+  return {
+    project: normalizeProject(snapshot.project ?? {}),
+    editorState: mergeEditorState(snapshot.editorState),
+    aiChats: Array.isArray(snapshot.aiChats) ? snapshot.aiChats : [],
+  };
+}
+
+function readLocalProjectSnapshots(): Record<string, ProjectSnapshot> {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PROJECT_SNAPSHOTS_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as Record<string, Partial<ProjectSnapshot>> | null;
+    if (!parsed || typeof parsed !== "object") return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).map(([projectId, snapshot]) => [projectId, normalizeSnapshot(snapshot)])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalProjectSnapshots(snapshots: Record<string, ProjectSnapshot>): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(LOCAL_PROJECT_SNAPSHOTS_KEY, JSON.stringify(snapshots));
+  } catch {}
+}
+
+function saveLocalProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
+  const normalized = normalizeSnapshot(snapshot);
+  const snapshots = readLocalProjectSnapshots();
+  snapshots[normalized.project.id] = normalized;
+  writeLocalProjectSnapshots(snapshots);
+  return normalized;
+}
+
+function getLocalProjectSnapshot(projectId: string): ProjectSnapshot | null {
+  return readLocalProjectSnapshots()[projectId] ?? null;
+}
+
+function listLocalProjects(): Project[] {
+  return Object.values(readLocalProjectSnapshots())
+    .map((snapshot) => normalizeProject(snapshot.project))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function deleteLocalProjectSnapshot(projectId: string): void {
+  const snapshots = readLocalProjectSnapshots();
+  if (!(projectId in snapshots)) return;
+  delete snapshots[projectId];
+  writeLocalProjectSnapshots(snapshots);
 }
 
 function replaceProject(projects: Project[], next: Project): Project[] {
@@ -315,11 +375,21 @@ export const useAppStore = create<Store>()((set, get) => ({
         await get().openProject(lastProjectId);
       }
     } catch (error) {
+      const projects = listLocalProjects();
       set({
+        projects,
         isHydratingProjects: false,
         hasHydratedProjects: true,
-        saveError: error instanceof Error ? error.message : "Failed to hydrate projects",
+        saveError: projects.length > 0 ? null : error instanceof Error ? error.message : "Failed to hydrate projects",
       });
+
+      const lastProjectId = readLastProjectId();
+      if (lastProjectId && projects.some((project) => project.id === lastProjectId)) {
+        const snapshot = getLocalProjectSnapshot(lastProjectId);
+        if (snapshot) {
+          applySnapshot(set, get, snapshot, { makeCurrent: true });
+        }
+      }
     }
   },
 
@@ -337,10 +407,19 @@ export const useAppStore = create<Store>()((set, get) => ({
       status: "draft",
     });
 
-    const snapshot = await apiJson<ProjectSnapshot>("/api/projects", {
-      method: "POST",
-      body: JSON.stringify({ project: draft }),
-    });
+    let snapshot: ProjectSnapshot;
+    try {
+      snapshot = await apiJson<ProjectSnapshot>("/api/projects", {
+        method: "POST",
+        body: JSON.stringify({ project: draft }),
+      });
+    } catch {
+      snapshot = saveLocalProjectSnapshot({
+        project: draft,
+        editorState: defaultEditorState,
+        aiChats: [],
+      });
+    }
 
     applySnapshot(set, get, snapshot, { makeCurrent: true });
     writeLastProjectId(snapshot.project.id);
@@ -348,13 +427,22 @@ export const useAppStore = create<Store>()((set, get) => ({
   },
 
   openProject: async (id) => {
-    const snapshot = await apiJson<ProjectSnapshot>(`/api/projects/${id}`);
+    let snapshot: ProjectSnapshot | null = null;
+    try {
+      snapshot = await apiJson<ProjectSnapshot>(`/api/projects/${id}`);
+    } catch {
+      snapshot = getLocalProjectSnapshot(id);
+    }
+    if (!snapshot) throw new Error("Project not found");
     applySnapshot(set, get, snapshot, { makeCurrent: true });
     writeLastProjectId(id);
   },
 
   deleteProject: async (id) => {
-    await apiJson<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" });
+    try {
+      await apiJson<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" });
+    } catch {}
+    deleteLocalProjectSnapshot(id);
     const isCurrent = get().currentProjectId === id;
     set({
       projects: get().projects.filter((project) => project.id !== id),
@@ -379,13 +467,31 @@ export const useAppStore = create<Store>()((set, get) => ({
       return;
     }
 
-    const snapshot = await apiJson<ProjectSnapshot>(`/api/projects/${id}`);
-    snapshot.project.name = trimmed;
-    snapshot.project.updatedAt = new Date().toISOString();
-    const saved = await apiJson<ProjectSnapshot>(`/api/projects/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(snapshot),
-    });
+    const now = new Date().toISOString();
+    const localSnapshot = getLocalProjectSnapshot(id);
+    let saved: ProjectSnapshot;
+
+    try {
+      const snapshot = await apiJson<ProjectSnapshot>(`/api/projects/${id}`);
+      snapshot.project.name = trimmed;
+      snapshot.project.updatedAt = now;
+      saved = await apiJson<ProjectSnapshot>(`/api/projects/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(snapshot),
+      });
+    } catch {
+      if (!localSnapshot) {
+        throw new Error("Project not found");
+      }
+      saved = saveLocalProjectSnapshot({
+        ...localSnapshot,
+        project: {
+          ...localSnapshot.project,
+          name: trimmed,
+          updatedAt: now,
+        },
+      });
+    }
     applySnapshot(set, get, saved);
   },
 
@@ -402,10 +508,17 @@ export const useAppStore = create<Store>()((set, get) => ({
     set({ saveState: "saving", saveError: null });
     try {
       snapshot.project.updatedAt = new Date().toISOString();
-      const saved = await apiJson<ProjectSnapshot>(`/api/projects/${snapshot.project.id}`, {
-        method: "PUT",
-        body: JSON.stringify(savedPayload(snapshot)),
-      });
+      let saved: ProjectSnapshot;
+
+      try {
+        saved = await apiJson<ProjectSnapshot>(`/api/projects/${snapshot.project.id}`, {
+          method: "PUT",
+          body: JSON.stringify(savedPayload(snapshot)),
+        });
+      } catch {
+        saved = saveLocalProjectSnapshot(savedPayload(snapshot));
+      }
+
       applySnapshot(set, get, saved, {
         makeCurrent: true,
         preserveEditor: true,
