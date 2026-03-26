@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
-import type { Project } from "@/types";
+import type { Project, SiteBlueprint } from "@/types";
 import { buildFullPageHtml } from "@/lib/utils";
 import {
   handleRouteError,
@@ -92,7 +92,8 @@ img { max-width: 100%; height: auto; }
     project.pages.forEach((page) => {
       if (!page.html) return;
       const slug = page.slug || page.name.toLowerCase().replace(/\s+/g, "-");
-      const fullHtml = buildFullPageHtml(page.html, project.blueprint, page.name);
+      const exportedHtml = rewriteExportInternalLinks(page.html, project.pages, slug);
+      const fullHtml = buildFullPageHtml(exportedHtml, (project.blueprint ?? null) as SiteBlueprint | null, page.name);
       const filename = slug === "home" ? "index.html" : `${slug}.html`;
       // Home goes in root, others in pages/
       if (slug === "home" || page.name.toLowerCase() === "home") {
@@ -189,4 +190,82 @@ Or simply open \`index.html\` directly in your browser.
 
 *Built with [Sitezy](https://sitezy.app)*
 `;
+}
+
+function pageSlug(page: Project["pages"][number]): string {
+  return (page.slug || page.name.toLowerCase().replace(/\s+/g, "-")).replace(/^\/+|\/+$/g, "") || "home";
+}
+
+function isHomeSlug(slug: string): boolean {
+  return slug === "" || slug === "home" || slug === "index";
+}
+
+function resolveProjectPageSlug(rawHref: string, pages: Project["pages"]): string | null {
+  const trimmed = rawHref.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("mailto:") ||
+    trimmed.startsWith("tel:") ||
+    trimmed.startsWith("javascript:")
+  ) return null;
+
+  let candidate = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      candidate = url.pathname || "/";
+    } catch {
+      return null;
+    }
+  }
+
+  candidate = candidate.split("#")[0]?.split("?")[0] ?? candidate;
+  if (!candidate) return null;
+
+  if (candidate.startsWith("/")) {
+    candidate = candidate.replace(/^\/+|\/+$/g, "") || "home";
+  } else {
+    candidate = candidate.replace(/^\.?\/*/, "").replace(/\/+$/g, "") || "home";
+  }
+
+  const match = pages.find((page) => pageSlug(page) === candidate || (candidate === "" && isHomeSlug(pageSlug(page))));
+  return match ? pageSlug(match) : null;
+}
+
+function exportHrefForSlug(currentSlug: string, targetSlug: string): string {
+  const fromHome = isHomeSlug(currentSlug);
+  const toHome = isHomeSlug(targetSlug);
+
+  if (fromHome) {
+    return toHome ? "index.html" : `pages/${targetSlug}.html`;
+  }
+  return toHome ? "../index.html" : `${targetSlug}.html`;
+}
+
+function rewriteExportInternalLinks(html: string, pages: Project["pages"], currentSlug: string): string {
+  const rewriteHref = (rawHref: string): string => {
+    const targetSlug = resolveProjectPageSlug(rawHref, pages);
+    return targetSlug ? exportHrefForSlug(currentSlug, targetSlug) : rawHref;
+  };
+
+  let next = html.replace(
+    /\b(href|data-href)=("([^"]*)"|'([^']*)')/gi,
+    (match, attr: string, quoted: string, dbl: string | undefined, sgl: string | undefined) => {
+      const raw = dbl ?? sgl ?? "";
+      const rewritten = rewriteHref(raw);
+      const quote = quoted.startsWith("'") ? "'" : '"';
+      return `${attr}=${quote}${rewritten}${quote}`;
+    }
+  );
+
+  next = next.replace(
+    /(location(?:\.href)?|window\.location(?:\.href)?)(\s*=\s*|\.assign\()\s*(['"])([^'"]+)\3/gi,
+    (match, target: string, operator: string, quote: string, rawHref: string) => {
+      const rewritten = rewriteHref(rawHref);
+      return `${target}${operator}${quote}${rewritten}${quote}`;
+    }
+  );
+
+  return next;
 }

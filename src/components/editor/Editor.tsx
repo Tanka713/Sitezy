@@ -8,6 +8,9 @@ import { RightSidebar } from "./RightSidebar";
 import { FullPreviewModal } from "./FullPreviewModal";
 import type { Project } from "@/types";
 
+const LEFT_SIDEBAR_WIDTH = 248;
+const RIGHT_SIDEBAR_WIDTH = 292;
+
 function safe(p: Project): Project {
   return {
     ...p,
@@ -55,20 +58,27 @@ export function Editor() {
   }, [currentProjectId, isCanvasEditing, isSaved, saveCurrentProject, saveState, selectedNode]);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: "#080809", color: "#fff" }}>
-      <EditorTopBar project={project} />
+    <div className="editor-shell relative flex h-screen flex-col overflow-hidden">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-24 top-0 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(45,212,191,0.26),transparent_62%)] blur-3xl" />
+        <div className="absolute right-[-6rem] top-10 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.2),transparent_58%)] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-white/[0.12]" />
+      </div>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-2.5 pb-2.5 pt-2.5">
+        <EditorTopBar project={project} />
+
+        <div className="editor-frame relative mt-2 flex min-h-0 flex-1 overflow-hidden rounded-[30px]">
 
         {/* Left sidebar */}
         <div
           className="flex-shrink-0 overflow-hidden"
           style={{
-            width: leftOpen ? 240 : 0,
+            width: leftOpen ? LEFT_SIDEBAR_WIDTH : 0,
             transition: "width 200ms cubic-bezier(.4,0,.2,1)",
           }}
         >
-          <div style={{ width: 240, height: "100%" }}>
+          <div style={{ width: LEFT_SIDEBAR_WIDTH, height: "100%" }}>
             <LeftSidebar project={project} />
           </div>
         </div>
@@ -79,12 +89,12 @@ export function Editor() {
           title={leftOpen ? "Hide left panel (⌘\\)" : "Show left panel (⌘\\)"}
           style={{
             position: "absolute",
-            left: leftOpen ? 240 : 0,
+            left: leftOpen ? LEFT_SIDEBAR_WIDTH : 0,
             transition: "left 200ms cubic-bezier(.4,0,.2,1)",
             top: "50%", transform: "translateY(-50%)",
             zIndex: 30,
           }}
-          className="flex items-center justify-center w-4 h-9 bg-[#0e0e14] border border-l-0 border-white/[0.07] rounded-r-lg text-white/25 hover:text-white/65 hover:bg-white/[0.05] transition-colors"
+          className="editor-panel flex h-14 w-6 items-center justify-center rounded-r-[18px] border-l-0 text-white/28 transition-colors hover:text-white/78"
         >
           <svg width="5" height="9" viewBox="0 0 5 9" fill="none">
             {leftOpen
@@ -100,11 +110,11 @@ export function Editor() {
         <div
           className="flex-shrink-0 overflow-hidden"
           style={{
-            width: rightOpen ? 280 : 0,
+            width: rightOpen ? RIGHT_SIDEBAR_WIDTH : 0,
             transition: "width 200ms cubic-bezier(.4,0,.2,1)",
           }}
         >
-          <div style={{ width: 280, height: "100%" }}>
+          <div style={{ width: RIGHT_SIDEBAR_WIDTH, height: "100%" }}>
             <RightSidebar project={project} />
           </div>
         </div>
@@ -115,12 +125,12 @@ export function Editor() {
           title={rightOpen ? "Hide right panel" : "Show right panel"}
           style={{
             position: "absolute",
-            right: rightOpen ? 280 : 0,
+            right: rightOpen ? RIGHT_SIDEBAR_WIDTH : 0,
             transition: "right 200ms cubic-bezier(.4,0,.2,1)",
             top: "50%", transform: "translateY(-50%)",
             zIndex: 30,
           }}
-          className="flex items-center justify-center w-4 h-9 bg-[#0e0e14] border border-r-0 border-white/[0.07] rounded-l-lg text-white/25 hover:text-white/65 hover:bg-white/[0.05] transition-colors"
+          className="editor-panel flex h-14 w-6 items-center justify-center rounded-l-[18px] border-r-0 text-white/28 transition-colors hover:text-white/78"
         >
           <svg width="5" height="9" viewBox="0 0 5 9" fill="none">
             {rightOpen
@@ -128,6 +138,7 @@ export function Editor() {
               : <path d="M4 1L1 4.5 4 8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>}
           </svg>
         </button>
+        </div>
       </div>
 
       {isFullPreview && <FullPreviewModal project={project} />}

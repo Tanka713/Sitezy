@@ -199,11 +199,20 @@ export async function generatePage(
   blueprint: SiteBlueprint,
   page: BlueprintPage,
   brief: SiteBrief,
-  onChunk?: (chunk: string, full: string) => void
+  onChunk?: (chunk: string, full: string) => void,
+  navbarHtml?: string | null
 ): Promise<{ html: string; sections: PageSection[] }> {
   const wantsImages = !brief.imageStyle || brief.imageStyle === "photos" || brief.imageStyle === "illustrations";
   const palette     = wantsImages ? getSiteImagePalette(brief.siteType || "agency") : null;
   const imageGuide  = palette ? formatPaletteForPrompt(palette) : "";
+
+  const logoInstruction = brief.hasLogo
+    ? `\nLOGO IMAGE — CRITICAL: A custom logo image has been uploaded. In the navbar, use EXACTLY this as the logo element (no text brand name alongside it):\n<img src="__LOGO__" alt="${blueprint.siteName} logo" style="height:44px;width:auto;object-fit:contain;display:block;" />\nUse src="__LOGO__" exactly as written — it will be replaced with the real image. Do NOT show the site name as text next to it.`
+    : "";
+
+  const currencyInstruction = brief.currency
+    ? `\nCURRENCY: All prices and monetary values MUST use ${brief.currency}. Do NOT use $ unless the currency is USD.`
+    : "";
 
   const system = `You are an elite frontend developer specializing in premium, unique website design.
 Generate production-ready HTML for a single website page body.
@@ -214,6 +223,30 @@ OUTPUT RULES — CRITICAL:
 - Do NOT include <html>, <head>, or <body> tags — output only what goes INSIDE <body>
 - Start your response directly with the first HTML tag (e.g. <nav or <header)
 
+EDITOR DATA ATTRIBUTES — MANDATORY ON EVERY TOP-LEVEL SECTION:
+Every direct child of the body MUST have these two attributes so the visual editor can identify and style them:
+  data-sz-section-type="[type]"   — choose from: navbar, hero, features, testimonial, gallery, cta, footer, faq, pricing, team, stats, contact, about, section
+  data-sz-section-name="[Name]"   — short human-readable label (e.g. "Navigation", "Hero", "Key Features", "Pricing Plans")
+Examples:
+  <nav data-sz-section-type="navbar" data-sz-section-name="Navigation" class="...">
+  <section data-sz-section-type="hero" data-sz-section-name="Hero" class="...">
+  <section data-sz-section-type="features" data-sz-section-name="Key Features" class="...">
+  <section data-sz-section-type="pricing" data-sz-section-name="Pricing Plans" class="...">
+  <footer data-sz-section-type="footer" data-sz-section-name="Footer" class="...">
+These attributes are REQUIRED — do not omit them on any top-level element.
+
+NAVBAR RULES — CRITICAL:
+- ALWAYS use position:sticky; top:0; z-index:1000 on the navbar — NEVER use position:fixed
+- Sticky navbars stay in flow so no padding-top compensation is needed on sections below
+${logoInstruction}
+
+MAP / LOCATION RULES:
+- For any map, location, or directions section: use a REAL Google Maps iframe embed
+- Format: <iframe src="https://www.google.com/maps?q=[URL_ENCODED_ADDRESS_OR_BUSINESS_NAME]&output=embed" width="100%" height="400" style="border:0;display:block;" allowfullscreen loading="lazy"></iframe>
+- Replace [URL_ENCODED_ADDRESS_OR_BUSINESS_NAME] with the actual address or business name URL-encoded (spaces → +)
+- NEVER use a fake placeholder image as a map
+${currencyInstruction}
+
 TECHNICAL REQUIREMENTS:
 - Use inline Tailwind CSS classes (CDN already loaded)
 - Use inline styles with CSS variables (--primary, --secondary, --accent, --bg, --text)
@@ -222,7 +255,7 @@ TECHNICAL REQUIREMENTS:
 - Use semantic HTML5 elements (nav, header, section, article, footer)
 - Make fully responsive with Tailwind prefixes (sm:, md:, lg:)
 - Do NOT use external JS libraries
-${wantsImages ? "- Use the real image URLs provided — do NOT use placeholder.com or picsum.photos" : "- Do NOT use any images. Design with color and typography only."}
+${wantsImages ? "- Use ONLY the image URLs provided above — do NOT use placeholder.com or make up any other URLs" : "- Do NOT use any images. Design with color and typography only."}
 
 DESIGN REQUIREMENTS:
 - Layout: ${blueprint.layoutStyle}
@@ -235,6 +268,14 @@ DESIGN REQUIREMENTS:
 
 ${imageGuide}`;
 
+  const navLinks = blueprint.pages
+    .map((p) => `${p.name} → /${p.slug || p.name.toLowerCase().replace(/\s+/g, "-")}`)
+    .join(", ");
+
+  const navbarInstruction = navbarHtml
+    ? `\nNAVBAR — USE EXACTLY AS-IS (copy this HTML verbatim as the first element, do NOT regenerate it):\n${navbarHtml}\n\nAFTER the navbar above, generate the remaining sections for this page.`
+    : `\nGenerate a navbar as the first section.`;
+
   const user = `Generate the "${page.name}" page body for ${blueprint.siteName}.
 
 Brief: ${brief.description}
@@ -244,7 +285,10 @@ Features: ${brief.features || "none"}
 Image style: ${brief.imageStyle || "photos"}
 Page purpose: ${page.purpose}
 Sections to include: ${page.sections.join(", ")}
-Navigation links: ${blueprint.pages.map((p) => p.name).join(", ")}
+Navigation links (use these exact hrefs — NOT hash anchors): ${navLinks}
+
+IMPORTANT: For all navigation links use the slug paths above (e.g. href="/menu", href="/about"). Do NOT use href="#menu" or href="#about" — these break page navigation.
+${navbarInstruction}
 
 Output ONLY the raw HTML. Start with the first tag. No JSON, no markdown, no explanation.`;
 
@@ -268,28 +312,145 @@ Output ONLY the raw HTML. Start with the first tag. No JSON, no markdown, no exp
 // ─── Section regeneration ─────────────────────────────────────────────────────
 export async function regenerateSection(
   blueprint: SiteBlueprint,
-  pageHtml: string,
-  sectionType: string,
-  instruction: string,
-  siteType = "agency"
+  brief: SiteBrief,
+  page: Pick<BlueprintPage, "name" | "purpose">,
+  section: {
+    type: string;
+    name: string;
+    html: string;
+    previousSectionName?: string | null;
+    nextSectionName?: string | null;
+  },
+  instruction?: string
 ): Promise<string> {
-  const palette    = getSiteImagePalette(siteType);
-  const imageGuide = formatPaletteForPrompt(palette);
+  const wantsImages = !brief.imageStyle || brief.imageStyle === "photos" || brief.imageStyle === "illustrations";
+  const palette    = wantsImages ? getSiteImagePalette(brief.siteType || "agency") : null;
+  const imageGuide = palette ? formatPaletteForPrompt(palette) : "";
 
-  const system = `You are an elite frontend developer. Return ONLY the complete updated page HTML. No explanation, no markdown.
+  const system = `You are an elite frontend developer and web designer.
+Return ONLY the replacement HTML for ONE section. No explanation, no markdown.
+
+OUTPUT RULES:
+- Return a single top-level semantic section block only
+- Do NOT return the full page
+- Do NOT wrap in JSON
+- Do NOT include <html>, <head>, or <body>
+- Match the existing site's visual language exactly
+- Keep spacing rhythm, typography, color usage, and component tone consistent
+- Preserve the semantic role of the section (hero, features, testimonial, footer, navbar, etc.)
+- Use inline Tailwind utility classes and inline styles with CSS variables (--primary, --secondary, --accent, --bg, --text)
+- PRESERVE the data-sz-section-type and data-sz-section-name attributes from the original section on the root element
+- If those attributes are missing, add them: data-sz-section-type="${section.type}" data-sz-section-name="${section.name}"
+
+SITE DESIGN SYSTEM:
+- Site: ${blueprint.siteName}
+- Layout: ${blueprint.layoutStyle}
+- Brand: ${blueprint.brandPersonality}
+- Direction: ${blueprint.designDirection}
+- Colors: primary=${blueprint.colorScheme.primary}, secondary=${blueprint.colorScheme.secondary}, accent=${blueprint.colorScheme.accent}, bg=${blueprint.colorScheme.bg}, text=${blueprint.colorScheme.text}
+- Heading font: ${blueprint.typography.headingFont}
+- Body font: ${blueprint.typography.bodyFont}
+
 ${imageGuide}`;
 
-  const user = `Update the "${sectionType}" section of this page.
-Instruction: ${instruction}
-Colors: primary=${blueprint.colorScheme.primary}
-Layout: ${blueprint.layoutStyle}
+  const user = `Regenerate this page section so it feels fresh, premium, and on-brand.
 
-Current page HTML:
-${pageHtml.slice(0, 8000)}
+Page: ${page.name}
+Page purpose: ${page.purpose}
+Business type: ${brief.siteType}
+Tone: ${brief.tone}
+Features: ${brief.features || "none"}
 
-Return ONLY the complete updated page HTML with the ${sectionType} section changed. Nothing else.`;
+Section type: ${section.type}
+Section name: ${section.name}
+Previous section: ${section.previousSectionName || "none"}
+Next section: ${section.nextSectionName || "none"}
 
-  return streamCompletion(system, user, () => {});
+Current section HTML:
+${section.html.slice(0, 6000)}
+
+Return ONLY the new HTML for this one section.
+${instruction ? `Additional direction: ${instruction}` : ""}`;
+
+  const html = await streamCompletion(system, user, () => {});
+  return sanitizeGeneratedHtml(html);
+}
+
+// ─── Generate new block / section ────────────────────────────────────────────
+export async function generateNewBlock(
+  blueprint: SiteBlueprint,
+  brief: SiteBrief,
+  page: Pick<BlueprintPage, "name" | "purpose">,
+  block: {
+    type: string;
+    label: string;
+    placement: string;
+  },
+  context: {
+    existingSections: string[];
+    previousSectionName?: string | null;
+    nextSectionName?: string | null;
+    selectedSectionName?: string | null;
+    selectedNodeLabel?: string | null;
+  }
+): Promise<string> {
+  const wantsImages = !brief.imageStyle || brief.imageStyle === "photos" || brief.imageStyle === "illustrations";
+  const palette    = wantsImages ? getSiteImagePalette(brief.siteType || "agency") : null;
+  const imageGuide = palette ? formatPaletteForPrompt(palette) : "";
+
+  const system = `You are an elite frontend developer generating a NEW block or section for an existing website.
+Return ONLY the HTML for the new block/section. No explanation, no markdown, no full page.
+
+OUTPUT RULES:
+- Return a single top-level HTML block/section only
+- Do NOT return the full page — only the new block
+- Do NOT wrap in JSON
+- Do NOT include <html>, <head>, or <body>
+- Match the existing site's visual language exactly
+- Use the same spacing rhythm, typography, color usage, and component tone
+- Use inline Tailwind utility classes and inline styles with CSS variables (--primary, --secondary, --accent, --bg, --text)
+${wantsImages ? "- Use ONLY the image URLs provided above — do NOT use placeholder.com or make up any other URLs" : "- Do NOT use any images. Design with color and typography only."}
+- Add data-sz-section-type="${block.type}" and data-sz-section-name="${block.label}" on the ROOT element of the new block (required for the visual editor)
+
+SITE DESIGN SYSTEM:
+- Site: ${blueprint.siteName}
+- Layout: ${blueprint.layoutStyle}
+- Brand: ${blueprint.brandPersonality}
+- Direction: ${blueprint.designDirection}
+- Colors: primary=${blueprint.colorScheme.primary}, secondary=${blueprint.colorScheme.secondary}, accent=${blueprint.colorScheme.accent}, bg=${blueprint.colorScheme.bg}, text=${blueprint.colorScheme.text}
+- Heading font: ${blueprint.typography.headingFont}
+- Body font: ${blueprint.typography.bodyFont}
+- Animation: ${blueprint.animationStyle}
+
+${imageGuide}`;
+
+  const isInline = block.placement === "inline";
+  const placementContext = block.placement === "top"
+    ? "Position it at the very top of the page (e.g. a navbar or announcement bar)."
+    : block.placement === "bottom"
+    ? "Position it at the bottom of the page (e.g. a footer or bottom CTA)."
+    : isInline
+    ? `Insert it INLINE inside a section${context.selectedSectionName ? ` (inside "${context.selectedSectionName}")` : ""}${context.selectedNodeLabel ? ` near the element "${context.selectedNodeLabel}"` : ""}. Return a compact inline snippet, NOT a full section wrapper.`
+    : `Insert it as a full standalone section${context.previousSectionName ? ` after "${context.previousSectionName}"` : ""}${context.nextSectionName ? ` before "${context.nextSectionName}"` : ""}.`;
+
+  const user = `Generate a new "${block.label}" (type: ${block.type}) block for the "${page.name}" page.
+
+Page purpose: ${page.purpose}
+Business: ${brief.siteName} — ${brief.description}
+Business type: ${brief.siteType}
+Tone: ${brief.tone}
+Features: ${brief.features || "none"}
+
+Existing sections on this page (in order): ${context.existingSections.length > 0 ? context.existingSections.join(", ") : "none yet"}
+${context.previousSectionName ? `Section immediately before: ${context.previousSectionName}` : ""}
+${context.nextSectionName ? `Section immediately after: ${context.nextSectionName}` : ""}
+
+Placement: ${placementContext}
+
+Return ONLY the new ${isInline ? "inline snippet" : "section"} HTML. No JSON, no markdown, no explanation.`;
+
+  const html = await streamCompletion(system, user, () => {});
+  return sanitizeGeneratedHtml(html);
 }
 
 // ─── AI assistant ─────────────────────────────────────────────────────────────

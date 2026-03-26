@@ -113,6 +113,22 @@ export type Tone =
   | "Warm"
   | "Technical";
 
+// ─── Smart Setup (Phase 2: advanced generator mode) ───────────────────────────
+// These fields are collected in Phase 1 and wired into generation in Phase 2.
+export interface SmartBrief {
+  logoUrl?: string;
+  industry?: string;
+  offeringsType?: string;   // "services" | "products" | "menu" | "portfolio" | "courses"
+  offeringsText?: string;   // free-text list of offerings (parsed/used in Phase 2)
+  stylePreference?: string; // e.g. "modern like Apple", "warm like Airbnb"
+  contactDetails?: {
+    phone?: string;
+    email?: string;
+    address?: string;
+    hours?: string;
+  };
+}
+
 export interface SiteBrief {
   siteName: string;
   description: string;
@@ -125,6 +141,12 @@ export interface SiteBrief {
   colorPreference?: string;   // e.g. "warm earthy tones" or specific hex
   colorPalette?: string[];    // optional pre-picked hex colors
   imageStyle?: "photos" | "illustrations" | "minimal" | "none";
+  // ── Generator mode (Phase 1+) ──────────────────────────────────────────────
+  generatorMode?: "quick" | "smart"; // defaults to "quick" when absent
+  smartBrief?: SmartBrief;           // only populated in "smart" mode
+  // ── Enriched context ───────────────────────────────────────────────────────
+  hasLogo?: boolean;   // logo image was uploaded — AI should use __LOGO__ placeholder in navbar
+  currency?: string;   // detected currency, e.g. "AED (د.إ)", "GBP (£)"
 }
 
 export interface Project {
@@ -191,6 +213,8 @@ export interface EditorState {
 
 export interface CanvasNodeInfo {
   nodeId: string;
+  animationTargetNodeId: string | null;
+  mediaTargetNodeId: string | null;
   parentNodeId: string | null;
   sectionId: string | null;
   sectionName: string | null;
@@ -201,12 +225,19 @@ export interface CanvasNodeInfo {
   depth: number;
   text: string;
   src: string | null;
+  altText: string | null;
   href: string | null;
   target: string | null;
   isImg: boolean;
   isVideo: boolean;
   isIframe: boolean;
   isInput: boolean;
+  isSvg: boolean;
+  svgInner: string | null;
+  svgStroke: string | null;
+  svgFill: string | null;
+  svgStrokeWidth: string | null;
+  svgViewBox: string | null;
   isText: boolean;
   isBtn: boolean;
   isContainer: boolean;
@@ -215,6 +246,8 @@ export interface CanvasNodeInfo {
   videoLoop: boolean;
   videoMuted: boolean;
   videoControls: boolean;
+  embedAllow: string | null;
+  embedAllowFullscreen: boolean;
   placeholder: string | null;
   inputType: string | null;
   inputName: string | null;
@@ -230,6 +263,13 @@ export interface CanvasNodeInfo {
   color: string | null;
   backgroundColor: string | null;
   backgroundImage: string;
+  hasBgImage: boolean;
+  bgImageSrc: string | null;
+  backgroundPosition: string;
+  backgroundSize: string;
+  backgroundRepeat: string;
+  backgroundAttachment: string;
+  backgroundBlendMode: string;
   paddingTop: number;
   paddingRight: number;
   paddingBottom: number;
@@ -240,22 +280,75 @@ export interface CanvasNodeInfo {
   marginLeft: number;
   width: string;
   height: string;
+  objectFit: string;
+  objectPosition: string;
   minWidth: string;
   maxWidth: string;
   borderRadius: string;
   border: string;
+  borderWidth: string;
+  borderStyle: string;
+  borderColor: string | null;
+  position: string;
+  zIndex: string;
+  top: string;
+  right: string;
+  bottom: string;
+  left: string;
   display: string;
+  parentDisplay: string | null;
   flexDir: string;
   flexWrap: string;
+  flexGrow: string;
+  flexShrink: string;
+  flexBasis: string;
+  alignSelf: string;
+  alignContent: string;
   justifyContent: string;
   alignItems: string;
+  justifyItems: string;
   gap: string;
   gridCols: string;
+  gridRows: string;
+  gridAutoFlow: string;
+  rowGap: string;
+  columnGap: string;
+  gridColumn: string;
+  gridRow: string;
   opacity: string;
   boxShadow: string;
+  filter: string;
+  backdropFilter: string;
+  mixBlendMode: string;
   overflow: string;
+  responsiveMode: DevicePreview;
+  responsiveHasTabletOverrides: boolean;
+  responsiveHasMobileOverrides: boolean;
+  responsiveHasCurrentOverrides: boolean;
+  responsiveCurrentProps: string[];
+  animationIn: string;
+  animationHover: string;
+  hasCustomEntranceAnimation: boolean;
+  hasCustomHoverAnimation: boolean;
+  animationDuration: string;
+  animationDelay: string;
+  animationEase: string;
   secBg: string | null;
   secPadding: string | null;
+  secHasBgImage: boolean;
+  secBgImageSrc: string | null;
+  secBgPosition: string;
+  secBgSize: string;
+  sectionVisualNodeId: string | null;
+  sectionVisualSrc: string | null;
+  sectionVisualKind: "image" | "video" | "embed" | null;
+  isIconEl: boolean;
+  iconWrapperNodeId: string | null;
+  iconSize: number;
+  iconIsBtn: boolean;
+  iconBtnHref: string | null;
+  iconBtnTarget: string | null;
+  iconBtnNodeId: string | null;
 }
 
 // ─── AI Chat Types ────────────────────────────────────────────────────────────
@@ -331,6 +424,8 @@ export type BlockType =
   | "case-studies"
   | "map"
   | "video"
+  | "youtube"
+  | "embed"
   | "newsletter";
 
 export interface BlockDefinition {

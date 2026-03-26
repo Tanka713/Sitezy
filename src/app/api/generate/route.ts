@@ -22,11 +22,12 @@ export async function POST(req: NextRequest) {
       blueprint?: SiteBlueprint;
       page?: BlueprintPage;
       brief?: SiteBrief;
+      navbarHtml?: string | null;
     }>(req);
 
     assertFields(body as Record<string, unknown>, ["blueprint", "page", "brief"], API_REQUEST_002);
 
-    const result = await generatePage(body.blueprint!, body.page!, body.brief!).catch((err) => {
+    const result = await generatePage(body.blueprint!, body.page!, body.brief!, undefined, body.navbarHtml ?? null).catch((err) => {
       throw createAppError({
         code: API_GENERATE_001,
         devMessage: `generatePage failed for "${body.page?.name}": ${err instanceof Error ? err.message : String(err)}`,

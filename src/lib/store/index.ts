@@ -74,7 +74,7 @@ const defaultEditorState: EditorState = {
   selectedNode: null,
   isCanvasEditing: false,
   leftPanelTab: "pages",
-  rightPanelTab: "ai",
+  rightPanelTab: "blocks",
   previewMode: "preview",
   devicePreview: "desktop",
   isFullPreview: false,
@@ -133,6 +133,7 @@ interface AppState {
   projects: Project[];
   currentProjectId: string | null;
   editor: EditorState;
+  aiDraftPrompt: string | null;
   generationStatus: GenerationStatus;
   generationProgress: string;
   generationLog: GenerationLogEntry[];
@@ -182,6 +183,7 @@ interface AppActions {
   redo: () => void;
   addChatMessage: (projectId: string, msg: AIChatMessage) => void;
   clearChat: (projectId: string) => void;
+  setAiDraftPrompt: (prompt: string | null) => void;
   getCurrentProject: () => Project | null;
   getSelectedPage: () => ProjectPage | null;
   addPage: (page: ProjectPage) => void;
@@ -279,6 +281,7 @@ export const useAppStore = create<Store>()((set, get) => ({
   projects: [],
   currentProjectId: null,
   editor: defaultEditorState,
+  aiDraftPrompt: null,
   generationStatus: "idle",
   generationProgress: "",
   generationLog: [],
@@ -672,6 +675,8 @@ export const useAppStore = create<Store>()((set, get) => ({
     set({ aiChats: { ...get().aiChats, [projectId]: [] } });
     if (projectId === get().currentProjectId) markDirty(set);
   },
+
+  setAiDraftPrompt: (prompt) => set({ aiDraftPrompt: prompt }),
 
   getCurrentProject: () => getCurrentProjectState(get()),
   getSelectedPage: () => {
