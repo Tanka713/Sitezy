@@ -9,6 +9,9 @@ import { FullPreviewModal } from "./FullPreviewModal";
 import { EditorErrorBoundary } from "./EditorErrorBoundary";
 import type { Project } from "@/types";
 
+const LEFT_SIDEBAR_WIDTH = 248;
+const RIGHT_SIDEBAR_WIDTH = 292;
+
 function safe(p: Project): Project {
   return {
     ...p,

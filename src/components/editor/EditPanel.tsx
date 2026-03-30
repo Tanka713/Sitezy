@@ -735,7 +735,7 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
       {/* Trigger row */}
       <div
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.07] hover:border-white/[0.14] rounded-lg p-1.5 cursor-pointer transition-all"
+        className="flex items-center gap-2 rounded-[16px] border border-white/[0.07] bg-white/[0.04] p-1.5 cursor-pointer transition-all hover:border-white/[0.14]"
       >
         <span
           className="block w-7 h-7 rounded-md ring-1 ring-inset ring-white/10 flex-shrink-0"
@@ -795,7 +795,7 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
                 onKeyDown={(e) => { if (e.key === "Enter") commitHex(hexInput); }}
                 maxLength={6}
                 spellCheck={false}
-                className="flex-1 bg-transparent text-[11px] text-white/75 font-mono focus:outline-none uppercase min-w-0"
+                className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/75 font-mono focus:outline-none uppercase min-w-0"
               />
               <span className="w-4 h-4 rounded flex-shrink-0 ring-1 ring-white/10" style={{ backgroundColor: currentHex }} />
             </div>
@@ -2650,7 +2650,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
                   onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
                   placeholder="https://example.com"
-                  className="flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
+                  className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
               </div>
             )}
@@ -2664,7 +2664,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
                   onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
                   placeholder="hello@example.com"
-                  className="flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
+                  className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
               </div>
             )}
@@ -2678,7 +2678,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
                   onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
                   placeholder="+1 555 000 0000"
-                  className="flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
+                  className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
               </div>
             )}

@@ -36,6 +36,7 @@ import type {
 } from "@/types";
 
 const LAST_PROJECT_KEY = "sitezy-last-project-id";
+const LOCAL_PROJECT_SNAPSHOTS_KEY = "sitezy-local-project-snapshots-v1";
 
 type ApiErrorPayload = {
   error?: string;
@@ -513,11 +514,20 @@ export const useAppStore = create<Store>()((set, get) => ({
       const { appErr, apiError } = buildStoreApiError(error, API_UNKNOWN_001, { action: "hydrateProjects" });
       logAppError(appErr);
       set({
+        projects,
         isHydratingProjects: false,
         hasHydratedProjects: true,
         saveError: appErr.userMessage,
         apiError,
       });
+
+      const lastProjectId = readLastProjectId();
+      if (lastProjectId && projects.some((project) => project.id === lastProjectId)) {
+        const snapshot = getLocalProjectSnapshot(lastProjectId);
+        if (snapshot) {
+          applySnapshot(set, get, snapshot, { makeCurrent: true });
+        }
+      }
     }
   },
 

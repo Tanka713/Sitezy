@@ -257,17 +257,17 @@ function AIPanel({ project }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-1 overflow-auto p-3 space-y-2 min-h-0">
+      <div className="editor-scroll flex-1 overflow-auto p-3.5 space-y-2.5 min-h-0">
         {deduped.length === 0 ? (
-          <div className="py-5 text-center space-y-3">
-            <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mx-auto">
-              <Sparkles size={15} className="text-white/25"/>
+          <div className="editor-panel-soft py-6 px-4 text-center space-y-3 rounded-[24px]">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(45,212,191,0.16),rgba(251,191,36,0.08))]">
+              <Sparkles size={16} className="text-white/68"/>
             </div>
-            <p className="text-[11px] text-white/20">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
+            <p className="text-[11px] text-white/42">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
             <div className="space-y-1.5 text-left">
               {suggestions.map((s) => (
                 <button key={s} onClick={() => send(s)}
-                  className="block w-full text-left px-3 py-2 text-[11px] text-white/35 bg-white/[0.025] hover:bg-white/[0.05] border border-white/[0.05] hover:border-white/[0.09] rounded-lg transition-all">
+                  className="block w-full rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-left text-[11px] text-white/44 transition-all hover:border-white/[0.1] hover:bg-white/[0.05] hover:text-white/82">
                   {s}
                 </button>
               ))}
@@ -276,12 +276,12 @@ function AIPanel({ project }: Props) {
         ) : (
           <>
             <button onClick={() => clearChat(currentProjectId ?? "")}
-              className="flex items-center gap-1 text-[10px] text-white/16 hover:text-white/40 ml-auto transition-colors">
+              className="editor-action-btn ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] text-white/48">
               <X size={9}/> Clear
             </button>
             {deduped.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[88%] px-3 py-2 text-[12px] leading-relaxed rounded-2xl ${
+                <div className={`max-w-[88%] px-3.5 py-2.5 text-[12px] leading-relaxed rounded-[22px] ${
                   m.role === "user"
                     ? "bg-accent-600/22 text-white/82 rounded-br-sm"
                     : "bg-white/[0.04] text-white/60 rounded-bl-sm border border-white/[0.05]"
@@ -301,8 +301,8 @@ function AIPanel({ project }: Props) {
           </>
         )}
       </div>
-      <div className="border-t border-white/[0.05] p-3 flex-shrink-0">
-        <div className="flex items-end gap-2">
+      <div className="border-t border-white/[0.05] p-3.5 flex-shrink-0">
+        <div className="editor-panel-soft flex items-end gap-2 rounded-[22px] p-2">
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
             placeholder="Ask AI to improve your site…" rows={2}
@@ -422,15 +422,15 @@ function PropsPanel({ project }: Props) {
 
   return (
     <div className="flex flex-col h-full overflow-auto">
-      <div className="px-3 py-2.5 border-b border-white/[0.05] flex-shrink-0">
+      <div className="px-4 py-3 border-b border-white/[0.05] flex-shrink-0 bg-white/[0.02]">
         <p className="text-[11px] font-medium text-white/40">{page.name}</p>
         <p className="text-[10px] text-white/18 mt-0.5">{page.sections.length} sections</p>
       </div>
-      <div className="p-2 space-y-1">
+      <div className="editor-scroll p-3 space-y-2">
         {page.sections.map((sec) => (
-          <div key={sec.id} className="rounded-xl border border-white/[0.05] bg-white/[0.015] overflow-hidden">
+          <div key={sec.id} className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
             <button onClick={() => setOpen(open === sec.id ? null : sec.id)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/[0.025] transition-colors">
+              className="w-full flex items-center gap-2 px-3.5 py-3 text-left hover:bg-white/[0.04] transition-colors">
               <span className="text-[11px] text-white/50 font-medium flex-1 truncate">{sec.name || sec.type}</span>
               {open === sec.id ? <ChevronUp size={11} className="text-white/18 flex-shrink-0"/> : <ChevronDown size={11} className="text-white/18 flex-shrink-0"/>}
             </button>
@@ -461,7 +461,7 @@ function PropsPanel({ project }: Props) {
                       <Link size={9} className="text-white/18 flex-shrink-0"/>
                       <input value={imgs[sec.id]??""} onChange={(e)=>setImgs((u)=>({...u,[sec.id]:e.target.value}))}
                         placeholder="Paste image URL…"
-                        className="flex-1 bg-transparent text-[11px] text-white/70 placeholder-white/14 focus:outline-none min-w-0"/>
+                        className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/70 placeholder-white/14 focus:outline-none min-w-0"/>
                     </div>
                     <button onClick={()=>applyImg(sec.id,sec.type,imgs[sec.id]??"")}
                       disabled={!imgs[sec.id]?.trim()||applying===sec.id+"-img"}
@@ -486,6 +486,7 @@ function BlocksPanel({ project }: Props) {
   const [adding, setAdding] = useState<string|null>(null);
   const [aiStatus, setAiStatus] = useState<{ msg: string; type: "loading"|"success"|"error" } | null>(null);
   const [useAI,  setUseAI]  = useState(false);
+  const [iconSearch, setIconSearch] = useState("");
   const insertBlock   = useAppStore((s) => s.insertBlock);
   const setPageContent= useAppStore((s) => s.setPageContent);
   const addGenLog     = useAppStore((s) => s.addGenLog);

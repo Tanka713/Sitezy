@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/lib/store";
+import { getSectionContext, replaceSectionInPageHtml } from "@/lib/editor/structure";
 import {
   duplicateSectionInPageHtml,
   getSectionContext,
@@ -143,7 +144,7 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
         {pages.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[11px] text-white/18">No pages yet.</div>
+          <div className="px-4 py-8 text-center text-[11px] text-white/24">No pages yet.</div>
         ) : (
           <div className="space-y-1 px-1.5">
             {pages.map((p) => (
@@ -262,13 +263,13 @@ function PageRow({ page, project, isSelected, onSelect }: { page: ProjectPage; p
           <div role="button" tabIndex={0}
             onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}
             onKeyDown={(e) => e.key === "Enter" && (e.stopPropagation(), setMenu(!menu))}
-            className="opacity-0 group-hover/row:opacity-100 w-5 h-5 flex items-center justify-center rounded text-white/28 hover:text-white hover:bg-white/[0.09] transition-all flex-shrink-0 cursor-pointer">
+            className="opacity-0 group-hover/row:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg text-white/28 hover:text-white hover:bg-white/[0.09] transition-all flex-shrink-0 cursor-pointer">
             <MoreHorizontal size={11}/>
           </div>
         </div>
       )}
       {menu && (
-        <div ref={menuRef} className="absolute right-2 top-8 w-40 bg-[#0f0f14] border border-white/[0.08] rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
+        <div ref={menuRef} className="editor-dialog absolute right-2 top-10 z-50 w-44 overflow-hidden rounded-2xl py-1.5">
           <MI icon={<RefreshCw size={11}/>} label="Regenerate" onClick={handleRegen} disabled={!project.blueprint}/>
           <MI icon={<Pencil size={11}/>}    label="Rename"     onClick={() => { setRen(true); setMenu(false); }}/>
           <MI icon={<Copy size={11}/>}      label="Duplicate"  onClick={() => { duplicatePage(page.id); setMenu(false); }}/>
@@ -283,8 +284,8 @@ function PageRow({ page, project, isSelected, onSelect }: { page: ProjectPage; p
 function MI({ icon, label, onClick, danger, disabled }: { icon: React.ReactNode; label: string; onClick: ()=>void; danger?: boolean; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`flex items-center gap-2 w-full px-3 py-2 text-[11px] transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${
-        danger ? "text-red-400/65 hover:bg-red-500/10 hover:text-red-400" : "text-white/50 hover:bg-white/[0.05] hover:text-white"
+      className={`flex items-center gap-2 w-full px-3.5 py-2.5 text-[11px] transition-colors disabled:opacity-20 disabled:cursor-not-allowed ${
+        danger ? "text-red-300/70 hover:bg-red-500/10 hover:text-red-200" : "text-white/56 hover:bg-white/[0.05] hover:text-white"
       }`}>
       {icon} {label}
     </button>
@@ -789,13 +790,13 @@ function FilesPanel({ pages, files, selectedFileId, onSelectFile }: {
         })}
         {css.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-2 text-[9px] font-bold text-white/14 uppercase tracking-widest">Styles</div>
+            <div className="px-2 py-1 mt-2 text-[9px] font-bold text-white/18 uppercase tracking-widest">Styles</div>
             {css.map((f) => (
               <button key={f.id} onClick={() => onSelectFile(f.id)}
-                className={`flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-[11px] transition-all ${
-                  selectedFileId===f.id ? "bg-teal-500/10 text-teal-300" : "text-white/38 hover:text-white/65 hover:bg-white/[0.035]"
+                className={`flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-[11px] transition-all border ${
+                  selectedFileId===f.id ? "border-white/[0.1] bg-[linear-gradient(180deg,rgba(251,191,36,0.18),rgba(255,255,255,0.03))] text-white" : "border-transparent text-white/42 hover:border-white/[0.06] hover:bg-white/[0.04] hover:text-white/72"
                 }`}>
-                <FileCode2 size={11} className="flex-shrink-0 text-teal-400/50"/>
+                <FileCode2 size={11} className="flex-shrink-0 text-amber-200/60"/>
                 <span className="truncate font-mono">{f.name}</span>
               </button>
             ))}
@@ -868,13 +869,13 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
   }
 
   return (
-    <div className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#0f0f14] shadow-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+      <div className="editor-dialog w-full max-w-sm overflow-hidden rounded-[28px]">
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
           <h3 className="text-[13px] font-semibold text-white">New page</h3>
-          <button onClick={onClose} className="text-white/28 hover:text-white/65 transition-colors"><X size={13}/></button>
+          <button onClick={onClose} className="editor-action-btn flex h-9 w-9 items-center justify-center rounded-xl text-white/48"><X size={13}/></button>
         </div>
-        <div className="p-4 space-y-3">
+        <div className="p-5 space-y-3.5">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !creating && create()}
             placeholder="Page name (e.g. About, Pricing)"
@@ -885,8 +886,7 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
               rows={2}
               className="w-full bg-white/[0.05] border border-white/[0.07] rounded-xl px-3 py-2 text-[13px] text-white placeholder-white/18 focus:outline-none focus:border-accent-500/35 resize-none transition-colors"/>
           )}
-          {/* AI toggle */}
-          <div className="flex items-center justify-between py-1">
+          <div className="editor-panel-soft flex items-center justify-between rounded-2xl px-4 py-3">
             <div>
               <p className="text-[12px] text-white/60 font-medium">Generate with AI</p>
               <p className="text-[10px] text-white/25 mt-0.5">
@@ -905,8 +905,8 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
             </div>
           )}
         </div>
-        <div className="px-4 py-3 border-t border-white/[0.06] flex justify-end gap-2">
-          <button onClick={onClose} disabled={creating} className="px-3 py-1.5 text-[12px] text-white/32 hover:text-white/60 rounded-lg transition-colors disabled:opacity-50">Cancel</button>
+        <div className="flex justify-end gap-2 border-t border-white/[0.06] px-5 py-4">
+          <button onClick={onClose} disabled={creating} className="editor-action-btn rounded-2xl px-4 py-2 text-[12px] font-medium disabled:opacity-50">Cancel</button>
           <button onClick={create} disabled={!name.trim() || creating}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-accent-600 hover:bg-accent-500 disabled:opacity-30 text-white text-[12px] font-semibold transition-colors">
             {creating && <Loader2 size={11} className="animate-spin"/>}

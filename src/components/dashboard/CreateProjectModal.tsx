@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useAppStore } from "@/lib/store";
 import { uid, extractNavbarHtml } from "@/lib/utils";
 import { streamGeneratePage } from "@/lib/utils/generateStream";
@@ -295,6 +295,7 @@ export function CreateProjectModal({ onClose }: Props) {
 
   async function handleGenerate() {
     if (!brief.siteName.trim() || !brief.description.trim()) return;
+    setApiError(null);
     clearGenLog();
     setStep(2);
     setApiError(null);

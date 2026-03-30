@@ -531,6 +531,16 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     clearLiveLayer();
   }
 
+  function openSuggestionPrompt(prompt: string) {
+    if (hoveredNode?.sectionId) {
+      selectSection(hoveredNode.sectionId);
+    }
+    if (!rightSidebarOpen) toggleRightSidebar();
+    setRightPanel("ai");
+    setAiDraftPrompt(prompt);
+    clearLiveLayer();
+  }
+
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0a0a0b]">
       <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#080809] px-3">
@@ -723,6 +733,71 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
           <Loader2 size={10} className="spin ml-1 shrink-0 text-accent-400" />
         )}
       </div>
+      </div>
+
+      <div
+        ref={liveCardRef}
+        className="flex-shrink-0 overflow-hidden border-b transition-all duration-200"
+        style={{
+          maxHeight: liveCardVisible || liveLoading ? "48px" : "0px",
+          borderColor: liveIsAI ? "rgba(45,212,191,0.18)" : "rgba(255,255,255,0.05)",
+          background: liveIsAI
+            ? "linear-gradient(90deg, rgba(8,20,24,0.98) 0%, rgba(12,26,28,0.98) 100%)"
+            : "rgba(7,12,18,0.98)",
+          opacity: liveCardVisible || liveLoading ? 1 : 0,
+          transition: "max-height 0.2s ease, opacity 0.15s ease, border-color 0.4s ease, background 0.4s ease",
+        }}
+      >
+        <div className="flex h-[48px] items-center gap-2 px-3">
+          <div className="flex flex-shrink-0 items-center gap-1.5 border-r border-white/[0.06] pr-3">
+            <span className={`flex-shrink-0 transition-colors ${liveIsAI ? "text-teal-100" : "text-white/30"}`}>
+              {liveLoading
+                ? <Loader2 size={11} className="animate-spin" />
+                : <Sparkles size={11} />}
+            </span>
+            <span className="text-[10px] font-semibold text-white/50 whitespace-nowrap">
+              {liveLoading ? "Analyzing…" : (hoveredNode?.sectionName || hoveredNode?.label || "Live Intelligence")}
+            </span>
+            {liveIsAI && !liveLoading && (
+              <span className="rounded-full border border-teal-300/18 bg-teal-400/10 px-1.5 py-px text-[7px] font-bold uppercase tracking-[0.14em] text-teal-100/80">
+                AI
+              </span>
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+            {liveLoading ? (
+              [1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-7 w-32 rounded-xl bg-white/[0.05] animate-pulse flex-shrink-0"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                />
+              ))
+            ) : (
+              liveSuggestions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => openSuggestionPrompt(s.prompt)}
+                  className="group flex h-7 flex-shrink-0 items-center gap-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 transition-all active:scale-95 hover:border-teal-300/24 hover:bg-teal-400/[0.08]"
+                >
+                  <span className="text-[11px] font-medium text-white/60 group-hover:text-white/90 transition-colors whitespace-nowrap">{s.label}</span>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-shrink-0 items-center gap-1 border-l border-white/[0.06] pl-3">
+            <button
+              onClick={clearLiveLayer}
+              title="Dismiss"
+              className="editor-action-btn flex h-7 w-7 items-center justify-center rounded-xl text-white/34"
+            >
+              <span className="text-[11px]">✕</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {!isCodeOnly && (
       <div
@@ -805,7 +880,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                 }`}
                 style={{
                   width: deviceWidth,
-                  minHeight: "calc(100vh - 8rem)",
+                  minHeight: "calc(100vh - 7.75rem)",
                   flexShrink: 0,
                   transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
                   transformOrigin: "top center",

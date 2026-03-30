@@ -12,7 +12,6 @@ css.textContent=
   '[data-sz-hov]:not([data-sz-sel]){outline:1.5px dashed rgba(100,120,255,.58)!important;outline-offset:3px!important;box-shadow:0 0 0 4px rgba(100,120,255,.08)!important;transition:outline .08s ease,box-shadow .08s ease;}'+
   '[contenteditable=true]{outline:2px solid #22d3ee!important;outline-offset:2px!important;caret-color:#22d3ee!important}'+
   '[data-sz-drag]{opacity:1!important;outline:none!important}'+
-  'body.sz-dragging [data-sz-hov]{outline:none!important}'+
   'body{user-select:none!important;-webkit-user-select:none!important}'+
   'body.sz-editing [contenteditable=true]{user-select:text!important;-webkit-user-select:text!important}'+
   '.sz-dl{position:fixed;pointer-events:none;z-index:2147483647;height:2px;border-radius:2px;background:#4f7eff;box-shadow:0 0 6px rgba(79,126,255,.5)}'+
@@ -1424,6 +1423,7 @@ var mdEl=null,mdX=0,mdY=0,dragging=false;
 // ── Resize + padding overlay ──────────────────────────────────────────────
 var ov=null,rzEl=null,rzMode='',rzSX=0,rzSY=0,rzSW=0,rzSH=0;
 var padEl=null,padSide='',padSX=0,padSY=0,padS0=0;
+var chrome=null,chromeRole=null,chromeTitle=null,chromeMeta=null,chromeParentBtn=null,chromeEditBtn=null,chromeDupBtn=null,chromeDeleteBtn=null,hoverBadge=null,hoverRoleEl=null,hoverTitleEl=null;
 
 function mkOv(){
   if(ov)return;
