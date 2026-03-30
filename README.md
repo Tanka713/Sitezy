@@ -1,33 +1,33 @@
-# Sitezy — AI Website Builder
+# Sitezy
 
-> Describe your website. Sitezy generates a unique, multi-page site using Claude AI.
+Sitezy is an AI website builder with a public marketing site, Supabase-backed auth and project persistence, an interactive visual editor, AI generation flows, and ZIP export.
 
-Built with **Next.js 14**, **TypeScript**, **Tailwind CSS**, **Zustand**, and the **Anthropic Claude API**.
+## Current stack
 
----
+- Next.js 14
+- React 18
+- TypeScript
+- Tailwind CSS
+- Zustand
+- Supabase Auth + Postgres
+- Anthropic API
+- JSZip
 
-## Features
+## What the app includes
 
-- **AI-powered generation** — Full multi-page website from a natural language prompt
-- **Blueprint-first pipeline** — Site architecture, color system, and typography planned before code generation
-- **Structurally unique sites** — Varies layouts: editorial, bento, asymmetric, split-screen, zigzag, and more
-- **Live preview** — Sandboxed iframe preview with device switching (desktop/tablet/mobile)
-- **Code editor** — Edit generated HTML directly with live sync
-- **AI chat assistant** — Context-aware Claude assistant in the editor sidebar
-- **Export as ZIP** — Download a complete, runnable multi-file website
-- **Full preview mode** — Isolated full-screen preview with page navigation
-- **Undo / Redo** — Non-destructive editing history
-- **Secure API** — All Claude calls go through Next.js route handlers — API key never exposed to browser
-
----
+- Public landing page at `/`
+- Login and signup flows at `/login` and `/signup`
+- Protected builder at `/studio`
+- AI blueprint generation and page generation
+- Visual editor with canvas, layers, style inspector, responsive controls, and AI-assisted actions
+- Project save/load through Supabase
+- ZIP export of generated sites
 
 ## Setup
 
-### 1. Clone and install
+### 1. Install
 
 ```bash
-git clone <your-repo>
-cd sitezy
 npm install
 ```
 
@@ -37,117 +37,76 @@ npm install
 cp .env.example .env.local
 ```
 
-Edit `.env.local`:
+Fill in `.env.local`:
+
 ```env
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
-Get your API key at [console.anthropic.com](https://console.anthropic.com).
+Optional aliases supported by the AI service:
 
-### 3. Run
+```env
+SITEZY_SPARK_KEY=your-sitezy-spark-key
+SITEZY_SPARK_MODEL=claude-sonnet-4-20250514
+```
+
+### 3. Configure Supabase
+
+Run the SQL schema in Supabase:
+
+- [supabase/schema.sql](/Users/hashem/Desktop/sitezyV2%20copy/supabase/schema.sql)
+
+If you want a clean reset instead, use:
+
+- [supabase/reset-from-scratch.sql](/Users/hashem/Desktop/sitezyV2%20copy/supabase/reset-from-scratch.sql)
+
+In Supabase Auth settings:
+
+- Site URL: `http://localhost:3000`
+- Redirect URL: `http://localhost:3000/auth/callback`
+
+Enable any OAuth providers you want to use in Supabase Auth.
+
+### 4. Run locally
 
 ```bash
 npm run dev
-# Open http://localhost:3000
 ```
 
----
+Open [http://localhost:3000](http://localhost:3000).
 
-## Architecture
+## App routes
 
-```
-src/
-├── app/
-│   ├── api/
-│   │   ├── blueprint/route.ts    # Generate site blueprint
-│   │   ├── generate/route.ts     # Generate individual pages
-│   │   ├── assist/route.ts       # AI chat assistant (streaming)
-│   │   └── export/route.ts       # Export project as ZIP
-│   ├── page.tsx                  # Root page
-│   ├── layout.tsx
-│   └── globals.css
-├── components/
-│   ├── AppShell.tsx              # Dashboard ↔ Editor router
-│   ├── dashboard/
-│   │   ├── Dashboard.tsx
-│   │   ├── ProjectCard.tsx
-│   │   └── CreateProjectModal.tsx
-│   └── editor/
-│       ├── Editor.tsx
-│       ├── EditorTopBar.tsx
-│       ├── LeftSidebar.tsx       # Pages, files, blueprint
-│       ├── PreviewCanvas.tsx     # Preview + code editor
-│       ├── RightSidebar.tsx      # AI chat, properties, blocks
-│       └── FullPreviewModal.tsx
-├── lib/
-│   ├── ai/service.ts             # All Claude API calls (server-only)
-│   ├── store/index.ts            # Zustand store
-│   └── utils/index.ts
-└── types/index.ts
-```
+- `/` marketing landing page
+- `/login` sign in
+- `/signup` sign up
+- `/studio` protected builder
 
----
+## Main API routes
 
-## Generation Pipeline
+- `/api/blueprint`
+- `/api/generate`
+- `/api/assist`
+- `/api/projects`
+- `/api/projects/[id]`
+- `/api/regenerate-section`
+- `/api/export`
 
-```
-User Brief
-    ↓
-POST /api/blueprint  →  Site architecture, colors, typography, page map
-    ↓
-POST /api/generate   →  Per-page HTML (one request per page, parallel possible)
-    ↓
-Editor opens with    →  Live preview, code editor, AI assistant
-    ↓
-POST /api/export     →  ZIP with full HTML files + CSS + README
-```
+## Important notes
 
----
+- Project persistence is server-backed through Supabase, not local SQLite.
+- The save path now depends on the `public.save_project_snapshot(...)` SQL function defined in the Supabase SQL files.
+- The editor keeps one lightweight browser key only for the last opened project:
+  - `sitezy-last-project-id`
 
-## API Routes
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/blueprint` | POST | Generate site blueprint from brief |
-| `/api/generate` | POST | Generate a single page (streaming supported) |
-| `/api/assist` | POST | AI chat assistant (SSE streaming) |
-| `/api/export` | POST | Export project as ZIP download |
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | ✅ | Your Anthropic API key |
-| `ANTHROPIC_MODEL` | ✅ | Model to use (e.g. `claude-sonnet-4-20250514`) |
-| `NEXT_PUBLIC_APP_URL` | ❌ | Public URL (for production) |
-
----
-
-## Tech Stack
-
-- **Next.js 14** (App Router)
-- **React 18** + **TypeScript**
-- **Tailwind CSS**
-- **Zustand** (with `immer` + `persist`)
-- **Anthropic SDK** (`@anthropic-ai/sdk`)
-- **JSZip** (ZIP export)
-- **Lucide React** (icons)
-- **Framer Motion** (animations)
-
----
-
-## Production Deployment
+## Scripts
 
 ```bash
+npm run dev
 npm run build
-npm start
+npm run start
+npm run type-check
 ```
-
-Or deploy to **Vercel** — set `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` in your project's Environment Variables.
-
----
-
-*Built with [Sitezy](https://sitezy.app) · Powered by Claude*

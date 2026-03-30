@@ -6,8 +6,13 @@ import { X, Copy, Check, AlertTriangle } from "lucide-react";
 export function ErrorToast() {
   const apiError    = useAppStore((s) => s.apiError);
   const setApiError = useAppStore((s) => s.setApiError);
+  const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (apiError) {
@@ -16,7 +21,7 @@ export function ErrorToast() {
     }
   }, [apiError]);
 
-  if (!apiError || !visible) return null;
+  if (!mounted || !apiError || !visible) return null;
 
   const refId = apiError.requestId ?? apiError.code;
 
@@ -40,9 +45,8 @@ export function ErrorToast() {
     });
   }
 
-  // Map both legacy ERR_BILLING (from parseApiError) and new API_BILLING_001 code
-  const isBilling = apiError.code === "ERR_BILLING" || apiError.code === "API_BILLING_001";
-  const isAuth    = apiError.code === "ERR_AUTH" || apiError.code === "API_AUTH_001";
+  const isBilling = apiError.code === "API_BILLING_001";
+  const isAuth    = apiError.code === "API_AUTH_001";
 
   return (
     <div

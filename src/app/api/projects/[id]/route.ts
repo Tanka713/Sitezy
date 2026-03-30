@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProject, getProjectSnapshot, saveProjectSnapshot } from "@/lib/server/project-db";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
+import {
+  API_REQUEST_002,
+  AUTH_REQUIRED_001,
+  DB_DELETE_001,
+  DB_READ_001,
+  DB_READ_002,
+  DB_UPDATE_001,
+  VALIDATION_PROJECT_001,
+  createAppError,
+  handleRouteError,
+  parseRequestBody,
+} from "@/lib/errors";
 import type { AIChatMessage, EditorState, Project } from "@/types";
 
 export const runtime = "nodejs";
@@ -11,26 +24,66 @@ interface SavePayload {
 }
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+  const requestId = _.headers.get("x-request-id") ?? null;
   try {
-    const snapshot = getProjectSnapshot(params.id);
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: `Unauthenticated request to load project ${params.id}`,
+        severity: "warn",
+      });
+    }
+
+    const snapshot = await getProjectSnapshot(params.id, user.id);
     if (!snapshot) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      throw createAppError({
+        code: DB_READ_002,
+        devMessage: `Project ${params.id} not found for user ${user.id}`,
+        severity: "warn",
+        metadata: { projectId: params.id, userId: user.id },
+      });
     }
     return NextResponse.json(snapshot);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load project";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(error, requestId, DB_READ_001);
   }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const requestId = req.headers.get("x-request-id") ?? null;
   try {
-    const body = (await req.json()) as Partial<SavePayload>;
-    if (!body.project || body.project.id !== params.id) {
-      return NextResponse.json({ error: "Invalid project payload" }, { status: 400 });
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: `Unauthenticated request to save project ${params.id}`,
+        severity: "warn",
+      });
     }
 
-    const snapshot = saveProjectSnapshot({
+    const body = await parseRequestBody<Partial<SavePayload>>(req);
+    if (!body.project || body.project.id !== params.id) {
+      throw createAppError({
+        code: VALIDATION_PROJECT_001,
+        devMessage: `Invalid save payload for project ${params.id}`,
+        severity: "warn",
+        metadata: {
+          routeProjectId: params.id,
+          payloadProjectId: body.project?.id ?? null,
+        },
+      });
+    }
+
+    if (!body.editorState && !Array.isArray(body.aiChats)) {
+      throw createAppError({
+        code: API_REQUEST_002,
+        devMessage: `Save request for project ${params.id} omitted editorState and aiChats payload fields`,
+        severity: "warn",
+      });
+    }
+
+    const snapshot = await saveProjectSnapshot({
       project: body.project,
       editorState: body.editorState ?? {
         selectedPageId: null,
@@ -50,21 +103,29 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         visualEditMode: true,
       },
       aiChats: Array.isArray(body.aiChats) ? body.aiChats : [],
-    });
+    }, user.id);
 
     return NextResponse.json(snapshot);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to save project";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(error, requestId, DB_UPDATE_001);
   }
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+  const requestId = _.headers.get("x-request-id") ?? null;
   try {
-    deleteProject(params.id);
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: `Unauthenticated request to delete project ${params.id}`,
+        severity: "warn",
+      });
+    }
+
+    await deleteProject(params.id, user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete project";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleRouteError(error, requestId, DB_DELETE_001);
   }
 }

@@ -1,388 +1,356 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/store";
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Globe,
+  Palette,
+  Layout,
+  Sparkles,
+  Wand2,
+  Zap,
+} from "lucide-react";
+import { SitezyBadge, SitezyButton, SitezyCard } from "@/components/ui/sitezy";
 
-const C = "#f97316"; // brand orange
-
-const STEPS = [
-  { id: "brief",    label: "Reading your brief",       icon: "◈" },
-  { id: "brand",    label: "Defining brand identity",  icon: "⬡" },
-  { id: "layout",   label: "Planning architecture",    icon: "▣" },
-  { id: "palette",  label: "Building color system",    icon: "◉" },
-  { id: "generate", label: "Generating pages",         icon: "◈" },
-  { id: "polish",   label: "Polishing details",        icon: "⬡" },
+const STEP_ICONS = [
+  <Wand2 size={14} key="wand" />,
+  <Palette size={14} key="palette" />,
+  <Layout size={14} key="layout" />,
+  <Sparkles size={14} key="sparkles" />,
+  <Globe size={14} key="globe" />,
+  <Zap size={14} key="zap" />,
 ];
 
-interface Props { projectName: string; pageCount: number; }
+interface Props {
+  projectName: string;
+  pageCount: number;
+}
 
 export function GeneratingScreen({ projectName, pageCount }: Props) {
-  const genStatus   = useAppStore((s) => s.generationStatus);
+  const genStatus = useAppStore((s) => s.generationStatus);
   const genProgress = useAppStore((s) => s.generationProgress);
-  const genLog      = useAppStore((s) => s.generationLog);
-  const projects    = useAppStore((s) => s.projects);
-  const currentId   = useAppStore((s) => s.currentProjectId);
-  const apiError    = useAppStore((s) => s.apiError);
+  const genLog = useAppStore((s) => s.generationLog);
+  const projects = useAppStore((s) => s.projects);
+  const currentId = useAppStore((s) => s.currentProjectId);
+  const apiError = useAppStore((s) => s.apiError);
 
-  const project  = projects.find((p) => p.id === currentId);
-  const pages    = project?.pages ?? [];
-  const isDone   = genStatus === "done";
-  const isError  = genStatus === "error";
+  const project = projects.find((p) => p.id === currentId);
+  const pages = project?.pages ?? [];
+  const isDone = genStatus === "done";
+  const isError = genStatus === "error";
 
-  // Track which page is currently generating for live preview
-  const [previewPage, setPreviewPage] = useState<number>(0);
+  const [previewPage, setPreviewPage] = useState(0);
   const [tick, setTick] = useState(0);
-  const [entered, setEntered] = useState(false);
 
   const successCount = genLog.filter((l) => l.type === "success").length;
-  const totalSteps   = pageCount + 1;
-  const pct          = isDone ? 100 : Math.min(97, Math.round((successCount / Math.max(totalSteps, 1)) * 100));
-
+  const totalSteps = pageCount + 1;
+  const pct = isDone ? 100 : Math.min(97, Math.round((successCount / Math.max(totalSteps, 1)) * 100));
   const errorMsg = genLog.filter((l) => l.type === "error").slice(-1)[0]?.msg?.replace(/^❌\s*/, "") ?? "";
 
-  // Entrance animation
-  useEffect(() => { const t = setTimeout(() => setEntered(true), 50); return () => clearTimeout(t); }, []);
-
-  // Tick for animations
   useEffect(() => {
     if (isDone) return;
-    const id = setInterval(() => setTick(t => t + 1), 60);
+    const id = setInterval(() => setTick((value) => value + 1), 50);
     return () => clearInterval(id);
   }, [isDone]);
 
-  // Auto-cycle preview pages
   useEffect(() => {
     if (pages.length === 0 || isDone) return;
-    const id = setInterval(() => setPreviewPage(p => (p + 1) % Math.max(pages.length, 1)), 3000);
+    const id = setInterval(() => setPreviewPage((pageIndex) => (pageIndex + 1) % Math.max(pages.length, 1)), 3600);
     return () => clearInterval(id);
   }, [pages.length, isDone]);
 
-  // Show the page that just completed
   useEffect(() => {
-    const done = pages.findIndex((p) => p.status === "done");
-    if (done >= 0) setPreviewPage(done);
-  }, [successCount]);
+    const doneIndex = pages.findIndex((page) => page.status === "done");
+    if (doneIndex >= 0) setPreviewPage(doneIndex);
+  }, [successCount, pages]);
 
-  const currentPage  = pages[previewPage];
-  const hasAnyPage   = pages.some((p) => p.html);
-  const donePagesArr = pages.filter((p) => p.status === "done");
+  const currentPage = pages[previewPage];
+  const isBillingError = apiError?.code === "API_BILLING_001";
+  const isAuthError = apiError?.code === "API_AUTH_001";
+  const isRateLimitError = apiError?.code === "API_RATE_LIMIT_001";
+  const isTimeoutError = apiError?.code === "API_TIMEOUT_001";
 
   return (
-    <div
-      className="fixed inset-0 z-50 overflow-hidden flex"
-      style={{
-        background: "linear-gradient(135deg, #06060a 0%, #0a0814 50%, #06060a 100%)",
-        opacity: entered ? 1 : 0,
-        transition: "opacity 0.4s ease",
-      }}>
+    <div className="fixed inset-0 z-50 overflow-hidden bg-[linear-gradient(180deg,#06070b_0%,#090b10_100%)]">
+      <div className="absolute left-[12%] top-[8%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(107,119,255,0.18),transparent_68%)] blur-3xl" />
+      <div className="absolute bottom-[6%] right-[10%] h-[300px] w-[300px] rounded-full bg-[radial-gradient(circle,rgba(48,198,160,0.12),transparent_68%)] blur-3xl" />
 
-      {/* ── Animated grid background ───────────────────────────────────────── */}
-      <div className="absolute inset-0 opacity-[0.06]"
-        style={{
-          backgroundImage: `linear-gradient(${C}50 1px,transparent 1px),linear-gradient(90deg,${C}50 1px,transparent 1px)`,
-          backgroundSize: "48px 48px",
-          transform: `translateY(${(tick * 0.3) % 48}px)`,
-          transition: "none",
-        }}/>
-
-      {/* ── Glow orbs ─────────────────────────────────────────────────────── */}
-      <div className="absolute w-[600px] h-[600px] rounded-full opacity-[0.08] pointer-events-none"
-        style={{
-          background: `radial-gradient(circle, ${C}, transparent 70%)`,
-          left: `${30 + Math.sin(tick * 0.015) * 10}%`,
-          top: `${20 + Math.cos(tick * 0.012) * 8}%`,
-          transform: "translate(-50%,-50%)",
-          transition: "none",
-        }}/>
-      <div className="absolute w-[400px] h-[400px] rounded-full opacity-[0.06] pointer-events-none"
-        style={{
-          background: `radial-gradient(circle, #6366f1, transparent 70%)`,
-          right: `${10 + Math.cos(tick * 0.018) * 8}%`,
-          bottom: `${15 + Math.sin(tick * 0.014) * 6}%`,
-          transform: "translate(50%,50%)",
-          transition: "none",
-        }}/>
-
-      {/* ── Left panel — live page preview ────────────────────────────────── */}
-      <div className="flex-1 flex flex-col p-8 pr-0 relative z-10">
-
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[14px] font-black"
-            style={{ background: `${C}20`, color: C, border: `1px solid ${C}40` }}>✦</div>
-          <span className="text-[13px] font-semibold text-white/60">Sitezy</span>
-          <div className="flex-1"/>
-          {!isDone && !isError && (
-            <div className="flex items-center gap-2 text-[11px] text-white/30">
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: C }}/>
-              Building…
+      <div className="relative flex min-h-screen flex-col">
+        <header className="sz-topbar flex h-20 items-center justify-between px-8">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(129,140,255,0.24),rgba(107,119,255,0.1))] shadow-[0_14px_30px_rgba(65,78,255,0.22)]">
+              <span className="text-[16px] font-semibold tracking-[-0.04em]">S</span>
             </div>
-          )}
-        </div>
-
-        {/* Browser mockup with live page */}
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Browser chrome */}
-          <div className="rounded-t-2xl overflow-hidden border border-white/[0.1] border-b-0 flex-shrink-0"
-            style={{ background: "#111118" }}>
-            <div className="h-9 flex items-center gap-3 px-4 border-b border-white/[0.06]">
-              <div className="flex gap-1.5">
-                {["#ef4444","#f59e0b","#22c55e"].map((c) => (
-                  <div key={c} style={{ width:10, height:10, borderRadius:"50%", background:c, opacity:0.7 }}/>
-                ))}
-              </div>
-              {/* URL bar */}
-              <div className="flex-1 max-w-xs h-5 rounded-full flex items-center px-3 gap-2"
-                style={{ background: "rgba(255,255,255,0.06)" }}>
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: isDone ? "#22c55e" : C, opacity: 0.8 }}/>
-                <span className="text-[10px] text-white/30 font-mono truncate">
-                  {isDone
-                    ? `${projectName.toLowerCase().replace(/\s+/g,"-")}.com`
-                    : currentPage ? `/${currentPage.slug||currentPage.name.toLowerCase()}` : "generating…"}
-                </span>
-              </div>
-              {/* Page tabs */}
-              <div className="flex gap-1 ml-auto">
-                {pages.slice(0,5).map((p, i) => (
-                  <button key={p.id} onClick={() => setPreviewPage(i)}
-                    className="text-[9px] px-2 py-0.5 rounded transition-all"
-                    style={{
-                      background: previewPage===i ? `${C}20` : "rgba(255,255,255,0.04)",
-                      color: previewPage===i ? C : "rgba(255,255,255,0.3)",
-                      border: `1px solid ${previewPage===i ? C+"40" : "transparent"}`,
-                    }}>
-                    {p.name}
-                  </button>
-                ))}
-              </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-white/24">Generation</p>
+              <p className="text-[16px] font-semibold tracking-[-0.03em]">{projectName}</p>
             </div>
           </div>
 
-          {/* Page content area */}
-          <div className="flex-1 min-h-0 rounded-b-2xl overflow-hidden border border-white/[0.1] border-t-0 relative"
-            style={{ background: "#0d0d14" }}>
-
-            {/* Scan line when generating */}
-            {!isDone && !isError && (
-              <div className="absolute left-0 right-0 h-px pointer-events-none z-10"
-                style={{
-                  top: `${(tick * 1.5) % 100}%`,
-                  background: `linear-gradient(90deg,transparent,${C}60,transparent)`,
-                  boxShadow: `0 0 12px ${C}40`,
-                  transition: "none",
-                }}/>
-            )}
-
-            {/* Live iframe preview if page has HTML */}
-            {currentPage?.html ? (
-              <iframe
-                key={currentPage.id}
-                srcDoc={buildMinimalPreview(currentPage.html)}
-                className="w-full h-full border-none block"
-                style={{
-                  pointerEvents: "none",
-                  filter: currentPage.status === "generating" ? "brightness(0.7)" : "none",
-                  transition: "filter 0.5s",
-                  transform: `scale(0.75)`,
-                  transformOrigin: "top left",
-                  width: "133.33%",
-                  height: "133.33%",
-                }}
-                sandbox="allow-scripts"
-              />
+          <div className="flex items-center gap-3">
+            {!isError ? (
+              <SitezyBadge className={isDone ? "bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]" : "bg-[rgba(107,119,255,0.14)] text-[var(--text-accent)]"}>
+                {isDone ? <CheckCircle2 size={12} /> : <Loader2 size={12} className="spin" />}
+                {isDone ? "Ready" : "Building"}
+              </SitezyBadge>
             ) : (
-              /* Wireframe skeleton */
-              <div className="p-4 space-y-3 overflow-hidden h-full">
-                {[
-                  { h: 48,  label: "navbar",       delay: 0 },
-                  { h: 200, label: "hero",          delay: 0.1 },
-                  { h: 72,  label: "logo cloud",    delay: 0.2 },
-                  { h: 160, label: "features",      delay: 0.3 },
-                  { h: 130, label: "testimonials",  delay: 0.4 },
-                  { h: 100, label: "cta",           delay: 0.5 },
-                  { h: 80,  label: "footer",        delay: 0.6 },
-                ].map((s) => (
-                  <div key={s.label} className="rounded-lg relative overflow-hidden"
-                    style={{
-                      height: s.h,
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      animationDelay: `${s.delay}s`,
-                    }}>
-                    <div className="absolute top-2 left-3 flex items-center gap-1.5">
-                      <div className="w-1 h-1 rounded-full" style={{ background: C, opacity: 0.4 }}/>
-                      <span className="text-[8px] uppercase tracking-widest" style={{ color: C, opacity: 0.35 }}>{s.label}</span>
-                    </div>
-                    {/* Skeleton lines */}
-                    <div className="absolute inset-x-3 bottom-3 space-y-1.5">
-                      {Array.from({ length: Math.max(1, Math.floor(s.h / 30)) }).map((_, j) => (
-                        <div key={j} className="h-1.5 rounded-full"
-                          style={{
-                            background: "rgba(255,255,255,0.06)",
-                            width: `${55 + Math.sin(j * 3.7) * 35}%`,
-                          }}/>
-                      ))}
-                    </div>
-                    {/* Shimmer */}
-                    <div className="absolute inset-0"
-                      style={{
-                        background: `linear-gradient(90deg,transparent ${((tick*2)%140)-30}%,rgba(255,255,255,0.04) ${((tick*2)%140)}%,transparent ${((tick*2)%140)+30}%)`,
-                        transition: "none",
-                      }}/>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Done overlay */}
-            {isDone && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                style={{ background: `radial-gradient(circle at 50% 50%, ${C}18, transparent 70%)` }}>
-              </div>
+              <SitezyBadge className="bg-[rgba(240,106,116,0.12)] text-[#ffb7c0]">
+                <XCircle size={12} />
+                Failed
+              </SitezyBadge>
             )}
           </div>
-        </div>
+        </header>
 
-        {/* Page progress dots */}
-        <div className="flex items-center gap-2 mt-4 justify-center">
-          {pages.map((p, i) => (
-            <button key={p.id} onClick={() => setPreviewPage(i)}
-              className="rounded-full transition-all duration-300"
-              style={{
-                width: previewPage===i ? 20 : p.status==="done" ? 12 : 8,
-                height: 6,
-                background: p.status==="done" ? C
-                  : p.status==="generating" ? `${C}60`
-                  : "rgba(255,255,255,0.12)",
-              }}/>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Right panel — status ────────────────────────────────────────────── */}
-      <div className="w-[360px] flex flex-col p-8 relative z-10 flex-shrink-0" style={{ borderLeft: "1px solid rgba(255,255,255,0.05)" }}>
-
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-10">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-black"
-            style={{ background: `${C}18`, color: C, border: `1px solid ${C}30` }}>✦</div>
-          <span className="text-[12px] font-semibold tracking-tight" style={{ color: "rgba(255,255,255,0.35)" }}>Sitezy</span>
-        </div>
-
-        {/* Project title + status badge */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-3">
-            {!isDone && !isError && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: `${C}15`, color: C, border: `1px solid ${C}30` }}>
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: C }}/>
-                Building
-              </span>
-            )}
-            {isDone && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
-                <span>✓</span> Complete
-              </span>
-            )}
-            {isError && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}>
-                <span>✕</span> Failed
-              </span>
-            )}
-          </div>
-          <h1 className="text-[26px] font-black text-white leading-tight tracking-tight">
-            {projectName}
-          </h1>
-          {!isDone && !isError && genProgress && (
-            <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
-              {genProgress}
-            </p>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        {!isError && (
-          <div className="mb-7">
-            <div className="h-[3px] rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <div className="h-full rounded-full relative overflow-hidden transition-all duration-700 ease-out"
-                style={{
-                  width: `${pct}%`,
-                  background: isDone
-                    ? "linear-gradient(90deg,#22c55e,#4ade80)"
-                    : `linear-gradient(90deg,${C}cc,${C})`,
-                  boxShadow: isDone ? "0 0 10px rgba(34,197,94,0.5)" : `0 0 10px ${C}50`,
-                }}>
-                {!isDone && (
-                  <div className="absolute inset-0"
-                    style={{
-                      background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.3) 50%,transparent 100%)",
-                      animation: "shimmer 1.5s infinite",
-                    }}/>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span style={{ color: "rgba(255,255,255,0.2)" }}>{isDone ? "All pages ready" : `${pct}% complete`}</span>
-              <span style={{ color: "rgba(255,255,255,0.2)" }}>{successCount} / {totalSteps}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Steps */}
-        <div className="space-y-1 mb-6">
-          <Step label="Site blueprint" done={successCount >= 1} active={!isError && successCount === 0} color={C} />
-          {pages.map((p) => (
-            <Step key={p.id} label={p.name} done={p.status === "done"} active={p.status === "generating"} error={p.status === "error"} color={C} />
-          ))}
-        </div>
-
-        {/* Error panel */}
-        {isError && (
-          <div className="rounded-xl overflow-hidden mb-5" style={{ border: "1px solid rgba(239,68,68,0.2)" }}>
-            <div className="px-4 py-3.5" style={{ background: "rgba(239,68,68,0.07)" }}>
-              <p className="text-[12px] font-semibold mb-1" style={{ color: "#f87171" }}>Generation failed</p>
-              <p className="text-[11px] leading-relaxed" style={{ color: "rgba(239,100,100,0.65)" }}>
-                {apiError?.code === "ERR_BILLING"
-                  ? "API credit balance is too low. Please upgrade or add credits to continue."
-                  : errorMsg || "Check your API key and try again"}
+        <div className="grid flex-1 gap-8 px-8 pb-8 pt-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="flex min-h-0 flex-col gap-6">
+            <div className="max-w-[780px] space-y-5">
+              <SitezyBadge>{isDone ? "Complete" : "In progress"}</SitezyBadge>
+              <h1 className="text-[44px] font-semibold leading-[0.98] tracking-[-0.05em] md:text-[64px]">
+                {isDone ? "Your website is ready." : "Your site is taking shape."}
+              </h1>
+              <p className="max-w-[620px] text-[16px] leading-8 text-[var(--text-secondary)]">
+                {isDone
+                  ? "The generated project is ready to open in the visual editor."
+                  : genProgress || "Structure, pages, and sections are being assembled into a full editable project."}
               </p>
             </div>
-            {(apiError?.requestId || apiError?.code) && (
-              <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ background: "rgba(239,68,68,0.03)", borderTop: "1px solid rgba(239,68,68,0.1)" }}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[9px] font-bold tracking-widest uppercase flex-shrink-0" style={{ color: "rgba(239,68,68,0.35)" }}>Ref</span>
-                  <code className="text-[10px] font-mono truncate" style={{ color: "rgba(239,100,100,0.45)" }}>{apiError?.requestId ?? apiError?.code}</code>
-                </div>
-                <CopyButton text={apiError?.requestId ?? apiError?.code ?? ""} />
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* Build log */}
-        <div className="flex-1 min-h-0 rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.045)" }}>
-          <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-            {!isDone && !isError && <span className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0" style={{ background: C }}/>}
-            <span className="text-[9px] uppercase tracking-[0.12em] font-semibold" style={{ color: "rgba(255,255,255,0.18)" }}>Build log</span>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3 text-[12px] uppercase tracking-[0.18em] text-white/24">
+                  <span>Live preview</span>
+                </div>
+                {!isError ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[12px] text-[var(--text-tertiary)]">{pct}%</span>
+                    <div className="h-2 w-40 overflow-hidden rounded-full bg-white/[0.08]">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#7a85ff,#5a66ff)] transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <SitezyCard className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+                <div className="flex h-14 items-center gap-3 border-b border-white/[0.06] bg-black/16 px-5">
+                  <div className="flex gap-1.5">
+                    {["#ef4444", "#f59e0b", "#22c55e"].map((color) => (
+                      <span key={color} className="h-2.5 w-2.5 rounded-full opacity-60" style={{ background: color }} />
+                    ))}
+                  </div>
+                  <div className="flex h-8 items-center rounded-full border border-white/[0.06] bg-white/[0.03] px-4 text-[11px] text-white/30">
+                    {isDone
+                      ? `${projectName.toLowerCase().replace(/\s+/g, "-")}.com`
+                      : currentPage
+                      ? `/${currentPage.slug || currentPage.name.toLowerCase()}`
+                      : "building..."}
+                  </div>
+                </div>
+
+                <div className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(107,119,255,0.08),transparent_24%),#0a0c12]">
+                  {!isDone && !isError ? (
+                    <div
+                      className="absolute left-0 right-0 z-10 h-px"
+                      style={{
+                        top: `${(tick * 1.1) % 100}%`,
+                        background: "linear-gradient(90deg,transparent,rgba(120,138,255,0.5),transparent)",
+                        boxShadow: "0 0 8px rgba(120,138,255,0.24)",
+                      }}
+                    />
+                  ) : null}
+
+                  <div className="absolute inset-6">
+                    {currentPage?.html ? (
+                      <iframe
+                        key={currentPage.id}
+                        srcDoc={buildMinimalPreview(currentPage.html)}
+                        className="block h-full w-full rounded-[24px] border-none bg-white shadow-[0_24px_54px_rgba(0,0,0,0.3)]"
+                        style={{
+                          pointerEvents: "none",
+                          filter: currentPage.status === "generating" ? "brightness(0.72) blur(0.8px)" : "none",
+                        }}
+                        sandbox="allow-scripts"
+                      />
+                    ) : (
+                      <div className="grid h-full gap-4 rounded-[24px] border border-white/[0.06] bg-[rgba(255,255,255,0.02)] p-6">
+                        {[44, 180, 80, 150, 110].map((height, index) => (
+                          <div key={height} className="rounded-[20px] border border-white/[0.06] bg-white/[0.03] p-4">
+                            <div className="h-3 w-16 rounded-full bg-white/[0.08]" />
+                            <div className="mt-4 rounded-[18px] bg-white/[0.05]" style={{ height }} />
+                            {index === 1 ? <div className="mt-4 h-4 w-3/4 rounded-full bg-white/[0.06]" /> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </SitezyCard>
+
+              {pages.length > 1 ? (
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  {pages.map((page, index) => (
+                    <button
+                      key={page.id}
+                      onClick={() => setPreviewPage(index)}
+                      className="rounded-full transition-all"
+                      style={{
+                        width: previewPage === index ? 22 : 8,
+                        height: 8,
+                        background:
+                          page.status === "done"
+                            ? previewPage === index
+                              ? "rgba(120,138,255,0.95)"
+                              : "rgba(120,138,255,0.42)"
+                            : page.status === "generating"
+                            ? "rgba(120,138,255,0.32)"
+                            : "rgba(255,255,255,0.12)",
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
-          <div className="p-3 space-y-1.5 overflow-auto max-h-[160px] font-mono text-[10px]">
-            {[...genLog].reverse().slice(0, 15).map((e) => (
-              <div key={e.id} style={{
-                color: e.type==="error" ? "rgba(248,113,113,0.75)"
-                  : e.type==="success" ? "rgba(74,222,128,0.75)"
-                  : e.type==="progress" ? "rgba(255,255,255,0.4)"
-                  : "rgba(255,255,255,0.2)"
-              }}>{e.msg}</div>
-            ))}
-            {genLog.length === 0 && <span style={{ color: "rgba(255,255,255,0.18)" }}>Starting…</span>}
+
+          <div className="flex min-h-0 flex-col gap-6">
+            <SitezyCard className="p-6">
+              <div className="space-y-5">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Progress</p>
+                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                  <Metric title="Completed" value={`${successCount}`} detail={`of ${totalSteps} stages`} />
+                  <Metric title="Pages" value={`${pageCount}`} detail="targeted for generation" />
+                  <Metric title="Status" value={isDone ? "Ready" : isError ? "Error" : "Building"} detail={isDone ? "open in editor next" : "live assembly"} />
+                </div>
+              </div>
+            </SitezyCard>
+
+            <SitezyCard className="p-6">
+              <div className="space-y-5">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Pipeline</p>
+                <div className="space-y-2">
+                  <StepRow label="Site blueprint" done={successCount >= 1} active={!isError && successCount === 0} icon={STEP_ICONS[0]} />
+                  {pages.map((page, index) => (
+                    <StepRow
+                      key={page.id}
+                      label={page.name}
+                      done={page.status === "done"}
+                      active={page.status === "generating"}
+                      error={page.status === "error"}
+                      icon={STEP_ICONS[(index + 1) % STEP_ICONS.length]}
+                    />
+                  ))}
+                </div>
+              </div>
+            </SitezyCard>
+
+            {isError ? (
+              <SitezyCard className="border-[rgba(240,106,116,0.16)] bg-[rgba(240,106,116,0.06)] p-6">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#ffb7c0]">Generation failed</p>
+                    <p className="mt-3 text-[14px] leading-7 text-[#ffced3]">
+                      {isBillingError
+                        ? "API credits are exhausted. Top up and run generation again."
+                        : isAuthError
+                        ? "Authentication failed. Reconnect your provider and retry."
+                        : isRateLimitError
+                        ? "You hit a rate limit. Wait a moment and try again."
+                        : isTimeoutError
+                        ? "The request took too long. Retry generation."
+                        : errorMsg || apiError?.message || "Something went wrong while generating this project."}
+                    </p>
+                  </div>
+                  {apiError?.requestId || apiError?.code ? (
+                    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-[rgba(240,106,116,0.12)] bg-black/12 px-4 py-3">
+                      <code className="truncate text-[11px] text-[#ffced3]/70">{apiError?.requestId ?? apiError?.code}</code>
+                      <CopyButton text={apiError?.requestId ?? apiError?.code ?? ""} />
+                    </div>
+                  ) : null}
+                </div>
+              </SitezyCard>
+            ) : null}
+
+            <SitezyCard className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+              <div className="border-b border-white/[0.06] px-5 py-4">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Activity</p>
+              </div>
+              <div className="flex-1 overflow-auto px-5 py-4">
+                <div className="space-y-2 font-mono text-[11px]">
+                  {[...genLog].reverse().slice(0, 18).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`rounded-[16px] border px-3 py-2 ${
+                        entry.type === "error"
+                          ? "border-[rgba(240,106,116,0.12)] bg-[rgba(240,106,116,0.05)] text-[#ffced3]/85"
+                          : entry.type === "success"
+                          ? "border-[rgba(49,196,141,0.12)] bg-[rgba(49,196,141,0.05)] text-[#b7f1d3]/82"
+                          : "border-white/[0.05] bg-white/[0.03] text-white/44"
+                      }`}
+                    >
+                      {entry.msg}
+                    </div>
+                  ))}
+                  {genLog.length === 0 ? <div className="text-white/20">Starting...</div> : null}
+                </div>
+              </div>
+            </SitezyCard>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <style>{`
-        @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(200%)} }
-      `}</style>
+function Metric({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-white/24">{title}</p>
+      <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em]">{value}</p>
+      <p className="mt-2 text-[12px] text-[var(--text-tertiary)]">{detail}</p>
+    </div>
+  );
+}
+
+function StepRow({
+  label,
+  done,
+  active,
+  error,
+  icon,
+}: {
+  label: string;
+  done: boolean;
+  active: boolean;
+  error?: boolean;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-4 rounded-[18px] border border-white/[0.05] bg-white/[0.03] px-4 py-3">
+      <div
+        className={`flex h-10 w-10 items-center justify-center rounded-[14px] border ${
+          done
+            ? "border-[rgba(49,196,141,0.22)] bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]"
+            : error
+            ? "border-[rgba(240,106,116,0.22)] bg-[rgba(240,106,116,0.12)] text-[#ffb7c0]"
+            : active
+            ? "border-accent-400/24 bg-accent-500/14 text-[var(--text-accent)]"
+            : "border-white/[0.07] bg-white/[0.02] text-white/26"
+        }`}
+      >
+        {done ? <CheckCircle2 size={14} /> : error ? <XCircle size={14} /> : active ? <Loader2 size={14} className="spin" /> : icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[14px] font-medium text-[var(--text-primary)]">{label}</p>
+        <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+          {done ? "Done" : error ? "Failed" : active ? "Working" : "Queued"}
+        </p>
+      </div>
     </div>
   );
 }
@@ -390,54 +358,22 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
-      onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
-      className="text-[10px] px-2 py-1 rounded-lg flex-shrink-0 transition-all"
-      style={{ background: "rgba(239,68,68,0.08)", color: copied ? "#4ade80" : "rgba(239,68,68,0.5)", border: "1px solid rgba(239,68,68,0.15)" }}
+    <SitezyButton
+      type="button"
+      variant="secondary"
+      size="sm"
+      onClick={() =>
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+      }
     >
       {copied ? "Copied" : "Copy"}
-    </button>
+    </SitezyButton>
   );
 }
 
-function Step({ label, done, active, error, color }: {
-  label: string; done: boolean; active: boolean; error?: boolean; color: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-      {/* Status dot */}
-      <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-500"
-        style={{
-          background: done ? "rgba(34,197,94,0.15)" : error ? "rgba(239,68,68,0.12)" : active ? `${color}15` : "rgba(255,255,255,0.04)",
-          border: `1.5px solid ${done ? "rgba(34,197,94,0.4)" : error ? "rgba(239,68,68,0.35)" : active ? `${color}45` : "rgba(255,255,255,0.08)"}`,
-          boxShadow: active ? `0 0 6px ${color}30` : "none",
-        }}>
-        {done && <span style={{ fontSize: 8, color: "#4ade80" }}>✓</span>}
-        {error && <span style={{ fontSize: 8, color: "#f87171" }}>✕</span>}
-        {active && <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "block", animation: "pulse 1s infinite" }}/>}
-      </div>
-      {/* Label */}
-      <span className="text-[12px] flex-1 transition-all duration-300"
-        style={{
-          color: done ? "rgba(255,255,255,0.7)" : error ? "rgba(248,113,113,0.8)" : active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.22)",
-          fontWeight: active ? 500 : 400,
-          letterSpacing: "-0.01em",
-        }}>
-        {label}
-      </span>
-      {/* State label */}
-      {active && (
-        <span className="text-[9px] font-mono" style={{ color: `${color}70`, animation: "pulse 1.5s infinite" }}>
-          working…
-        </span>
-      )}
-      {done && <span className="text-[9px]" style={{ color: "rgba(74,222,128,0.5)" }}>done</span>}
-      {error && <span className="text-[9px]" style={{ color: "rgba(248,113,113,0.5)" }}>failed</span>}
-    </div>
-  );
-}
-
-// Build a minimal preview of page HTML that loads instantly
 function buildMinimalPreview(html: string): string {
   return `<!DOCTYPE html><html><head>
 <meta charset="UTF-8"/>
@@ -445,7 +381,7 @@ function buildMinimalPreview(html: string): string {
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{overflow:hidden;pointer-events:none;background:#fff}
+  body{overflow:hidden;pointer-events:none}
   img{max-width:100%;height:auto}
 </style>
 </head><body>${html}</body></html>`;

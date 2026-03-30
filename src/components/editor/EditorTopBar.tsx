@@ -1,18 +1,35 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/lib/store";
-import { downloadBlob } from "@/lib/utils";
+import { downloadBlob, extractNavbarHtml } from "@/lib/utils";
+import { streamGeneratePage } from "@/lib/utils/generateStream";
 import {
   ArrowLeft, Download, Maximize2,
   Loader2, CheckCircle2, AlertCircle, RefreshCw,
-  ChevronDown, Zap, Pencil, Check, X, Save,
+  ChevronDown, Zap, Pencil, Check, X, Save, Layers3, SlidersHorizontal,
 } from "lucide-react";
 import { createAppError, logAppError, normalizeError, API_GENERATE_001, SAVE_SERIALIZE_001 } from "@/lib/errors";
+import { SitezyBadge, SitezyButton } from "@/components/ui/sitezy";
 import type { Project, PageSection } from "@/types";
 
-interface Props { project: Project; }
+interface Props {
+  project: Project;
+  leftOpen: boolean;
+  rightOpen: boolean;
+  onToggleLeft: () => void;
+  onToggleRight: () => void;
+  iframeRef?: React.RefObject<HTMLIFrameElement | null>;
+}
 
-export function EditorTopBar({ project }: Props) {
+function TopBarTooltip({ label }: { label: string }) {
+  return (
+    <span className="pointer-events-none absolute left-1/2 top-full z-[220] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-white/[0.08] bg-[#11141d] px-2.5 py-1 text-[10px] font-medium text-white/90 opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+      {label}
+    </span>
+  );
+}
+
+export function EditorTopBar({ project, leftOpen, rightOpen, onToggleLeft, onToggleRight, iframeRef }: Props) {
   const closeProject    = useAppStore((s) => s.closeProject);
   const setFullPreview  = useAppStore((s) => s.setFullPreview);
   const undo            = useAppStore((s) => s.undo);
@@ -27,6 +44,7 @@ export function EditorTopBar({ project }: Props) {
   const renameProject         = useAppStore((s) => s.renameProject);
   const saveCurrentProject    = useAppStore((s) => s.saveCurrentProject);
   const saveState             = useAppStore((s) => s.saveState);
+  const setApiError           = useAppStore((s) => s.setApiError);
   const visualEditMode        = useAppStore((s) => s.editor.visualEditMode);
 
   const [showRegenMenu, setShowRegenMenu] = useState(false);
@@ -41,15 +59,22 @@ export function EditorTopBar({ project }: Props) {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
+    function postToPreviewFrame(type: "undo" | "redo") {
+      const frame = iframeRef?.current;
+      if (frame?.contentWindow) {
+        frame.contentWindow.postMessage({ target: "sitezy-iframe", type }, "*");
+        return true;
+      }
+      return false;
+    }
+
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         if (visualEditMode) {
-          // Route to iframe's own undo stack when in visual edit mode
-          const iframe = document.querySelector("iframe") as HTMLIFrameElement | null;
-          iframe?.contentWindow?.postMessage({ target: "sitezy-iframe", type: "undo" }, "*");
+          if (!postToPreviewFrame("undo")) undo();
         } else {
           undo();
         }
@@ -61,8 +86,7 @@ export function EditorTopBar({ project }: Props) {
       if ((e.key === "z" && e.shiftKey) || e.key === "y") {
         e.preventDefault();
         if (visualEditMode) {
-          const iframe = document.querySelector("iframe") as HTMLIFrameElement | null;
-          iframe?.contentWindow?.postMessage({ target: "sitezy-iframe", type: "redo" }, "*");
+          if (!postToPreviewFrame("redo")) redo();
         } else {
           redo();
         }
@@ -70,7 +94,7 @@ export function EditorTopBar({ project }: Props) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, visualEditMode, saveCurrentProject]);
+  }, [iframeRef, undo, redo, visualEditMode, saveCurrentProject]);
 
   function handleNameSave() {
     if (nameVal.trim() && nameVal !== project.name) renameProject(project.id, nameVal.trim());
@@ -101,7 +125,15 @@ export function EditorTopBar({ project }: Props) {
     } catch (err) {
       const appErr = normalizeError(err, SAVE_SERIALIZE_001);
       logAppError(appErr);
-      alert(appErr.userMessage);
+      const requestId =
+        typeof appErr.metadata?.requestId === "string" && appErr.metadata.requestId.trim()
+          ? appErr.metadata.requestId
+          : null;
+      setApiError({
+        message: appErr.userMessage,
+        requestId,
+        code: appErr.code,
+      });
     } finally {
       setExporting(false);
     }
@@ -113,6 +145,8 @@ export function EditorTopBar({ project }: Props) {
     setGenStatus("pages", "Regenerating all pages...");
     addGenLog("🔄 Regenerating entire site...", "progress");
     const pages = project.pages ?? [];
+    let sharedNavbarHtml: string | null = null;
+    let successCount = 0;
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       setPageStatus(page.id, "generating");
@@ -120,27 +154,30 @@ export function EditorTopBar({ project }: Props) {
       addGenLog(`📄 Regenerating ${page.name}...`, "progress");
       try {
         const bpPage = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map((s) => s.type || s.name), purpose: page.purpose };
-        const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blueprint: project.blueprint, page: bpPage, brief: project.brief }) });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({})) as { error?: string; code?: string };
-          throw createAppError({
-            code: API_GENERATE_001,
-            devMessage: `Regenerate failed for "${page.name}" (${res.status}): ${data.error ?? "unknown"}`,
-            severity: "error",
-            metadata: { pageId: page.id, pageName: page.name, apiCode: data.code },
-          });
-        }
-        const result: { html: string; sections: PageSection[] } = await res.json();
+        const result = await streamGeneratePage(
+          { blueprint: project.blueprint, page: bpPage, brief: project.brief, navbarHtml: i > 0 ? sharedNavbarHtml : null },
+          (chars) => setGenStatus("pages", `Regenerating ${page.name} (${i + 1}/${pages.length})… ${(chars / 1000).toFixed(1)}k`),
+          120_000
+        );
         setPageContent(page.id, result.html, result.sections);
+        successCount += 1;
         addGenLog(`✅ ${page.name} regenerated`, "success");
+        if (i === 0 && !sharedNavbarHtml && result.html) {
+          sharedNavbarHtml = extractNavbarHtml(result.html);
+        }
       } catch (err) {
         const appErr = normalizeError(err, API_GENERATE_001, { pageId: page.id, pageName: page.name });
         logAppError(appErr);
         setPageStatus(page.id, "error");
-        addGenLog(`⚠️ ${page.name} failed`, "error");
+        addGenLog(`⚠️ ${page.name} failed: ${appErr.userMessage}`, "error");
       }
     }
-    setGenStatus("done", "All pages regenerated!");
+    const failCount = pages.length - successCount;
+    const summary = failCount === 0
+      ? "All pages regenerated!"
+      : `${successCount}/${pages.length} pages regenerated (${failCount} failed)`;
+    setGenStatus("done", summary);
+    addGenLog(failCount === 0 ? "✅ All done!" : `⚠️ Done with ${failCount} failure${failCount > 1 ? "s" : ""}.`, failCount === 0 ? "success" : "error");
   }
 
   async function handleRegenerateCurrent() {
@@ -153,17 +190,11 @@ export function EditorTopBar({ project }: Props) {
     addGenLog(`🔄 Regenerating ${page.name}...`, "progress");
     try {
       const bpPage = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map((s) => s.type || s.name), purpose: page.purpose };
-      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blueprint: project.blueprint, page: bpPage, brief: project.brief }) });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string; code?: string };
-        throw createAppError({
-          code: API_GENERATE_001,
-          devMessage: `Regenerate current page failed for "${page.name}" (${res.status}): ${data.error ?? "unknown"}`,
-          severity: "error",
-          metadata: { pageId: page.id, pageName: page.name, apiCode: data.code },
-        });
-      }
-      const result: { html: string; sections: PageSection[] } = await res.json();
+      const result = await streamGeneratePage(
+        { blueprint: project.blueprint, page: bpPage, brief: project.brief },
+        (chars) => setGenStatus("pages", `Regenerating ${page.name}… ${(chars / 1000).toFixed(1)}k`),
+        120_000
+      );
       setPageContent(page.id, result.html, result.sections);
       addGenLog(`✅ ${page.name} regenerated`, "success");
       setGenStatus("done", "Page regenerated!");
@@ -177,116 +208,190 @@ export function EditorTopBar({ project }: Props) {
   }
 
   return (
-    <header className="h-12 border-b border-white/[0.06] flex items-center gap-1.5 px-3 flex-shrink-0 bg-[#080809]">
+    <header className="sz-topbar relative z-[140] flex h-[60px] flex-shrink-0 items-center gap-3 overflow-visible px-3 md:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <div className="group relative">
+          <SitezyButton variant="ghost" size="sm" onClick={() => closeProject()} className="h-9 min-h-[36px] px-3">
+            <ArrowLeft size={14} />
+            <span className="hidden lg:inline">Workspace</span>
+          </SitezyButton>
+          <div className="lg:hidden">
+            <TopBarTooltip label="Workspace" />
+          </div>
+        </div>
 
-      {/* Back */}
-      <button onClick={() => closeProject()}
-        className="flex items-center gap-1.5 px-2 py-1.5 text-white/40 hover:text-white/80 hover:bg-white/[0.04] rounded-lg text-[12px] transition-colors flex-shrink-0">
-        <ArrowLeft size={13} />
-        <span className="hidden sm:inline">Dashboard</span>
-      </button>
+        <div className="hidden h-6 w-px bg-white/[0.06] lg:block" />
 
-      <div className="w-px h-5 bg-white/[0.06] mx-0.5" />
-
-      {/* Project name — inline editable */}
-      {editingName ? (
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <input
-            ref={nameInputRef}
-            autoFocus
-            value={nameVal}
-            onChange={(e) => setNameVal(e.target.value)}
-            onBlur={handleNameSave}
-            onKeyDown={(e) => { if (e.key === "Enter") handleNameSave(); if (e.key === "Escape") { setNameVal(project.name); setEditingName(false); } }}
-            className="bg-white/[0.06] border border-brand-500/40 rounded-lg px-2 py-1 text-[13px] text-white font-semibold focus:outline-none w-36"
-          />
-          <button onClick={handleNameSave} className="w-6 h-6 flex items-center justify-center text-emerald-400 hover:bg-white/[0.06] rounded transition-colors">
-            <Check size={11} />
+        <div className="hidden items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] p-1 lg:flex">
+          <button
+            onClick={onToggleLeft}
+            aria-label="Toggle structure panel"
+            title="Structure (⌘/Ctrl+\\)"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-all ${
+              leftOpen
+                ? "bg-white/[0.08] text-white"
+                : "text-white/42 hover:bg-white/[0.05] hover:text-white/72"
+            }`}
+          >
+            <Layers3 size={14} />
           </button>
-          <button onClick={() => { setNameVal(project.name); setEditingName(false); }} className="w-6 h-6 flex items-center justify-center text-white/30 hover:bg-white/[0.06] rounded transition-colors">
-            <X size={11} />
+          <button
+            onClick={onToggleRight}
+            aria-label="Toggle inspector panel"
+            title="Inspector (⌘/Ctrl+Shift+\\)"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-all ${
+              rightOpen
+                ? "bg-white/[0.08] text-white"
+                : "text-white/42 hover:bg-white/[0.05] hover:text-white/72"
+            }`}
+          >
+            <SlidersHorizontal size={14} />
           </button>
         </div>
-      ) : (
-        <button
-          onClick={() => { setEditingName(true); setTimeout(() => nameInputRef.current?.select(), 50); }}
-          className="flex items-center gap-1.5 group flex-shrink-0 px-1 py-1 rounded-lg hover:bg-white/[0.04] transition-colors">
-          <span className="text-[13px] font-semibold text-white/80 max-w-[160px] truncate">{project.name}</span>
-          <Pencil size={10} className="text-white/0 group-hover:text-white/30 transition-colors flex-shrink-0" />
-        </button>
-      )}
 
-      {/* Status pill */}
-      <div className="flex-shrink-0 ml-0.5">
+        <div className="min-w-0 flex-1">
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={nameInputRef}
+                autoFocus
+                value={nameVal}
+                onChange={(e) => setNameVal(e.target.value)}
+                onBlur={handleNameSave}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleNameSave();
+                  if (e.key === "Escape") {
+                    setNameVal(project.name);
+                    setEditingName(false);
+                  }
+                }}
+                className="sz-input min-h-[38px] max-w-[240px]"
+              />
+              <button onClick={handleNameSave} className="flex h-8 w-8 items-center justify-center rounded-full text-emerald-300 transition-all hover:bg-white/[0.06]">
+                <Check size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  setNameVal(project.name);
+                  setEditingName(false);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/34 transition-all hover:bg-white/[0.06] hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setEditingName(true);
+                setTimeout(() => nameInputRef.current?.select(), 50);
+              }}
+              className="group flex min-w-0 items-center gap-2 rounded-[16px] border border-transparent px-2.5 py-1.5 transition-all hover:border-white/[0.06] hover:bg-white/[0.03]"
+            >
+              <div className="min-w-0 text-left">
+                <p className="truncate text-[15px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">{project.name}</p>
+              </div>
+              <Pencil size={12} className="text-white/0 transition-colors group-hover:text-white/32" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden items-center gap-2 xl:flex">
         {isGenerating ? (
-          <span className="flex items-center gap-1.5 text-[11px] text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-full border border-brand-500/20">
-            <Loader2 size={9} className="spin" />
-            {genProgress ? genProgress.slice(0, 28) + (genProgress.length > 28 ? "…" : "") : "Generating"}
-          </span>
+          <SitezyBadge className="bg-[rgba(107,119,255,0.14)] text-[var(--text-accent)]">
+            <Loader2 size={11} className="spin" />
+            {genProgress ? genProgress.slice(0, 34) + (genProgress.length > 34 ? "…" : "") : "Generating"}
+          </SitezyBadge>
         ) : isSaved ? (
-          <span className="flex items-center gap-1 text-[11px] text-emerald-500/50">
-            <CheckCircle2 size={9} /> Saved
-          </span>
+          <SitezyBadge className="bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]">
+            <CheckCircle2 size={11} />
+            Synced
+          </SitezyBadge>
         ) : (
-          <span className="flex items-center gap-1 text-[11px] text-amber-500/50">
-            <AlertCircle size={9} /> Unsaved
-          </span>
+          <SitezyBadge className="bg-[rgba(240,176,76,0.12)] text-[#ffd999]">
+            <AlertCircle size={11} />
+            Draft changes
+          </SitezyBadge>
         )}
       </div>
 
-      <div className="flex-1" />
-
-      {/* Regenerate dropdown */}
-      <div className="relative" onMouseLeave={() => setShowRegenMenu(false)}>
-        <button
-          onClick={() => setShowRegenMenu(!showRegenMenu)}
-          disabled={!project.blueprint || isGenerating}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-white/50 hover:text-white/90 hover:bg-white/[0.05] border border-white/[0.08] rounded-lg text-[12px] font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-          <RefreshCw size={11} className={isGenerating ? "spin" : ""} />
-          <span className="hidden md:inline">Regenerate</span>
-          <ChevronDown size={10} />
-        </button>
-        {showRegenMenu && (
-          <div className="absolute right-0 top-[calc(100%+4px)] w-52 bg-[#111116] border border-white/[0.1] rounded-xl shadow-2xl shadow-black/50 z-50 py-1.5 overflow-hidden animate-fade-in">
-            <p className="px-3 py-1 text-[10px] text-white/25 uppercase tracking-wider font-semibold">Regenerate</p>
-            <button onClick={handleRegenerateCurrent}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors">
-              <Zap size={12} className="text-brand-400" /> Current page only
-            </button>
-            <button onClick={handleRegenerateAll}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors">
-              <RefreshCw size={12} className="text-amber-400" /> Entire website
-            </button>
+      <div className="relative z-[150] flex items-center gap-2">
+        <div className="group relative" onMouseLeave={() => setShowRegenMenu(false)}>
+          <SitezyButton
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowRegenMenu(!showRegenMenu)}
+            disabled={!project.blueprint || isGenerating}
+            className="h-9 min-h-[36px] px-3"
+          >
+            <RefreshCw size={14} className={isGenerating ? "spin" : ""} />
+            <span className="hidden xl:inline">Regenerate</span>
+            <ChevronDown size={13} />
+          </SitezyButton>
+          <div className="xl:hidden">
+            <TopBarTooltip label="Regenerate" />
           </div>
-        )}
+          {showRegenMenu ? (
+            <div className="absolute right-0 top-full z-[220] w-60 pt-2">
+              <div className="overflow-hidden rounded-[22px] border border-white/[0.08] bg-[rgba(12,15,22,0.98)] p-2 shadow-[0_24px_54px_rgba(0,0,0,0.35)] backdrop-blur-xl animate-fade-in">
+                <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/24">Regenerate</p>
+                <button
+                  onClick={handleRegenerateCurrent}
+                  className="flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left text-[13px] text-[var(--text-secondary)] transition-all hover:bg-white/[0.05] hover:text-[var(--text-primary)]"
+                >
+                  <Zap size={14} className="text-[var(--text-accent)]" />
+                  Current page
+                </button>
+                <button
+                  onClick={handleRegenerateAll}
+                  className="flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left text-[13px] text-[var(--text-secondary)] transition-all hover:bg-white/[0.05] hover:text-[var(--text-primary)]"
+                >
+                  <RefreshCw size={14} className="text-amber-300" />
+                  Entire website
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="group relative">
+          <SitezyButton
+            variant={isSaved || saveState === "saved" ? "secondary" : "primary"}
+            size="sm"
+            onClick={() => saveCurrentProject({ manual: true })}
+            disabled={saveState === "saving" || isSaved}
+            title="Save project (⌘S)"
+            className="h-9 min-h-[36px] px-3"
+          >
+            {saveState === "saving" ? <Loader2 size={14} className="spin" /> : isSaved ? <CheckCircle2 size={14} /> : <Save size={14} />}
+            <span className="hidden xl:inline">{saveState === "saving" ? "Saving…" : isSaved ? "Saved" : "Save"}</span>
+          </SitezyButton>
+          <div className="xl:hidden">
+            <TopBarTooltip label={saveState === "saving" ? "Saving" : isSaved ? "Saved" : "Save"} />
+          </div>
+        </div>
+
+        <div className="group relative">
+          <SitezyButton variant="secondary" size="sm" onClick={handleExport} disabled={exporting} className="h-9 min-h-[36px] px-3">
+            {exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+            <span className="hidden xl:inline">Export</span>
+          </SitezyButton>
+          <div className="xl:hidden">
+            <TopBarTooltip label="Export" />
+          </div>
+        </div>
+
+        <div className="group relative">
+          <SitezyButton variant="primary" size="sm" onClick={() => setFullPreview(true)} className="h-9 min-h-[36px] px-3">
+            <Maximize2 size={14} />
+            <span className="hidden xl:inline">Preview</span>
+          </SitezyButton>
+          <div className="xl:hidden">
+            <TopBarTooltip label="Preview" />
+          </div>
+        </div>
       </div>
-
-      {/* Save */}
-      <button
-        onClick={() => saveCurrentProject({ manual: true })}
-        disabled={saveState === "saving" || isSaved}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-white/50 hover:text-white/90 hover:bg-white/[0.05] border border-white/[0.08] rounded-lg text-[12px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-        {saveState === "saving"
-          ? <Loader2 size={11} className="spin" />
-          : saveState === "saved" || isSaved
-          ? <CheckCircle2 size={11} className="text-emerald-400" />
-          : <Save size={11} />}
-        <span className="hidden md:inline">Save</span>
-      </button>
-
-      {/* Export */}
-      <button onClick={handleExport} disabled={exporting}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-white/50 hover:text-white/90 hover:bg-white/[0.05] border border-white/[0.08] rounded-lg text-[12px] font-medium transition-colors disabled:opacity-50">
-        {exporting ? <Loader2 size={11} className="spin" /> : <Download size={11} />}
-        <span className="hidden md:inline">Export</span>
-      </button>
-
-      {/* Full preview */}
-      <button onClick={() => setFullPreview(true)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-600 hover:bg-brand-500 text-white border border-brand-500/30 rounded-lg text-[12px] font-medium transition-all shadow-sm shadow-brand-500/20 hover:shadow-brand-500/30">
-        <Maximize2 size={11} />
-        <span className="hidden md:inline">Preview</span>
-      </button>
     </header>
   );
 }

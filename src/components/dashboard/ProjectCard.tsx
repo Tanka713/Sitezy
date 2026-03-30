@@ -1,9 +1,47 @@
 "use client";
-import { useState, useRef } from "react";
+
+import { useRef, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { formatDate } from "@/lib/utils";
-import { MoreHorizontal, Pencil, Trash2, ExternalLink, FileCode2 } from "lucide-react";
+import {
+  Check, Copy, ExternalLink, FileCode2, MoreHorizontal, Pencil, Trash2,
+} from "lucide-react";
+import { SitezyButton, SitezyBadge } from "@/components/ui/sitezy";
 import type { Project } from "@/types";
+
+// ── Thumbnail ──────────────────────────────────────────────────────────────────
+
+function ProjectThumbnail({ projectId }: { projectId: string }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="absolute inset-0 bg-[#080b11]">
+      {!loaded && (
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/[0.05] to-transparent" />
+      )}
+      <iframe
+        src={`/api/preview-frame?projectId=${projectId}`}
+        title="Site preview"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "1440px",
+          height: "900px",
+          border: "none",
+          transform: "scale(0.278)",
+          transformOrigin: "top left",
+          pointerEvents: "none",
+          opacity: loaded ? 1 : 0,
+          transition: "opacity 0.4s ease",
+        }}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
+
+// ── Card ───────────────────────────────────────────────────────────────────────
 
 interface Props {
   project: Project;
@@ -11,22 +49,24 @@ interface Props {
 }
 
 export function ProjectCard({ project, viewMode = "grid" }: Props) {
-  const openProject = useAppStore((s) => s.openProject);
-  const deleteProject = useAppStore((s) => s.deleteProject);
-  const renameProject = useAppStore((s) => s.renameProject);
-  const [showMenu, setShowMenu]   = useState(false);
-  const [editing, setEditing]     = useState(false);
-  const [nameVal, setNameVal]     = useState(project.name);
+  const openProject     = useAppStore((s) => s.openProject);
+  const deleteProject   = useAppStore((s) => s.deleteProject);
+  const duplicateProject = useAppStore((s) => s.duplicateProject);
+  const renameProject   = useAppStore((s) => s.renameProject);
+
+  const [showMenu, setShowMenu]       = useState(false);
+  const [editing, setEditing]         = useState(false);
+  const [nameVal, setNameVal]         = useState(project.name);
   const [armedDelete, setArmedDelete] = useState(false);
+  const [hovered, setHovered]         = useState(false);
   const armRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const bp = project?.blueprint ?? null;
-  const pageCount = project?.pages?.length ?? 0;
-  const donePages = project?.pages?.filter((p) => p.status === "done").length ?? 0;
-  const isReady = project.status === "ready" || donePages > 0;
-
-  const primaryColor = bp?.colorScheme?.primary ?? "#7c3aed";
-  const secondaryColor = bp?.colorScheme?.secondary ?? "#2563eb";
+  const bp         = project?.blueprint ?? null;
+  const pageCount  = project?.pages?.length ?? 0;
+  const donePages  = project?.pages?.filter((p) => p.status === "done").length ?? 0;
+  const isReady    = project.status === "ready" || donePages > 0;
+  const isGenerating = project.status === "generating";
+  const primaryColor = bp?.colorScheme?.primary ?? "#6b77ff";
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
@@ -42,161 +82,217 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
   }
 
   function handleRename() {
-    if (nameVal.trim() && nameVal !== project.name) {
-      void renameProject(project.id, nameVal.trim());
-    }
+    if (nameVal.trim() && nameVal !== project.name) void renameProject(project.id, nameVal.trim());
     setEditing(false);
   }
 
+  // ── List view ────────────────────────────────────────────────────────────────
+
   if (viewMode === "list") {
     return (
-      <div className="flex items-center gap-4 p-4 bg-white/[0.03] border border-white/[0.07] rounded-xl hover:border-white/[0.12] transition-colors group">
-        <div
-          className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-sm"
-          style={{ background: `linear-gradient(135deg, ${primaryColor}33, ${secondaryColor}33)`, border: `1px solid ${primaryColor}33` }}
-        >
-          {project.name.slice(0, 2).toUpperCase()}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => void openProject(project.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openProject(project.id); }
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="grid w-full grid-cols-[2.8fr_1fr_1.3fr_100px] items-center gap-4 rounded-[22px] border border-white/[0.05] bg-white/[0.02] px-5 py-4 text-left transition-all hover:border-white/[0.1] hover:bg-white/[0.04]"
+      >
+        <div className="flex min-w-0 items-center gap-4">
+          {/* Mini thumbnail */}
+          <div className="relative h-12 w-20 flex-shrink-0 overflow-hidden rounded-[12px] border border-white/[0.08]">
+            {isReady ? (
+              <ProjectThumbnail projectId={project.id} />
+            ) : (
+              <div
+                className="absolute inset-0"
+                style={{ background: `linear-gradient(135deg, ${primaryColor}26, rgba(255,255,255,0.04))` }}
+              />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold tracking-[-0.02em]">{project.name}</p>
+            <p className="mt-0.5 truncate text-[12px] text-[var(--text-tertiary)]">
+              {bp?.layoutStyle ?? "Untitled blueprint"}
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-[14px] truncate">{project.name}</p>
-          <p className="text-white/30 text-[12px]">
-            {formatDate(project.createdAt)} · {pageCount} pages
-            {bp ? ` · ${bp.layoutStyle}` : ""}
-          </p>
+
+        <div>
+          {isGenerating && <SitezyBadge className="bg-[rgba(107,119,255,0.14)] text-[var(--text-accent)]">Generating</SitezyBadge>}
+          {isReady && <SitezyBadge className="bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]">{donePages}/{pageCount} pages</SitezyBadge>}
         </div>
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => void openProject(project.id)}
-            className="px-3 py-1.5 text-[12px] bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-colors"
+
+        <p className="text-[12px] text-[var(--text-tertiary)]">{formatDate(project.createdAt)}</p>
+
+        <div className="flex justify-end">
+          <SitezyButton
+            variant={hovered ? "primary" : "secondary"}
+            size="sm"
+            className="min-w-[92px]"
+            onClick={(e) => { e.stopPropagation(); void openProject(project.id); }}
           >
             Open
-          </button>
-          <button
-            onClick={handleDelete}
-            title={armedDelete ? "Click again to confirm" : "Delete project"}
-            className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${armedDelete ? "text-red-400 bg-red-500/15" : "text-white/30 hover:text-red-400 hover:bg-red-500/10"}`}
-          >
-            <Trash2 size={13} />
-          </button>
+          </SitezyButton>
         </div>
       </div>
     );
   }
 
+  // ── Grid view ────────────────────────────────────────────────────────────────
+
   return (
     <div
-      className="bg-[#0e0e12] border border-white/[0.07] rounded-xl overflow-hidden hover:border-white/[0.14] transition-all group"
-      onMouseLeave={() => setShowMenu(false)}
+      className="group relative flex flex-col overflow-hidden rounded-[24px] border border-white/[0.06] bg-[rgba(255,255,255,0.02)] transition-all duration-200"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setShowMenu(false); }}
+      style={{
+        transform: hovered ? "translateY(-4px)" : "translateY(0)",
+        boxShadow: hovered
+          ? "0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.09)"
+          : "0 2px 16px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06)",
+      }}
     >
-      {/* Thumbnail */}
+      {/* Thumbnail area */}
       <div
-        className="h-36 relative flex items-center justify-center"
-        style={{
-          background: bp
-            ? `linear-gradient(135deg, ${primaryColor}18 0%, ${secondaryColor}12 100%)`
-            : "#0d0d10",
+        role="button"
+        tabIndex={0}
+        onClick={() => void openProject(project.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openProject(project.id); }
         }}
+        className="relative h-[260px] cursor-pointer overflow-hidden"
       >
-        {bp ? (
-          <div className="text-center">
-            <div
-              className="text-3xl font-black mb-1"
-              style={{ color: primaryColor, opacity: 0.9, fontFamily: bp.typography?.headingFont }}
-            >
-              {project.name.slice(0, 2).toUpperCase()}
-            </div>
-            <div className="text-[10px] text-white/30 tracking-wider uppercase">
-              {bp.layoutStyle}
-            </div>
-          </div>
+        {isReady ? (
+          <ProjectThumbnail projectId={project.id} />
         ) : (
-          <FileCode2 size={28} className="text-white/10" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: bp
+                ? `radial-gradient(circle at top left, ${primaryColor}35, transparent 55%), linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))`
+                : "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
+            }}
+          >
+            {!bp && (
+              <div className="flex h-full items-center justify-center">
+                <FileCode2 size={32} className="text-white/[0.12]" />
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Status badge */}
-        <div className="absolute top-3 left-3 flex gap-1.5">
+        {/* Bottom fade */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(9,11,18,0.88)] via-[rgba(9,11,18,0.1)] to-transparent" />
+
+        {/* Status badges — top left */}
+        <div className="absolute left-4 top-4 flex flex-wrap gap-1.5">
+          {isGenerating && (
+            <SitezyBadge className="bg-[rgba(107,119,255,0.18)] text-[var(--text-accent)] backdrop-blur-sm">
+              Generating
+            </SitezyBadge>
+          )}
           {isReady && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+            <SitezyBadge className="bg-[rgba(49,196,141,0.14)] text-[#9fe5c6] backdrop-blur-sm">
+              <Check size={10} />
               {donePages}/{pageCount} pages
-            </span>
+            </SitezyBadge>
           )}
         </div>
 
-        {/* Menu button */}
-        <div className="absolute top-2 right-2">
+        {/* Menu — top right */}
+        <div className="absolute right-3 top-3">
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-black/40 text-white/50 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.1] bg-black/40 text-white/50 opacity-0 backdrop-blur-sm transition-all hover:text-white group-hover:opacity-100"
           >
-            <MoreHorizontal size={14} />
+            <MoreHorizontal size={15} />
           </button>
+
           {showMenu && (
-            <div className="absolute right-0 top-8 w-44 bg-[#111116] border border-white/10 rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
-              <button
-                onClick={() => { void openProject(project.id); setShowMenu(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.05] hover:text-white transition-colors"
-              >
-                <ExternalLink size={13} /> Open Editor
-              </button>
-              <button
-                onClick={() => { setEditing(true); setShowMenu(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.05] hover:text-white transition-colors"
-              >
-                <Pencil size={13} /> Rename
-              </button>
-              <div className="h-px bg-white/[0.06] my-1" />
-              <button
-                onClick={handleDelete}
-                className={`flex items-center gap-2.5 w-full px-3 py-2 text-[13px] transition-colors ${armedDelete ? "text-red-400 bg-red-500/10" : "text-red-400/80 hover:bg-red-500/10 hover:text-red-400"}`}
-              >
-                <Trash2 size={13} /> {armedDelete ? "Confirm delete?" : "Delete"}
-              </button>
+            <div className="absolute right-0 top-11 z-20 w-44 rounded-[18px] border border-white/[0.08] bg-[rgba(12,15,24,0.98)] p-2 shadow-[0_24px_54px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+              <MenuAction onClick={() => { void openProject(project.id); setShowMenu(false); }} icon={<ExternalLink size={14} />} label="Open editor" />
+              <MenuAction onClick={() => { setEditing(true); setShowMenu(false); }} icon={<Pencil size={14} />} label="Rename" />
+              <MenuAction onClick={() => { void duplicateProject(project.id); setShowMenu(false); }} icon={<Copy size={14} />} label="Duplicate" />
+              <div className="my-1.5 h-px bg-white/[0.06]" />
+              <MenuAction onClick={handleDelete} icon={<Trash2 size={14} />} label={armedDelete ? "Confirm delete?" : "Delete"} danger />
             </div>
           )}
         </div>
 
-        {/* Color dots */}
-        {bp?.colorScheme && (
-          <div className="absolute bottom-3 right-3 flex gap-1">
-            {Object.values(bp.colorScheme).slice(0, 4).map((color, i) => (
-              <div
-                key={i}
-                className="w-3 h-3 rounded-full border border-black/20"
-                style={{ background: color as string }}
-              />
-            ))}
-          </div>
-        )}
+        {/* Name overlay at bottom */}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-5">
+          {editing ? null : (
+            <>
+              <h3 className="truncate text-[17px] font-semibold tracking-[-0.03em] text-white drop-shadow-sm">
+                {project.name}
+              </h3>
+              <p className="mt-1 text-[11px] text-white/[0.42]">
+                {formatDate(project.createdAt)}
+                {bp?.typography?.headingFont ? ` · ${bp.typography.headingFont}` : ""}
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="p-4">
+      {/* Bottom strip */}
+      <div className="flex items-center justify-between gap-3 border-t border-white/[0.05] px-5 py-4">
         {editing ? (
           <input
             autoFocus
             value={nameVal}
             onChange={(e) => setNameVal(e.target.value)}
             onBlur={handleRename}
-            onKeyDown={(e) => e.key === "Enter" && handleRename()}
-            className="w-full bg-white/[0.05] border border-brand-500/40 rounded-lg px-2 py-1 text-[14px] font-medium text-white focus:outline-none mb-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleRename();
+              if (e.key === "Escape") { setNameVal(project.name); setEditing(false); }
+            }}
+            className="sz-input min-h-[36px] flex-1 text-[14px]"
+            onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <h3 className="font-semibold text-[14px] text-white/90 mb-1 truncate">
-            {project.name}
-          </h3>
+          <p className="max-w-[70%] truncate text-[12px] text-[var(--text-secondary)]">
+            {project.brief?.description || "Open to start editing."}
+          </p>
         )}
-        <p className="text-white/30 text-[11px] mb-3">
-          {formatDate(project.createdAt)}
-          {bp?.typography?.headingFont ? ` · ${bp.typography.headingFont}` : ""}
-        </p>
-        <button
-          onClick={() => void openProject(project.id)}
-          className="w-full flex items-center justify-center gap-1.5 py-2 bg-brand-600/90 hover:bg-brand-600 text-white text-[13px] font-medium rounded-lg transition-colors"
-        >
-          Open Editor
-          <ExternalLink size={12} />
-        </button>
+        {!editing && (
+          <SitezyButton variant="primary" size="sm" onClick={() => void openProject(project.id)}>
+            Open
+            <ExternalLink size={13} />
+          </SitezyButton>
+        )}
       </div>
     </div>
+  );
+}
+
+// ── Menu item ─────────────────────────────────────────────────────────────────
+
+function MenuAction({
+  onClick, icon, label, danger = false,
+}: {
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left text-[13px] transition-all ${
+        danger
+          ? "text-[#ffb7c0] hover:bg-[rgba(240,106,116,0.12)]"
+          : "text-[var(--text-secondary)] hover:bg-white/[0.05] hover:text-[var(--text-primary)]"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

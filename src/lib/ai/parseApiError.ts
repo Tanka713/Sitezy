@@ -21,15 +21,17 @@ export function parseApiError(err: unknown): {
       const errorMsg  = parsed.error?.message ?? raw;
       const requestId = parsed.request_id ?? null;
 
-      let code = "ERR_API";
+      let code = "API_UNKNOWN_001";
       if (errorType === "invalid_request_error" && errorMsg.toLowerCase().includes("credit")) {
-        code = "ERR_BILLING";
+        code = "API_BILLING_001";
       } else if (errorType === "authentication_error") {
-        code = "ERR_AUTH";
+        code = "API_AUTH_001";
       } else if (errorType === "rate_limit_error") {
-        code = "ERR_RATE_LIMIT";
+        code = "API_RATE_LIMIT_001";
       } else if (errorType === "overloaded_error") {
-        code = "ERR_OVERLOADED";
+        code = "API_UNKNOWN_001";
+      } else if (errorType === "api_error") {
+        code = "API_GENERATE_001";
       }
 
       const statusMatch = raw.match(/^(\d{3})\s/);
@@ -39,5 +41,5 @@ export function parseApiError(err: unknown): {
     } catch {}
   }
 
-  return { message: raw, requestId: null, code: "ERR_UNKNOWN", status: 500 };
+  return { message: raw, requestId: null, code: "API_UNKNOWN_001", status: 500 };
 }

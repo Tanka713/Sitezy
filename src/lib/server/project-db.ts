@@ -1,40 +1,41 @@
-import fs from "node:fs";
-import path from "node:path";
-import { createRequire } from "node:module";
-import type { AIChatMessage, EditorState, Project, ProjectPage, VirtualFile, SiteBrief } from "@/types";
-
-type Statement = {
-  run: (...params: unknown[]) => unknown;
-  get: (...params: unknown[]) => unknown;
-  all: (...params: unknown[]) => unknown[];
-};
-
-type DatabaseSyncLike = {
-  exec: (sql: string) => void;
-  prepare: (sql: string) => Statement;
-};
-
-type DatabaseSyncCtor = new (path: string) => DatabaseSyncLike;
-
-const require = createRequire(import.meta.url);
-const DatabaseSync = (require("node:sqlite") as { DatabaseSync: DatabaseSyncCtor }).DatabaseSync;
-
-export interface ProjectSnapshot {
-  project: Project;
-  editorState: EditorState;
-  aiChats: AIChatMessage[];
-}
+import type {
+  AIChatMessage,
+  EditorState,
+  Project,
+  ProjectPage,
+  ProjectSnapshot,
+  SiteBrief,
+  SiteBlueprint,
+  VirtualFile,
+} from "@/types";
+import {
+  createMediaLibraryFile,
+  extractMediaLibraryFromFileList,
+  normalizeMediaAssets,
+} from "@/lib/media/library";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  DB_DELETE_001,
+  DB_READ_001,
+  DB_SCHEMA_001,
+  DB_WRITE_001,
+  DB_WRITE_002,
+  DB_WRITE_003,
+  createAppError,
+  type ErrorCode,
+} from "@/lib/errors";
 
 type ProjectRow = {
   id: string;
+  user_id: string | null;
   name: string;
-  brief_json: string;
-  blueprint_json: string | null;
+  brief_json: SiteBrief;
+  blueprint_json: SiteBlueprint | null;
   status: Project["status"];
   created_at: string;
   updated_at: string;
-  editor_state_json: string | null;
-  ai_chats_json: string | null;
+  editor_state_json: Partial<EditorState> | null;
+  ai_chats_json: AIChatMessage[] | null;
 };
 
 type PageRow = {
@@ -44,7 +45,7 @@ type PageRow = {
   slug: string;
   purpose: string;
   html: string;
-  sections_json: string;
+  sections_json: ProjectPage["sections"];
   status: ProjectPage["status"];
   error: string | null;
   sort_order: number;
@@ -63,8 +64,43 @@ type FileRow = {
   sort_order: number;
 };
 
-const DB_DIR = path.join(process.cwd(), ".sitezy");
-const DB_PATH = path.join(DB_DIR, "sitezy.db");
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+const CONSTRAINT_CODES = new Set(["23502", "23503", "23505", "23514"]);
+
+function buildDbError(
+  error: unknown,
+  fallbackCode: ErrorCode,
+  devMessage: string,
+  metadata?: Record<string, unknown>
+) {
+  const maybe = (error ?? {}) as SupabaseErrorLike;
+  let code = fallbackCode;
+
+  if (typeof maybe.code === "string" && CONSTRAINT_CODES.has(maybe.code)) {
+    code = DB_WRITE_002;
+  } else if (maybe.code === "PGRST202" || maybe.message?.includes("save_project_snapshot")) {
+    code = DB_SCHEMA_001;
+  }
+
+  return createAppError({
+    code,
+    devMessage,
+    severity: "error",
+    metadata: {
+      ...metadata,
+      ...(maybe.code ? { dbCode: maybe.code } : {}),
+      ...(maybe.details ? { dbDetails: maybe.details } : {}),
+      ...(maybe.hint ? { dbHint: maybe.hint } : {}),
+    },
+    cause: error,
+  });
+}
 
 const defaultEditorState: EditorState = {
   selectedPageId: null,
@@ -84,125 +120,22 @@ const defaultEditorState: EditorState = {
   visualEditMode: true,
 };
 
-// ─── Schema Migration Framework ───────────────────────────────────────────────
-// Each migration has a unique integer version. Migrations are idempotent —
-// adding a migration for a column that already exists will simply be skipped.
-// New fields in EditorState / JSON blobs do NOT require a DB migration because
-// they are stored as JSON and are merged with defaults on read.
-
-type MigrationEntry = { version: number; up: (db: DatabaseSyncLike) => void };
-
-const MIGRATIONS: MigrationEntry[] = [
-  // v1: initial schema — no ALTER needed, handled in ensureDb CREATE TABLE.
-  // Add future migrations here as the schema evolves, e.g.:
-  // { version: 2, up: (db) => db.exec("ALTER TABLE projects ADD COLUMN thumbnail TEXT") },
-];
-
-function runMigrations(db: DatabaseSyncLike): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  type MigRow = { version: number };
-  const applied = new Set(
-    (db.prepare("SELECT version FROM schema_migrations").all() as MigRow[]).map((r) => r.version)
-  );
-
-  for (const mig of MIGRATIONS) {
-    if (applied.has(mig.version)) continue;
-    try {
-      db.exec("BEGIN");
-      mig.up(db);
-      db.prepare("INSERT INTO schema_migrations (version) VALUES (?)").run(mig.version);
-      db.exec("COMMIT");
-    } catch (err) {
-      try { db.exec("ROLLBACK"); } catch {}
-      console.warn(`[sitezy-db] Migration v${mig.version} failed:`, err);
-    }
-  }
-}
-
-function ensureDb(): DatabaseSyncLike {
-  fs.mkdirSync(DB_DIR, { recursive: true });
-
-  const globalDb = globalThis as typeof globalThis & { __sitezyDb?: DatabaseSyncLike };
-  if (globalDb.__sitezyDb) return globalDb.__sitezyDb;
-
-  const db = new DatabaseSync(DB_PATH);
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      brief_json TEXT NOT NULL,
-      blueprint_json TEXT,
-      status TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      editor_state_json TEXT,
-      ai_chats_json TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS pages (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      purpose TEXT NOT NULL,
-      html TEXT NOT NULL,
-      sections_json TEXT NOT NULL,
-      status TEXT NOT NULL,
-      error TEXT,
-      sort_order INTEGER NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_pages_project_id ON pages(project_id, sort_order);
-
-    CREATE TABLE IF NOT EXISTS files (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-      linked_page_id TEXT,
-      name TEXT NOT NULL,
-      path TEXT NOT NULL,
-      content TEXT NOT NULL,
-      type TEXT NOT NULL,
-      language TEXT NOT NULL,
-      sort_order INTEGER NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_files_project_id ON files(project_id, sort_order);
-  `);
-
-  // Run any pending schema migrations
-  runMigrations(db);
-
-  globalDb.__sitezyDb = db;
-  return db;
-}
-
-function parseJson<T>(value: string | null, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function normalizeProject(project: Partial<Project>): Project {
   return {
     id: project.id ?? crypto.randomUUID(),
     name: project.name ?? "Untitled Project",
-    brief: project.brief ?? { siteName: "", description: "", siteType: "", tone: "Professional", pages: [], features: "" },
+    brief: project.brief ?? {
+      siteName: "",
+      description: "",
+      siteType: "",
+      tone: "Professional",
+      pages: [],
+      features: "",
+    },
     blueprint: project.blueprint ?? null,
     pages: Array.isArray(project.pages) ? project.pages : [],
     files: project.files && typeof project.files === "object" ? project.files : {},
+    media: normalizeMediaAssets(project.media),
     createdAt: project.createdAt ?? new Date().toISOString(),
     updatedAt: project.updatedAt ?? new Date().toISOString(),
     status: project.status ?? "draft",
@@ -212,25 +145,27 @@ function normalizeProject(project: Partial<Project>): Project {
 function normalizePage(row: PageRow): ProjectPage {
   const name = row.name || "Page";
   const slug = row.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
   return {
     id: row.id,
     name,
     slug,
     purpose: row.purpose || "",
     html: row.html || "",
-    sections: parseJson(row.sections_json, []),
-    status: (["pending","generating","done","error"].includes(row.status) ? row.status : "done") as ProjectPage["status"],
+    sections: Array.isArray(row.sections_json) ? row.sections_json : [],
+    status: (["pending", "generating", "done", "error"].includes(row.status) ? row.status : "done") as ProjectPage["status"],
     error: row.error ?? undefined,
   };
 }
 
 function rowToSnapshot(projectRow: ProjectRow, pageRows: PageRow[], fileRows: FileRow[]): ProjectSnapshot {
-  const pages: ProjectPage[] = pageRows
+  const extracted = extractMediaLibraryFromFileList(fileRows);
+  const pages = [...pageRows]
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(normalizePage);
 
   const files = Object.fromEntries(
-    fileRows
+    [...extracted.files]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((row) => [
         row.id,
@@ -249,107 +184,235 @@ function rowToSnapshot(projectRow: ProjectRow, pageRows: PageRow[], fileRows: Fi
     project: normalizeProject({
       id: projectRow.id,
       name: projectRow.name,
-      brief: parseJson(projectRow.brief_json, {
-        siteName: "",
-        description: "",
-        siteType: "",
-        tone: "Professional",
-        pages: [],
-        features: "",
-      } as SiteBrief),
-      blueprint: parseJson(projectRow.blueprint_json, null),
+      brief: projectRow.brief_json,
+      blueprint: projectRow.blueprint_json,
       pages,
       files,
+      media: extracted.media,
       createdAt: projectRow.created_at,
       updatedAt: projectRow.updated_at,
       status: projectRow.status,
     }),
     editorState: {
       ...defaultEditorState,
-      ...parseJson(projectRow.editor_state_json, {}),
-      visualEditMode: true, // always on — canvas is always editable
+      ...(projectRow.editor_state_json ?? {}),
+      visualEditMode: true,
     },
-    aiChats: parseJson(projectRow.ai_chats_json, []),
+    aiChats: Array.isArray(projectRow.ai_chats_json) ? projectRow.ai_chats_json : [],
   };
 }
 
-export function listProjects(): Project[] {
-  const db = ensureDb();
-  const projectRows = db.prepare(`
-    SELECT id, name, brief_json, blueprint_json, status, created_at, updated_at, editor_state_json, ai_chats_json
-    FROM projects
-    ORDER BY updated_at DESC
-  `).all() as ProjectRow[];
+async function saveProjectSnapshotLegacy(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  project: Project,
+  editorState: EditorState,
+  aiChats: AIChatMessage[],
+  userId: string
+) {
+  const mediaFile = createMediaLibraryFile(project.media);
+  const { error: projectError } = await supabase.from("projects").upsert({
+    id: project.id,
+    user_id: userId,
+    name: project.name,
+    brief_json: project.brief,
+    blueprint_json: project.blueprint,
+    status: project.status,
+    created_at: project.createdAt,
+    updated_at: project.updatedAt,
+    editor_state_json: editorState,
+    ai_chats_json: aiChats,
+  });
 
-  const pageStmt = db.prepare(`
-    SELECT id, project_id, name, slug, purpose, html, sections_json, status, error, sort_order, updated_at
-    FROM pages
-    WHERE project_id = ?
-    ORDER BY sort_order ASC
-  `);
+  if (projectError) {
+    throw buildDbError(projectError, DB_WRITE_001, `Legacy save failed while upserting project ${project.id}`, {
+      projectId: project.id,
+      userId,
+      stage: "project-upsert",
+    });
+  }
 
-  const fileStmt = db.prepare(`
-    SELECT id, project_id, linked_page_id, name, path, content, type, language, sort_order
-    FROM files
-    WHERE project_id = ?
-    ORDER BY sort_order ASC
-  `);
+  const { error: deletePagesError } = await supabase.from("pages").delete().eq("project_id", project.id);
+  if (deletePagesError) {
+    throw buildDbError(deletePagesError, DB_WRITE_003, `Legacy save failed while clearing pages for ${project.id}`, {
+      projectId: project.id,
+      userId,
+      stage: "pages-delete",
+    });
+  }
 
-  return projectRows.map((projectRow) =>
+  const { error: deleteFilesError } = await supabase.from("files").delete().eq("project_id", project.id);
+  if (deleteFilesError) {
+    throw buildDbError(deleteFilesError, DB_WRITE_003, `Legacy save failed while clearing files for ${project.id}`, {
+      projectId: project.id,
+      userId,
+      stage: "files-delete",
+    });
+  }
+
+  if (project.pages.length) {
+    const { error: pagesError } = await supabase.from("pages").insert(
+      project.pages.map((page, index) => ({
+        id: page.id,
+        project_id: project.id,
+        name: page.name,
+        slug: page.slug,
+        purpose: page.purpose,
+        html: page.html,
+        sections_json: page.sections ?? [],
+        status: page.status,
+        error: page.error ?? null,
+        sort_order: index,
+        updated_at: project.updatedAt,
+      }))
+    );
+
+    if (pagesError) {
+      throw buildDbError(pagesError, DB_WRITE_003, `Legacy save failed while inserting pages for ${project.id}`, {
+        projectId: project.id,
+        userId,
+        stage: "pages-insert",
+        pageCount: project.pages.length,
+      });
+    }
+  }
+
+  const fileValues = [...Object.values(project.files), ...(mediaFile ? [mediaFile] : [])];
+  if (fileValues.length) {
+    const { error: filesError } = await supabase.from("files").insert(
+      fileValues.map((file, index) => ({
+        id: file.id,
+        project_id: project.id,
+        linked_page_id: project.pages.some((page) => page.id === file.id) ? file.id : null,
+        name: file.name,
+        path: file.path,
+        content: file.content,
+        type: file.type,
+        language: file.language,
+        sort_order: index,
+      }))
+    );
+
+    if (filesError) {
+      throw buildDbError(filesError, DB_WRITE_003, `Legacy save failed while inserting files for ${project.id}`, {
+        projectId: project.id,
+        userId,
+        stage: "files-insert",
+        fileCount: fileValues.length,
+      });
+    }
+  }
+}
+
+export async function listProjects(userId: string): Promise<Project[]> {
+  const supabase = getSupabaseServerClient();
+
+  const { data: projectRows, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw buildDbError(error, DB_READ_001, `Failed to list projects for user ${userId}`, { userId });
+  }
+
+  const projects = (projectRows ?? []) as ProjectRow[];
+  if (!projects.length) return [];
+
+  const projectIds = projects.map((project) => project.id);
+
+  const [{ data: pageRows, error: pagesError }, { data: fileRows, error: filesError }] = await Promise.all([
+    supabase
+      .from("pages")
+      .select("*")
+      .in("project_id", projectIds)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("files")
+      .select("*")
+      .in("project_id", projectIds)
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  if (pagesError) {
+    throw buildDbError(pagesError, DB_READ_001, `Failed to load pages for listed projects`, { userId, projectIds });
+  }
+  if (filesError) {
+    throw buildDbError(filesError, DB_READ_001, `Failed to load files for listed projects`, { userId, projectIds });
+  }
+
+  const pages = (pageRows ?? []) as PageRow[];
+  const files = (fileRows ?? []) as FileRow[];
+
+  return projects.map((projectRow) =>
     rowToSnapshot(
       projectRow,
-      pageStmt.all(projectRow.id) as PageRow[],
-      fileStmt.all(projectRow.id) as FileRow[]
+      pages.filter((page) => page.project_id === projectRow.id),
+      files.filter((file) => file.project_id === projectRow.id)
     ).project
   );
 }
 
-export function getProjectSnapshot(projectId: string): ProjectSnapshot | null {
-  const db = ensureDb();
-  const projectRow = db.prepare(`
-    SELECT id, name, brief_json, blueprint_json, status, created_at, updated_at, editor_state_json, ai_chats_json
-    FROM projects
-    WHERE id = ?
-  `).get(projectId) as ProjectRow | undefined;
+export async function getProjectSnapshot(projectId: string, userId: string): Promise<ProjectSnapshot | null> {
+  const supabase = getSupabaseServerClient();
 
+  const { data: projectRow, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw buildDbError(error, DB_READ_001, `Failed to load project ${projectId}`, { projectId, userId });
+  }
   if (!projectRow) return null;
 
-  const pageRows = db.prepare(`
-    SELECT id, project_id, name, slug, purpose, html, sections_json, status, error, sort_order, updated_at
-    FROM pages
-    WHERE project_id = ?
-    ORDER BY sort_order ASC
-  `).all(projectId) as PageRow[];
+  const [{ data: pageRows, error: pagesError }, { data: fileRows, error: filesError }] = await Promise.all([
+    supabase
+      .from("pages")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("files")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true }),
+  ]);
 
-  const fileRows = db.prepare(`
-    SELECT id, project_id, linked_page_id, name, path, content, type, language, sort_order
-    FROM files
-    WHERE project_id = ?
-    ORDER BY sort_order ASC
-  `).all(projectId) as FileRow[];
-
-  return rowToSnapshot(projectRow, pageRows, fileRows);
+  if (pagesError) {
+    throw buildDbError(pagesError, DB_READ_001, `Failed to load pages for project ${projectId}`, { projectId, userId });
+  }
+  if (filesError) {
+    throw buildDbError(filesError, DB_READ_001, `Failed to load files for project ${projectId}`, { projectId, userId });
+  }
+  return rowToSnapshot(projectRow as ProjectRow, (pageRows ?? []) as PageRow[], (fileRows ?? []) as FileRow[]);
 }
 
-export function createDraftProject(project: Project): ProjectSnapshot {
-  const db = ensureDb();
+export async function createDraftProject(project: Project, userId: string): Promise<ProjectSnapshot> {
+  const supabase = getSupabaseServerClient();
   const normalized = normalizeProject(project);
 
-  db.prepare(`
-    INSERT INTO projects (
-      id, name, brief_json, blueprint_json, status, created_at, updated_at, editor_state_json, ai_chats_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    normalized.id,
-    normalized.name,
-    JSON.stringify(normalized.brief),
-    normalized.blueprint ? JSON.stringify(normalized.blueprint) : null,
-    normalized.status,
-    normalized.createdAt,
-    normalized.updatedAt,
-    JSON.stringify(defaultEditorState),
-    JSON.stringify([])
-  );
+  const { error } = await supabase.from("projects").insert({
+    id: normalized.id,
+    user_id: userId,
+    name: normalized.name,
+    brief_json: normalized.brief,
+    blueprint_json: normalized.blueprint,
+    status: normalized.status,
+    created_at: normalized.createdAt,
+    updated_at: normalized.updatedAt,
+    editor_state_json: defaultEditorState,
+    ai_chats_json: [],
+  });
+
+  if (error) {
+    throw buildDbError(error, DB_WRITE_001, `Failed to create draft project ${normalized.id}`, {
+      projectId: normalized.id,
+      userId,
+    });
+  }
 
   return {
     project: normalized,
@@ -358,86 +421,62 @@ export function createDraftProject(project: Project): ProjectSnapshot {
   };
 }
 
-export function saveProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
-  const db = ensureDb();
+export async function saveProjectSnapshot(snapshot: ProjectSnapshot, userId: string): Promise<ProjectSnapshot> {
+  const supabase = getSupabaseServerClient();
   const project = normalizeProject(snapshot.project);
   const editorState = { ...defaultEditorState, ...snapshot.editorState };
   const aiChats = Array.isArray(snapshot.aiChats) ? snapshot.aiChats : [];
+  const mediaFile = createMediaLibraryFile(project.media);
+  const { error } = await supabase.rpc("save_project_snapshot", {
+    p_project: {
+      id: project.id,
+      name: project.name,
+      brief_json: project.brief,
+      blueprint_json: project.blueprint,
+      status: project.status,
+      created_at: project.createdAt,
+      updated_at: project.updatedAt,
+    },
+    p_editor_state: editorState,
+    p_ai_chats: aiChats,
+    p_pages: project.pages.map((page, index) => ({
+      id: page.id,
+      name: page.name,
+      slug: page.slug,
+      purpose: page.purpose,
+      html: page.html,
+      sections_json: page.sections ?? [],
+      status: page.status,
+      error: page.error ?? null,
+      sort_order: index,
+      updated_at: project.updatedAt,
+    })),
+    p_files: [...Object.values(project.files), ...(mediaFile ? [mediaFile] : [])].map((file, index) => ({
+      id: file.id,
+      linked_page_id: project.pages.some((page) => page.id === file.id) ? file.id : null,
+      name: file.name,
+      path: file.path,
+      content: file.content,
+      type: file.type,
+      language: file.language,
+      sort_order: index,
+    })),
+  });
 
-  db.exec("BEGIN");
-  try {
-    db.prepare(`
-      INSERT INTO projects (
-        id, name, brief_json, blueprint_json, status, created_at, updated_at, editor_state_json, ai_chats_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        brief_json = excluded.brief_json,
-        blueprint_json = excluded.blueprint_json,
-        status = excluded.status,
-        updated_at = excluded.updated_at,
-        editor_state_json = excluded.editor_state_json,
-        ai_chats_json = excluded.ai_chats_json
-    `).run(
-      project.id,
-      project.name,
-      JSON.stringify(project.brief),
-      project.blueprint ? JSON.stringify(project.blueprint) : null,
-      project.status,
-      project.createdAt,
-      project.updatedAt,
-      JSON.stringify(editorState),
-      JSON.stringify(aiChats)
-    );
+  if (error) {
+    const maybe = error as SupabaseErrorLike;
+    const schemaMissing = maybe.code === "PGRST202" || maybe.message?.includes("save_project_snapshot");
 
-    db.prepare(`DELETE FROM pages WHERE project_id = ?`).run(project.id);
-    db.prepare(`DELETE FROM files WHERE project_id = ?`).run(project.id);
+    if (!schemaMissing) {
+      throw buildDbError(error, DB_WRITE_003, `Transactional save failed for project ${project.id}`, {
+        projectId: project.id,
+        userId,
+        pageCount: project.pages.length,
+        fileCount: Object.keys(project.files).length,
+      });
+    }
 
-    const insertPage = db.prepare(`
-      INSERT INTO pages (
-        id, project_id, name, slug, purpose, html, sections_json, status, error, sort_order, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const insertFile = db.prepare(`
-      INSERT INTO files (
-        id, project_id, linked_page_id, name, path, content, type, language, sort_order
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    project.pages.forEach((page, index) => {
-      insertPage.run(
-        page.id,
-        project.id,
-        page.name,
-        page.slug,
-        page.purpose,
-        page.html,
-        JSON.stringify(page.sections ?? []),
-        page.status,
-        page.error ?? null,
-        index,
-        project.updatedAt
-      );
-    });
-
-    Object.values(project.files).forEach((file, index) => {
-      insertFile.run(
-        file.id,
-        project.id,
-        project.pages.some((page) => page.id === file.id) ? file.id : null,
-        file.name,
-        file.path,
-        file.content,
-        file.type,
-        file.language,
-        index
-      );
-    });
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
+    await saveProjectSnapshotLegacy(supabase, project, editorState, aiChats, userId);
   }
 
   return {
@@ -447,7 +486,10 @@ export function saveProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot 
   };
 }
 
-export function deleteProject(projectId: string): void {
-  const db = ensureDb();
-  db.prepare(`DELETE FROM projects WHERE id = ?`).run(projectId);
+export async function deleteProject(projectId: string, userId: string): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("projects").delete().eq("id", projectId).eq("user_id", userId);
+  if (error) {
+    throw buildDbError(error, DB_DELETE_001, `Failed to delete project ${projectId}`, { projectId, userId });
+  }
 }
