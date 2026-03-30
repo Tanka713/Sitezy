@@ -68,6 +68,8 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
   const isGenerating = project.status === "generating";
   const primaryColor = bp?.colorScheme?.primary ?? "#6b77ff";
 
+  function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
     if (!armedDelete) {
       setArmedDelete(true);
       armRef.current = setTimeout(() => setArmedDelete(false), 2400);

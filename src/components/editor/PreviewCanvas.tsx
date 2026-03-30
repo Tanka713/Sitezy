@@ -531,16 +531,6 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     clearLiveLayer();
   }
 
-  function openSuggestionPrompt(prompt: string) {
-    if (hoveredNode?.sectionId) {
-      selectSection(hoveredNode.sectionId);
-    }
-    if (!rightSidebarOpen) toggleRightSidebar();
-    setRightPanel("ai");
-    setAiDraftPrompt(prompt);
-    clearLiveLayer();
-  }
-
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0a0a0b]">
       <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#080809] px-3">
@@ -733,7 +723,6 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
           <Loader2 size={10} className="spin ml-1 shrink-0 text-accent-400" />
         )}
       </div>
-      </div>
 
       <div
         ref={liveCardRef}
@@ -798,72 +787,6 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
           </div>
         </div>
       </div>
-
-      {!isCodeOnly && (
-      <div
-        ref={liveCardRef}
-        className="flex-shrink-0 overflow-hidden px-4"
-        style={{
-          maxHeight: liveCardVisible || liveLoading ? "46px" : "0px",
-          opacity: liveCardVisible || liveLoading ? 1 : 0,
-          transition: "max-height 0.2s ease, opacity 0.15s ease",
-        }}
-      >
-        <div
-          className="mt-2 flex h-[36px] items-center gap-2 rounded-[14px] border px-3"
-          style={{
-            borderColor: liveIsAI ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.05)",
-            background: liveIsAI
-              ? "linear-gradient(90deg, rgba(14,14,26,0.98) 0%, rgba(18,12,32,0.98) 100%)"
-              : "rgba(255,255,255,0.02)",
-          }}
-        >
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            <span className={`flex-shrink-0 transition-colors ${liveIsAI ? "text-accent-400" : "text-white/30"}`}>
-              {liveLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-            </span>
-            <span className="whitespace-nowrap text-[10px] font-semibold text-white/50">
-              {liveLoading ? "Analyzing…" : (hoveredNode?.sectionName || hoveredNode?.label || "Live Intelligence")}
-            </span>
-            {liveIsAI && !liveLoading && (
-              <span className="rounded-full border border-accent-400/20 bg-accent-500/15 px-1.5 py-px text-[7px] font-bold uppercase tracking-[0.14em] text-accent-400/80">
-                AI
-              </span>
-            )}
-          </div>
-
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            {liveLoading ? (
-              [1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-7 w-28 flex-shrink-0 animate-pulse rounded-[12px] bg-white/[0.04]"
-                  style={{ animationDelay: `${i * 100}ms` }}
-                />
-              ))
-            ) : (
-              liveSuggestions.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => openSuggestionPrompt(s.prompt)}
-                  className="group flex h-7 flex-shrink-0 items-center gap-1.5 rounded-[12px] border border-white/[0.07] bg-white/[0.03] px-3 transition-all hover:border-accent-400/30 hover:bg-accent-500/[0.12] active:scale-95"
-                >
-                  <span className="whitespace-nowrap text-[11px] font-medium text-white/60 transition-colors group-hover:text-white/90">{s.label}</span>
-                </button>
-              ))
-            )}
-          </div>
-
-          <button
-            onClick={clearLiveLayer}
-            title="Dismiss"
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-white/20 transition-all hover:bg-white/[0.06] hover:text-white/60"
-          >
-            <span className="text-[11px]">✕</span>
-          </button>
-        </div>
-      </div>
-      )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {(previewMode === "preview" || previewMode === "split") && (

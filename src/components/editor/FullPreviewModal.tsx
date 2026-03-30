@@ -23,39 +23,6 @@ export function FullPreviewModal({ project }: Props) {
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null;
   const currentIndex = pages.findIndex((p) => p.id === activePageId);
 
-  // Build slug → pageId map for inter-page link interception
-  const slugMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    pages.forEach((p) => {
-      const slug = p.slug || p.name.toLowerCase().replace(/\s+/g, "-");
-      map[`/${slug}`] = p.id;
-      map[slug] = p.id;
-      map[`/${p.name.toLowerCase().replace(/\s+/g, "-")}`] = p.id;
-    });
-    const homePage = pages.find((p) => p.slug === "home" || p.name.toLowerCase() === "home");
-    if (homePage) map["/"] = homePage.id;
-    return map;
-  }, [pages]);
-
-  // Nav-intercept script injected into every preview page
-  const navScript = useMemo(() => `<script>
-(function(){
-  document.addEventListener('click',function(e){
-    var a=e.target.closest('a');
-    if(!a)return;
-    var href=a.getAttribute('href')||'';
-    if(!href||href.startsWith('mailto:')||href.startsWith('tel:')||href.startsWith('http')||href.startsWith('//'))return;
-    if(href.startsWith('#')){
-      var id=href.slice(1);
-      if(id){var el=document.getElementById(id)||document.querySelector('[data-sz-section-id="'+id+'"]');if(el){e.preventDefault();el.scrollIntoView({behavior:'smooth',block:'start'});return;}}
-      e.preventDefault();return;
-    }
-    e.preventDefault();
-    window.parent.postMessage({source:'sitezy-preview',type:'navigate',href:href},'*');
-  },true);
-})();
-<\/script>`, []);
-
   useEffect(() => {
     if (activePageId && pages.some((page) => page.id === activePageId)) return;
     setActivePageId(selectedPageId ?? firstPageId);

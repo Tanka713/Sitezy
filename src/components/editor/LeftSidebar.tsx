@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/lib/store";
-import { getSectionContext, replaceSectionInPageHtml } from "@/lib/editor/structure";
 import {
   duplicateSectionInPageHtml,
   getSectionContext,

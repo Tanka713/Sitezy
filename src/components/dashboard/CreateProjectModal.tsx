@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { uid, extractNavbarHtml } from "@/lib/utils";
 import { streamGeneratePage } from "@/lib/utils/generateStream";

@@ -373,6 +373,19 @@ function buildProjectSnapshot(state: AppState): ProjectSnapshot | null {
   };
 }
 
+function getLocalProjectSnapshot(projectId: string): ProjectSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PROJECT_SNAPSHOTS_KEY);
+    if (!raw) return null;
+    const snapshots = JSON.parse(raw) as Record<string, ProjectSnapshot | undefined>;
+    const snapshot = snapshots?.[projectId];
+    return snapshot ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function applySnapshot(
   set: (partial: Partial<AppState>) => void,
   get: () => Store,
@@ -465,9 +478,10 @@ export const useAppStore = create<Store>()((set, get) => ({
   hydrateProjects: async () => {
     if (get().isHydratingProjects) return;
     set({ isHydratingProjects: true });
+    let projects: Project[] = [];
     try {
       const data = await apiJson<{ projects: Project[] }>("/api/projects");
-      const projects = (data.projects ?? []).map(normalizeProject);
+      projects = (data.projects ?? []).map(normalizeProject);
       let mediaLibrary: ProjectMediaAsset[] = [];
 
       try {

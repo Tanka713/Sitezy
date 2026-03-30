@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import {
   CheckCircle2,
+  Copy,
   XCircle,
   Loader2,
   Globe,
@@ -351,132 +352,6 @@ function StepRow({
           {done ? "Done" : error ? "Failed" : active ? "Working" : "Queued"}
         </p>
       </div>
-    </div>
-  );
-}
-
-function StatusPill({ isDone, isError }: { isDone: boolean; isError: boolean }) {
-  if (isDone) {
-    return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-[11px] font-medium text-emerald-300">
-        <CheckCircle2 size={13} />
-        Complete
-      </span>
-    );
-  }
-
-  if (isError) {
-    return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-[11px] font-medium text-rose-300">
-        <XCircle size={13} />
-        Failed
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[#54d5c833] bg-[#54d5c814] px-4 py-2 text-[11px] font-medium text-[#54d5c8]">
-      <Loader2 size={13} className="animate-spin" />
-      Building
-    </span>
-  );
-}
-
-function MiniChip({ label, tone = "default" }: { label: string; tone?: "default" | "accent" | "warm" }) {
-  const toneClass =
-    tone === "accent"
-      ? "border-[#54d5c833] bg-[#54d5c814] text-[#54d5c8]"
-      : tone === "warm"
-        ? "border-amber-400/18 bg-amber-400/10 text-amber-200"
-        : "border-white/10 bg-white/[0.04] text-slate-200/64";
-
-  return <span className={`rounded-full border px-3 py-1.5 text-[11px] ${toneClass}`}>{label}</span>;
-}
-
-function StepRow({
-  label,
-  done,
-  active,
-  error,
-  icon,
-}: {
-  label: string;
-  done: boolean;
-  active: boolean;
-  error?: boolean;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-3 border-b border-white/[0.05] py-3 last:border-b-0">
-      <div
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-2xl border transition-all duration-300"
-        style={{
-          background: done
-            ? "rgba(74,222,128,0.12)"
-            : error
-              ? "rgba(251,113,133,0.12)"
-              : active
-                ? "rgba(84,213,200,0.12)"
-                : "rgba(255,255,255,0.04)",
-          borderColor: done
-            ? "rgba(74,222,128,0.28)"
-            : error
-              ? "rgba(251,113,133,0.24)"
-              : active
-                ? "rgba(84,213,200,0.24)"
-                : "rgba(255,255,255,0.08)",
-          color: done
-            ? "#4ade80"
-            : error
-              ? "#fb7185"
-              : active
-                ? ACCENT
-                : "rgba(255,255,255,0.24)",
-          boxShadow: active ? "0 0 18px rgba(84,213,200,0.15)" : "none",
-        }}
-      >
-        {done ? (
-          <CheckCircle2 size={13} />
-        ) : error ? (
-          <XCircle size={13} />
-        ) : active ? (
-          <Loader2 size={13} className="animate-spin" />
-        ) : (
-          <span className="opacity-70">{icon}</span>
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p
-          className="truncate text-sm"
-          style={{
-            color: done
-              ? "rgba(255,255,255,0.84)"
-              : error
-                ? "rgba(254,205,211,0.92)"
-                : active
-                  ? "rgba(255,255,255,0.92)"
-                  : "rgba(226,232,240,0.48)",
-          }}
-        >
-          {label}
-        </p>
-      </div>
-
-      <span
-        className="text-[10px] font-medium uppercase tracking-[0.16em]"
-        style={{
-          color: done
-            ? "rgba(74,222,128,0.62)"
-            : error
-              ? "rgba(251,113,133,0.64)"
-              : active
-                ? "rgba(84,213,200,0.74)"
-                : "rgba(148,163,184,0.34)",
-        }}
-      >
-        {done ? "Done" : error ? "Error" : active ? "Live" : "Queued"}
-      </span>
     </div>
   );
 }
