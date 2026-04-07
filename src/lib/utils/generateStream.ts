@@ -31,7 +31,7 @@ function resolveCode(status: number, code?: string): ErrorCode {
 export async function streamGeneratePage(
   body: Record<string, unknown>,
   onChars: (count: number) => void,
-  timeoutMs = 120_000
+  timeoutMs = 180_000
 ): Promise<{ html: string; sections: PageSection[] }> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);

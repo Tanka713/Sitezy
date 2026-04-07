@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { generatePage } from "@/lib/ai/service";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   handleRouteError,
   parseRequestBody,
   assertFields,
@@ -12,27 +15,54 @@ import {
 import type { SiteBlueprint, BlueprintPage, SiteBrief } from "@/types";
 
 export const runtime   = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to generate page",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{
       blueprint?: SiteBlueprint;
       page?: BlueprintPage;
       brief?: SiteBrief;
       navbarHtml?: string | null;
+      instruction?: string | null;
     }>(req);
 
     assertFields(body as Record<string, unknown>, ["blueprint", "page", "brief"], API_REQUEST_002);
+    await consumeAIUsageCredits(user.id, "generate-page");
 
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
-        const send = (data: Record<string, unknown>) =>
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        let closed = false;
+        const close = () => {
+          if (closed) return;
+          closed = true;
+          try {
+            controller.close();
+          } catch {}
+        };
+        const send = (data: Record<string, unknown>) => {
+          if (closed || req.signal.aborted) return;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            closed = true;
+          }
+        };
+
+        req.signal.addEventListener("abort", close, { once: true });
 
         try {
           let charsSent = 0;
@@ -47,7 +77,8 @@ export async function POST(req: NextRequest) {
                 send({ type: "chars", count: charsSent });
               }
             },
-            body.navbarHtml ?? null
+            body.navbarHtml ?? null,
+            body.instruction?.trim() || null
           ).catch((err) => {
             throw createAppError({
               code: API_GENERATE_001,
@@ -69,11 +100,13 @@ export async function POST(req: NextRequest) {
 
           send({ type: "done", html: result.html, sections: result.sections });
         } catch (err) {
-          const response = handleRouteError(err, requestId, API_GENERATE_001);
-          const body = await response.json().catch(() => ({ error: "Generation failed" }));
-          send({ type: "error", ...body });
+          if (!req.signal.aborted) {
+            const response = handleRouteError(err, requestId, API_GENERATE_001);
+            const body = await response.json().catch(() => ({ error: "Generation failed" }));
+            send({ type: "error", ...body });
+          }
         } finally {
-          controller.close();
+          close();
         }
       },
     });

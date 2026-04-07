@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { ImageIcon, Search, Trash2, Upload, Video, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Check, ImageIcon, Search, Trash2, Upload, Video, X, AlertTriangle, Pencil } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { normalizeMediaAsset, USER_MEDIA_BUCKET } from "@/lib/media/library";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { OverlayDialog } from "@/components/ui/OverlayDialog";
 import type { ProjectMediaAsset } from "@/types";
 
 interface Props {
@@ -177,10 +177,11 @@ export function MediaLibraryModal({
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [isDragActive, setIsDragActive] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
+  const modalTitleId = useId();
 
   const assets = useMemo(() => {
     const filtered = mediaLibrary.filter((asset) => allowedKinds.includes(asset.kind));
@@ -204,20 +205,6 @@ export function MediaLibraryModal({
   useEffect(() => {
     setNameDrafts(Object.fromEntries(mediaLibrary.map((asset) => [asset.id, asset.name])));
   }, [mediaLibrary]);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mounted]);
 
   function toggleSelect(asset: ProjectMediaAsset) {
     setSelectedIds((current) => {
@@ -375,252 +362,345 @@ export function MediaLibraryModal({
     await renameMediaAsset(assetId, nextName);
   }
 
-  if (!mounted) return null;
+  const pendingDeleteAsset = pendingDeleteId
+    ? mediaLibrary.find((a) => a.id === pendingDeleteId) ?? null
+    : null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[160] bg-[rgba(5,7,13,0.72)] backdrop-blur-xl">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative flex h-full w-full items-center justify-center p-4 md:p-6">
-        <div className="relative flex h-[min(860px,calc(100vh-32px))] w-full max-w-[1280px] flex-col overflow-hidden rounded-[30px] border border-white/[0.08] bg-[linear-gradient(180deg,#171821,#11131a)] shadow-[0_40px_120px_rgba(0,0,0,0.58)]">
-          <div className="flex flex-shrink-0 items-start justify-between gap-5 border-b border-white/[0.06] px-5 py-5 md:px-7">
-            <div className="min-w-0">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-white/[0.08] bg-white/[0.04] text-accent-200">
-                  <ImageIcon size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/30">Media Library</p>
-                  <h3 className="mt-1 text-[24px] font-semibold tracking-[-0.04em] text-white">{title}</h3>
-                  <p className="mt-2 max-w-2xl text-[13px] leading-6 text-white/46">
-                    {description || "Upload once, then reuse or replace media anywhere in the project."}
-                  </p>
-                </div>
+  async function confirmDelete() {
+    if (!pendingDeleteAsset) return;
+    setSelectedIds((cur) => cur.filter((id) => id !== pendingDeleteAsset.id));
+    await removeMediaAsset(pendingDeleteAsset.id);
+    setPendingDeleteId(null);
+  }
+
+  const totalCount = mediaLibrary.filter((a) => allowedKinds.includes(a.kind)).length;
+
+  return (
+    <OverlayDialog
+      open
+      onClose={onClose}
+      titleId={modalTitleId}
+      containerClassName="p-4 md:p-8"
+      panelClassName="relative flex h-[min(880px,calc(100vh-48px))] w-full max-w-[1320px] flex-col overflow-hidden rounded-[20px] border border-white/[0.06] bg-[#0B0D12] shadow-[0_60px_140px_-20px_rgba(0,0,0,0.85)]"
+    >
+      {/* Atmosphere */}
+      <div className="pointer-events-none absolute inset-0 opacity-[0.5]">
+        <div className="absolute -left-32 -top-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(91,140,255,0.12),transparent_70%)]" />
+        <div className="absolute -right-32 top-1/3 h-[380px] w-[380px] rounded-full bg-[radial-gradient(circle_at_center,rgba(122,92,255,0.08),transparent_70%)]" />
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* ── HEADER ───────────────────────────────────────────────── */}
+        <div className="flex flex-shrink-0 items-center justify-between gap-6 border-b border-white/[0.05] px-8 py-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/35">Media Library</span>
+                <span className="h-1 w-1 rounded-full bg-white/15" />
+                <span className="text-[10px] font-medium tabular-nums text-white/35">{totalCount} {totalCount === 1 ? "asset" : "assets"}</span>
               </div>
+              <h3 id={modalTitleId} className="mt-1.5 text-[22px] font-semibold tracking-[-0.035em] text-white">
+                {title}
+              </h3>
+              {description ? (
+                <p className="mt-1 max-w-xl text-[12px] leading-5 text-white/40">
+                  {description}
+                </p>
+              ) : null}
             </div>
-            <button
-              onClick={onClose}
-              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[16px] border border-white/[0.08] bg-white/[0.04] text-white/45 transition-all hover:border-white/[0.16] hover:text-white/75"
-            >
-              <X size={16} />
-            </button>
           </div>
 
-          <div className="flex flex-shrink-0 flex-col gap-3 border-b border-white/[0.06] px-5 py-4 md:px-7 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative min-w-0 flex-1">
-              <Search size={15} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/22" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search your media library"
-                className="h-12 w-full rounded-[18px] border border-white/[0.08] bg-white/[0.045] pl-11 pr-4 text-[13px] text-white/78 placeholder-white/24 focus:border-accent-400/35 focus:outline-none"
-              />
+          <button
+            onClick={onClose}
+            className="group flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] border border-white/[0.06] bg-white/[0.02] text-white/40 transition-all hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/85"
+            aria-label="Close"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* ── TOOLBAR ──────────────────────────────────────────────── */}
+        <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/[0.05] px-8 py-4">
+          <div className="relative min-w-0 flex-1">
+            <Search size={13} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search assets…"
+              className="h-10 w-full rounded-[12px] border border-white/[0.06] bg-white/[0.02] pl-10 pr-3 text-[12px] text-white/85 placeholder-white/25 transition-colors focus:border-[#5B8CFF]/35 focus:bg-white/[0.04] focus:outline-none"
+            />
+          </div>
+
+          <div className="hidden items-center gap-1.5 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] font-medium text-white/45 md:flex">
+            <span className="tabular-nums text-white/70">{assets.length}</span>
+            <span className="text-white/25">/</span>
+            <span className="tabular-nums">{totalCount}</span>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple={allowMultiple || allowedKinds.length !== 1}
+            accept={acceptForKinds(allowedKinds)}
+            className="hidden"
+            onChange={(e) => { void handleUpload(e.target.files); }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="group inline-flex h-10 items-center gap-2 rounded-[12px] bg-gradient-to-b from-[#5B8CFF] to-[#4A78EE] px-4 text-[12px] font-semibold text-white shadow-[0_8px_24px_-6px_rgba(91,140,255,0.5)] transition-all hover:from-[#6B98FF] hover:to-[#5384F4] hover:shadow-[0_10px_28px_-6px_rgba(91,140,255,0.6)] disabled:cursor-wait disabled:opacity-60"
+          >
+            <Upload size={13} />
+            {isUploading ? "Uploading…" : "Upload"}
+          </button>
+        </div>
+
+        {/* ── BODY ─────────────────────────────────────────────────── */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+          {/* Asset grid */}
+          <div
+            className="relative min-h-0 overflow-y-auto overflow-x-hidden px-8 py-6"
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {isDragActive && (
+              <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-[16px] border-2 border-dashed border-[#5B8CFF]/45 bg-[#5B8CFF]/[0.05] backdrop-blur-[2px]">
+                <div className="rounded-[16px] border border-[#5B8CFF]/25 bg-[#0B0D12]/90 px-7 py-5 text-center shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
+                  <Upload size={18} className="mx-auto mb-2.5 text-[#5B8CFF]" />
+                  <p className="text-[13px] font-semibold text-white">Drop to upload</p>
+                  <p className="mt-1 text-[11px] text-white/45">Images and videos</p>
+                </div>
+              </div>
+            )}
+
+            {assets.length ? (
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 2xl:grid-cols-3">
+                {assets.map((asset) => {
+                  const selected = selectedIds.includes(asset.id);
+                  return (
+                    <div
+                      key={asset.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSelect(asset)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSelect(asset); }
+                      }}
+                      onDoubleClick={() => { onSelect([asset]); onClose(); }}
+                      className={`group relative overflow-hidden rounded-[14px] border text-left transition-all ${
+                        selected
+                          ? "border-[#5B8CFF]/45 bg-[#5B8CFF]/[0.06] shadow-[0_0_0_1px_rgba(91,140,255,0.25),0_18px_40px_-12px_rgba(91,140,255,0.35)]"
+                          : "border-white/[0.06] bg-white/[0.015] hover:border-white/[0.12] hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      {/* Selection check */}
+                      {selected && (
+                        <div className="absolute right-2.5 top-2.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#5B8CFF] text-white shadow-[0_4px_12px_rgba(91,140,255,0.5)]">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+
+                      {/* Thumbnail */}
+                      <div className="relative aspect-[16/10] overflow-hidden bg-[#0F1320]">
+                        {asset.kind === "image" ? (
+                          <img
+                            src={asset.thumbnailUrl || asset.url}
+                            alt={asset.name}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                          />
+                        ) : (
+                          <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
+                        )}
+
+                        {/* Bottom gradient */}
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+
+                        {/* Kind badge */}
+                        <div className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-black/50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-white/80 backdrop-blur-sm">
+                          {asset.kind === "image" ? <ImageIcon size={9} /> : <Video size={9} />}
+                          {asset.kind}
+                        </div>
+
+                        {/* Delete (hover) */}
+                        {!selected && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setPendingDeleteId(asset.id); }}
+                            className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.08] bg-black/50 text-white/65 opacity-0 backdrop-blur-sm transition-all hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                            aria-label="Delete asset"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="px-3 py-2.5">
+                        <input
+                          value={nameDrafts[asset.id] ?? asset.name}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setNameDrafts((cur) => ({ ...cur, [asset.id]: value }));
+                          }}
+                          onBlur={() => { void commitRename(asset.id, asset.name); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void commitRename(asset.id, asset.name);
+                              (e.currentTarget as HTMLInputElement).blur();
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setNameDrafts((cur) => ({ ...cur, [asset.id]: asset.name }));
+                              (e.currentTarget as HTMLInputElement).blur();
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full truncate rounded-[8px] bg-transparent px-1.5 py-1 text-[11px] font-medium text-white/85 transition-colors focus:bg-white/[0.04] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[16px] border border-dashed border-white/[0.08] bg-white/[0.015] px-8 text-center">
+                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-[14px] border border-white/[0.06] bg-white/[0.03] text-white/45">
+                  <ImageIcon size={20} strokeWidth={1.5} />
+                </div>
+                <h4 className="text-[15px] font-semibold tracking-[-0.01em] text-white">
+                  {search ? "No matching assets" : "Your library is empty"}
+                </h4>
+                <p className="mt-2 max-w-xs text-[12px] leading-5 text-white/40">
+                  {search ? "Try a different search term." : "Upload images and videos once, then reuse them anywhere across your projects."}
+                </p>
+                {!search && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-5 inline-flex h-9 items-center gap-2 rounded-[10px] bg-gradient-to-b from-[#5B8CFF] to-[#4A78EE] px-4 text-[12px] font-semibold text-white shadow-[0_8px_24px_-6px_rgba(91,140,255,0.5)] transition-all hover:from-[#6B98FF] hover:to-[#5384F4]"
+                  >
+                    <Upload size={13} />
+                    Upload first asset
+                  </button>
+                )}
+                {!search && (
+                  <p className="mt-3 text-[10px] text-white/30">or drag files into this window</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── SELECTION RAIL ─────────────────────────────────────── */}
+          <aside className="relative flex min-h-0 flex-col border-t border-white/[0.05] bg-white/[0.012] lg:border-l lg:border-t-0">
+            <div className="border-b border-white/[0.05] px-6 py-4">
+              <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/35">Selection</p>
+              <p className="mt-1.5 text-[11px] leading-5 text-white/55">
+                {selectedIds.length
+                  ? `${selectedIds.length} ${selectedIds.length > 1 ? "assets" : "asset"} ready`
+                  : `Choose ${allowMultiple ? "one or more assets" : "an asset"}`}
+              </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <div className="hidden items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[10px] font-medium text-white/34 xl:flex">
-                <span>{assets.length} shown</span>
-                <span className="text-white/16">•</span>
-                <span>{mediaLibrary.filter((asset) => allowedKinds.includes(asset.kind)).length} total</span>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple={allowMultiple || allowedKinds.length !== 1}
-                accept={acceptForKinds(allowedKinds)}
-                className="hidden"
-                onChange={(event) => { void handleUpload(event.target.files); }}
-              />
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+              {selectionAssets.length ? (
+                <div className="space-y-2.5">
+                  {selectionAssets.map((asset) => (
+                    <div key={asset.id} className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.02]">
+                      <div className="aspect-[16/10] overflow-hidden bg-[#0F1320]">
+                        {asset.kind === "image" ? (
+                          <img src={asset.thumbnailUrl || asset.url} alt={asset.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
+                        )}
+                      </div>
+                      <div className="px-3 py-2.5">
+                        <p className="truncate text-[11px] font-medium text-white/85">{asset.name}</p>
+                        <p className="mt-0.5 text-[9px] uppercase tracking-[0.16em] text-white/35">{asset.kind}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[14px] border border-dashed border-white/[0.07] px-5 py-10 text-center">
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[12px] border border-white/[0.06] bg-white/[0.025] text-white/30">
+                    {allowedKinds.length === 1 && allowedKinds[0] === "video" ? <Video size={15} /> : <ImageIcon size={15} />}
+                  </div>
+                  <p className="mt-4 text-[11px] font-semibold text-white/55">Nothing selected</p>
+                  <p className="mt-1.5 text-[10px] leading-5 text-white/35">
+                    Click an asset to add it to your selection.
+                  </p>
+                </div>
+              )}
+            </div>
 
+            <div className="flex gap-2 border-t border-white/[0.05] px-5 py-4">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="inline-flex h-12 items-center gap-2 rounded-[18px] border border-accent-400/25 bg-accent-500/15 px-5 text-[13px] font-semibold text-accent-200 transition-all hover:bg-accent-500/24 disabled:cursor-wait disabled:opacity-60"
+                onClick={onClose}
+                className="flex-1 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-[11px] font-semibold text-white/55 transition-all hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/85"
               >
-                <Upload size={15} />
-                {isUploading ? "Uploading..." : "Upload media"}
+                Cancel
+              </button>
+              <button
+                onClick={useSelected}
+                disabled={!selectedIds.length}
+                className="flex-1 rounded-[10px] bg-gradient-to-b from-[#5B8CFF] to-[#4A78EE] px-3 py-2.5 text-[11px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(91,140,255,0.5)] transition-all hover:from-[#6B98FF] hover:to-[#5384F4] disabled:cursor-not-allowed disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-white/25 disabled:shadow-none"
+              >
+                {actionLabel}
+              </button>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {/* ── DELETE CONFIRMATION ─────────────────────────────────── */}
+      {pendingDeleteAsset && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
+          <div className="w-full max-w-[420px] overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#12161F] shadow-[0_30px_80px_rgba(0,0,0,0.6)]">
+            <div className="px-7 pb-2 pt-7">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-[14px] border border-red-500/20 bg-red-500/[0.08] text-red-400">
+                <AlertTriangle size={20} strokeWidth={1.8} />
+              </div>
+              <h4 className="text-[18px] font-semibold tracking-[-0.02em] text-white">
+                Delete this asset?
+              </h4>
+              <p className="mt-2 text-[12px] leading-6 text-white/50">
+                <span className="font-medium text-white/80">{pendingDeleteAsset.name}</span> will be permanently removed from your media library. This cannot be undone.
+              </p>
+
+              {/* Preview */}
+              <div className="mt-5 overflow-hidden rounded-[12px] border border-white/[0.06] bg-[#0F1320]">
+                <div className="aspect-[16/8] overflow-hidden">
+                  {pendingDeleteAsset.kind === "image" ? (
+                    <img
+                      src={pendingDeleteAsset.thumbnailUrl || pendingDeleteAsset.url}
+                      alt={pendingDeleteAsset.name}
+                      className="h-full w-full object-cover opacity-70"
+                    />
+                  ) : (
+                    <video src={pendingDeleteAsset.url} className="h-full w-full object-cover opacity-70" muted playsInline />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 px-7 py-5">
+              <button
+                onClick={() => setPendingDeleteId(null)}
+                className="flex-1 rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-4 py-2.5 text-[12px] font-semibold text-white/65 transition-all hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmDelete()}
+                className="flex-1 rounded-[10px] bg-gradient-to-b from-red-500 to-red-600 px-4 py-2.5 text-[12px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(239,68,68,0.5)] transition-all hover:from-red-400 hover:to-red-500"
+              >
+                Delete asset
               </button>
             </div>
           </div>
-
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div
-              className="relative min-h-0 overflow-auto px-5 py-5 md:px-7"
-              onDragEnter={handleDragEnter}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              {isDragActive && (
-                <div className="pointer-events-none absolute inset-5 z-20 flex items-center justify-center rounded-[28px] border border-dashed border-accent-300/45 bg-[rgba(99,102,241,0.12)] backdrop-blur-sm">
-                  <div className="rounded-[24px] border border-accent-300/25 bg-[rgba(13,16,27,0.86)] px-8 py-7 text-center shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[18px] border border-accent-300/20 bg-accent-500/16 text-accent-200">
-                      <Upload size={18} />
-                    </div>
-                    <p className="text-[15px] font-semibold text-white">Drop files to upload</p>
-                    <p className="mt-2 text-[12px] leading-6 text-white/48">
-                      Images and videos will be added to your media library.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {assets.length ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                  {assets.map((asset) => {
-                    const selected = selectedIds.includes(asset.id);
-                    return (
-                      <div
-                        key={asset.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => toggleSelect(asset)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            toggleSelect(asset);
-                          }
-                        }}
-                        onDoubleClick={() => {
-                          onSelect([asset]);
-                          onClose();
-                        }}
-                        className={`group overflow-hidden rounded-[24px] border text-left transition-all ${
-                          selected
-                            ? "border-accent-400/38 bg-accent-500/10 shadow-[0_0_0_1px_rgba(129,140,248,0.22)]"
-                            : "border-white/[0.08] bg-white/[0.035] hover:border-white/[0.16] hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        <div className="relative aspect-[16/10] overflow-hidden bg-[#0e0f14]">
-                          {asset.kind === "image" ? (
-                            <img src={asset.thumbnailUrl || asset.url} alt={asset.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
-                          )}
-                          <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/45 px-2 py-1 text-[10px] font-medium text-white/70">
-                            {asset.kind === "image" ? <ImageIcon size={11} /> : <Video size={11} />}
-                            {asset.kind}
-                          </div>
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void removeMediaAsset(asset.id);
-                            }}
-                            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/45 text-white/65 opacity-0 transition-all hover:border-red-400/30 hover:text-red-200 group-hover:opacity-100"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                        <div className="space-y-2 px-4 py-4">
-                          <input
-                            value={nameDrafts[asset.id] ?? asset.name}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setNameDrafts((current) => ({ ...current, [asset.id]: value }));
-                            }}
-                            onBlur={() => { void commitRename(asset.id, asset.name); }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void commitRename(asset.id, asset.name);
-                                (event.currentTarget as HTMLInputElement).blur();
-                              }
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                setNameDrafts((current) => ({ ...current, [asset.id]: asset.name }));
-                                (event.currentTarget as HTMLInputElement).blur();
-                              }
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                            className="w-full rounded-[14px] border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-[12px] font-medium text-white/82 focus:border-accent-400/35 focus:outline-none"
-                          />
-                          <p className="truncate text-[10px] text-white/32">{asset.url.startsWith("data:") ? "Uploaded asset" : asset.url}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-[28px] border border-dashed border-white/[0.08] bg-white/[0.03] px-8 text-center">
-                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-3xl border border-white/[0.08] bg-white/[0.05] text-accent-200">
-                    <Upload size={18} />
-                  </div>
-                  <h4 className="text-[16px] font-semibold text-white">Your media library is empty</h4>
-                  <p className="mt-2 max-w-sm text-[12px] leading-6 text-white/45">
-                    Upload product shots, team photos, logos, or background media once, then reuse them anywhere in the builder.
-                  </p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mt-5 inline-flex h-11 items-center gap-2 rounded-[18px] border border-accent-400/25 bg-accent-500/15 px-5 text-[12px] font-semibold text-accent-200 transition-all hover:bg-accent-500/24"
-                  >
-                    <Upload size={14} />
-                    Upload first asset
-                  </button>
-                  <p className="mt-3 text-[11px] text-white/30">
-                    or drag files here
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <aside className="flex min-h-0 flex-col border-t border-white/[0.06] bg-white/[0.02] lg:border-l lg:border-t-0">
-              <div className="border-b border-white/[0.06] px-5 py-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/28">Selection</p>
-                <p className="mt-1 text-[11px] leading-5 text-white/34">
-                  {selectedIds.length
-                    ? `${selectedIds.length} asset${selectedIds.length > 1 ? "s" : ""} selected`
-                    : `Choose ${allowMultiple ? "one or more assets" : "an asset"} to continue.`}
-                </p>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
-                {selectionAssets.length ? (
-                  <div className="space-y-3">
-                    {selectionAssets.map((asset) => (
-                      <div key={asset.id} className="rounded-[20px] border border-white/[0.08] bg-white/[0.035] p-3.5">
-                        <div className="aspect-[16/10] overflow-hidden rounded-[14px] bg-black/20">
-                          {asset.kind === "image" ? (
-                            <img src={asset.thumbnailUrl || asset.url} alt={asset.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
-                          )}
-                        </div>
-                        <p className="mt-3 truncate text-[12px] font-medium text-white/82">{asset.name}</p>
-                        <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-white/28">{asset.kind}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-[22px] border border-dashed border-white/[0.08] bg-white/[0.025] px-5 py-10 text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/[0.08] bg-white/[0.04] text-white/28">
-                      {allowedKinds.length === 1 && allowedKinds[0] === "video" ? <Video size={16} /> : <ImageIcon size={16} />}
-                    </div>
-                    <p className="mt-4 text-[12px] font-semibold text-white/56">Nothing selected</p>
-                    <p className="mt-2 text-[11px] leading-6 text-white/34">
-                      Select {allowMultiple ? "one or more assets" : "an asset"} from the library, or upload new media.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 border-t border-white/[0.06] px-5 py-4">
-                <button
-                  onClick={onClose}
-                  className="flex-1 rounded-[18px] border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-[12px] font-semibold text-white/58 transition-all hover:border-white/[0.16] hover:text-white/82"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={useSelected}
-                  disabled={!selectedIds.length}
-                  className="flex-1 rounded-[18px] border border-accent-400/25 bg-accent-500/15 px-4 py-3 text-[12px] font-semibold text-accent-200 transition-all hover:bg-accent-500/24 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {actionLabel}
-                </button>
-              </div>
-            </aside>
-          </div>
         </div>
-      </div>
-    </div>,
-    document.body
+      )}
+    </OverlayDialog>
   );
 }

@@ -1,0 +1,46 @@
+<svg width="1080" height="1350" viewBox="0 0 1080 1350" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="carBg" x1="124" y1="96" x2="974" y2="1288" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141A28"/>
+      <stop offset="1" stop-color="#06080C"/>
+    </linearGradient>
+    <linearGradient id="carAccent" x1="118" y1="796" x2="644" y2="1260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B8CFF"/>
+      <stop offset="1" stop-color="#7A5CFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1080" height="1350" rx="56" fill="#05070B"/>
+  <rect x="24" y="24" width="1032" height="1302" rx="38" fill="url(#carBg)" stroke="rgba(255,255,255,0.08)"/>
+
+  <text x="96" y="148" fill="#97A3B6" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="20" letter-spacing="4">SITEZY / CAROUSEL COVER</text>
+
+  <text x="96" y="336" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="116" font-weight="700" letter-spacing="-5">
+    Most AI
+  </text>
+  <text x="96" y="452" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="116" font-weight="700" letter-spacing="-5">
+    websites
+  </text>
+  <text x="96" y="568" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="116" font-weight="700" letter-spacing="-5">
+    look
+  </text>
+  <text x="96" y="684" fill="#8FB0FF" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="116" font-weight="700" letter-spacing="-5">
+    generated.
+  </text>
+
+  <text x="96" y="774" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="32">
+    Yours should feel directed, branded,
+  </text>
+  <text x="96" y="816" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="32">
+    and ready to launch.
+  </text>
+
+  <rect x="96" y="928" width="888" height="308" rx="34" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.08)"/>
+  <rect x="124" y="956" width="834" height="46" rx="16" fill="rgba(255,255,255,0.04)"/>
+  <rect x="124" y="1034" width="404" height="170" rx="24" fill="url(#carAccent)" fill-opacity="0.18" stroke="rgba(91,140,255,0.22)"/>
+  <rect x="548" y="1034" width="410" height="170" rx="24" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.08)"/>
+  <text x="150" y="1098" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="32" font-weight="700">Direction</text>
+  <text x="150" y="1138" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="22">Start from tone, mood, and intent.</text>
+  <text x="574" y="1098" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="32" font-weight="700">Refinement</text>
+  <text x="574" y="1138" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="22">Edit with visual control after generation.</text>
+</svg>

@@ -1,29 +1,35 @@
 import { NextRequest } from "next/server";
 import { regenerateSection } from "@/lib/ai/service";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   handleRouteError,
   parseRequestBody,
   assertFields,
   createAppError,
-  API_REQUEST_001,
   API_REQUEST_002,
   API_GENERATE_001,
   API_GENERATE_002,
 } from "@/lib/errors";
 import type { BlueprintPage, SiteBlueprint, SiteBrief } from "@/types";
 
-const VALID_SECTION_TYPES = new Set([
-  "navbar", "hero", "features", "testimonial", "gallery", "logos",
-  "cta", "footer", "faq", "pricing", "team", "stats", "contact", "about", "section",
-]);
-
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to regenerate section",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{
       blueprint?: SiteBlueprint;
       brief?: SiteBrief;
@@ -42,11 +48,12 @@ export async function POST(req: NextRequest) {
     assertFields(body as Record<string, unknown>, ["blueprint", "brief", "page", "section"], API_REQUEST_002);
     assertFields((body.page ?? {}) as Record<string, unknown>, ["name", "purpose"], API_REQUEST_002);
     assertFields((body.section ?? {}) as Record<string, unknown>, ["type", "name", "html"], API_REQUEST_002);
+    await consumeAIUsageCredits(user.id, "regenerate-section");
 
-    if (!VALID_SECTION_TYPES.has(body.section!.type!)) {
+    if (!body.section!.type || !/^[a-z0-9_-]{1,64}$/i.test(body.section!.type)) {
       throw createAppError({
-        code: API_REQUEST_001,
-        devMessage: `Invalid section type "${body.section!.type}" — must be one of: ${[...VALID_SECTION_TYPES].join(", ")}`,
+        code: API_REQUEST_002,
+        devMessage: `Invalid section type "${body.section!.type}" — must be a non-empty alphanumeric string`,
         severity: "error",
         metadata: { sectionType: body.section!.type },
       });

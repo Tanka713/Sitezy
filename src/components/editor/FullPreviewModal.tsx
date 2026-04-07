@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
 import { useAppStore } from "@/lib/store";
 import { buildFullPageHtml } from "@/lib/utils";
 import { X, ChevronLeft, ChevronRight, Globe } from "lucide-react";
+import { OverlayDialog } from "@/components/ui/OverlayDialog";
 import type { Project } from "@/types";
 
 interface Props { project: Project; }
@@ -11,6 +12,7 @@ interface Props { project: Project; }
 export function FullPreviewModal({ project }: Props) {
   const setFullPreview = useAppStore((s) => s.setFullPreview);
   const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
+  const previewTitleId = useId();
 
   // Defensive: pages may be undefined
   const pages = project?.pages ?? [];
@@ -84,7 +86,6 @@ export function FullPreviewModal({ project }: Props) {
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if (e.key === "Escape") setFullPreview(false);
       if (e.key === "ArrowLeft" && currentIndex > 0) {
         setActivePageId(pages[currentIndex - 1].id);
       }
@@ -98,17 +99,32 @@ export function FullPreviewModal({ project }: Props) {
 
   if (!activePage) {
     return (
-      <div className="editor-preview-modal fixed inset-0 z-50 flex items-center justify-center">
-        <div className="text-white/30 text-sm">No pages to preview.</div>
-        <button onClick={() => setFullPreview(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">
+      <OverlayDialog
+        open
+        onClose={() => setFullPreview(false)}
+        titleId={previewTitleId}
+        containerClassName="p-0"
+        panelClassName="editor-preview-modal flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,#050608_0%,#080a0f_100%)]"
+        closeOnBackdrop={false}
+      >
+        <h2 id={previewTitleId} className="sr-only">Preview</h2>
+        <div className="text-sm text-white/30">No pages to preview.</div>
+        <button onClick={() => setFullPreview(false)} className="absolute right-4 top-4 text-white/40 hover:text-white">
           <X size={18} />
         </button>
-      </div>
+      </OverlayDialog>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[linear-gradient(180deg,#050608_0%,#080a0f_100%)]">
+    <OverlayDialog
+      open
+      onClose={() => setFullPreview(false)}
+      titleId={previewTitleId}
+      containerClassName="p-0"
+      panelClassName="flex h-full w-full flex-col bg-[linear-gradient(180deg,#050608_0%,#080a0f_100%)]"
+      closeOnBackdrop={false}
+    >
       {/* Top bar */}
       <div className="sz-topbar flex h-16 flex-shrink-0 items-center gap-4 px-5">
         <button
@@ -120,7 +136,7 @@ export function FullPreviewModal({ project }: Props) {
         </button>
         <div className="h-6 w-px bg-white/[0.08]" />
         <Globe size={13} className="text-white/30" />
-        <span className="text-[13px] font-medium text-white/70">{project?.name ?? "Project"}</span>
+        <h2 id={previewTitleId} className="text-[13px] font-medium text-white/70">{project?.name ?? "Project"}</h2>
         <span className="text-white/20">•</span>
         <span className="text-[13px] text-white/48">{activePage.name}</span>
 
@@ -169,6 +185,6 @@ export function FullPreviewModal({ project }: Props) {
           referrerPolicy="strict-origin-when-cross-origin"
         />
       </div>
-    </div>
+    </OverlayDialog>
   );
 }

@@ -73,11 +73,11 @@ This stabilizes:
 
 ## Files Updated
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/aliases.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/registry.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/editor/structure.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/aliases.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/registry.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/editor/structure.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
 
 ## Result
 

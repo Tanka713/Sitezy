@@ -79,7 +79,7 @@ export function SectionHeading({
         <span className="sz-badge w-fit">{eyebrow}</span>
       ) : null}
       <div className="space-y-4">
-        <h2 className="text-[36px] leading-[1.08] tracking-[-0.04em] font-semibold text-[var(--text-primary)] md:text-[48px]">
+        <h2 className="text-[36px] leading-[1.05] tracking-[-0.055em] font-bold text-[var(--text-primary)] md:text-[48px]">
           {title}
         </h2>
         {body ? (

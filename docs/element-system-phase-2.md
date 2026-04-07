@@ -4,8 +4,8 @@ Date: March 29, 2026
 
 ## What Changed
 
-- Added a central alias layer in `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/aliases.ts`
-- Added a unified element registry in `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/registry.ts`
+- Added a central alias layer in `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/aliases.ts`
+- Added a unified element registry in `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/registry.ts`
 - Switched manual insertion to render through the registry instead of direct factory branching
 - Switched the store fallback insertion path to use element metadata plus placement-aware insertion
 - Moved inspector panel visibility into the registry via `resolveInspectorProfile(...)`

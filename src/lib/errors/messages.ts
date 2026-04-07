@@ -117,6 +117,8 @@ export const USER_MESSAGES: Record<ErrorCode, string> = {
   DB_CONNECTION_001: "Database connection failed. Please try again.",
   DB_CONNECTION_002: "The database took too long to respond.",
   DB_SCHEMA_001: "A database error was detected. Please contact support.",
+  DB_SCHEMA_002: "Background generation needs the latest database migration before it can run.",
+  DB_SCHEMA_003: "CMS needs the latest database migration before it can run.",
 
   // API
   API_REQUEST_001: "The request was invalid.",
@@ -138,6 +140,7 @@ export const USER_MESSAGES: Record<ErrorCode, string> = {
   // VALIDATION
   VALIDATION_PROJECT_001: "Project data is invalid.",
   VALIDATION_PROJECT_002: "Project is missing required fields.",
+  VALIDATION_DOMAIN_001: "That domain format isn't supported.",
   VALIDATION_PAGE_001: "Page data is invalid.",
   VALIDATION_PAGE_002: "Page is missing required fields.",
   VALIDATION_NODE_001: "Element data is invalid.",
@@ -162,12 +165,19 @@ export const USER_MESSAGES: Record<ErrorCode, string> = {
   AUTH_SESSION_001: "Your session has expired. Please sign in again.",
   AUTH_PERMISSION_001: "You don't have permission to do that.",
   AUTH_TOKEN_001: "Authentication failed. Please sign in again.",
+  AUTH_VERIFY_001: "Please verify your email before logging in.",
+  AUTH_INVITE_001: "The invite was saved, but the invite email could not be sent.",
+  AUTH_MFA_001: "We couldn't update mobile two-factor authentication.",
+  AUTH_MFA_002: "We couldn't send the mobile verification code right now.",
+  AUTH_MFA_003: "That verification code was invalid or expired.",
+  AUTH_MFA_004: "We couldn't change mobile two-factor authentication right now.",
 
   // NETWORK
   NETWORK_001: "The request failed. Please check your connection.",
   NETWORK_002: "No internet connection. Please reconnect and try again.",
   NETWORK_003: "The request was cancelled.",
   NETWORK_004: "The request timed out. Please try again.",
+  NETWORK_DNS_001: "We couldn't verify that domain yet. Check the DNS target and try again.",
 
   // UNKNOWN
   UNKNOWN_001: "An unexpected error occurred. Please try again.",

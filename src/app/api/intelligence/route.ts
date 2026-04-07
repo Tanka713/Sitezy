@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { jsonCompletion } from "@/lib/ai/service";
-import { handleRouteError, parseRequestBody } from "@/lib/errors";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
+import { AUTH_REQUIRED_001, createAppError, handleRouteError, parseRequestBody } from "@/lib/errors";
 import { API_UNKNOWN_001 } from "@/lib/errors";
 import type { SiteBlueprint } from "@/types";
 
@@ -37,7 +39,17 @@ function cleanHtml(raw: string): string {
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to intelligence suggestions",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<IntelligenceRequest>(req);
+    await consumeAIUsageCredits(user.id, "intelligence");
 
     const sectionHtml  = body.sectionHtml  ?? "";
     const sectionName  = body.sectionName  ?? "Unknown section";
@@ -71,7 +83,7 @@ RULES:
 
 CRITICAL: Return ONLY a valid JSON array. No markdown. No explanation. No trailing commas.`;
 
-    const user = `Analyze this ${sectionType} section from the "${pageName}" page and return exactly 3 high-impact design improvements.
+    const prompt = `Analyze this ${sectionType} section from the "${pageName}" page and return exactly 3 high-impact design improvements.
 
 SECTION: "${sectionName}" (type: ${sectionType}, element: ${nodeRole})
 SITE TYPE: ${siteType}
@@ -89,7 +101,7 @@ Return a JSON array of exactly 3 objects:
   { "label": "...", "prompt": "...", "icon": "..." }
 ]`;
 
-    const suggestions = await jsonCompletion<Suggestion[]>(system, user, 1);
+    const suggestions = await jsonCompletion<Suggestion[]>(system, prompt, 1);
 
     // Validate and sanitize
     const safe = (Array.isArray(suggestions) ? suggestions : [])

@@ -2,6 +2,7 @@ import type {
   AIChatMessage,
   EditorState,
   Project,
+  ProjectGenerationJob,
   ProjectPage,
   ProjectSnapshot,
   SiteBrief,
@@ -13,6 +14,16 @@ import {
   extractMediaLibraryFromFileList,
   normalizeMediaAssets,
 } from "@/lib/media/library";
+import {
+  getActiveGenerationJobForProject,
+  listLatestActiveGenerationJobs,
+} from "@/lib/server/project-generation-jobs";
+import {
+  getPublishedSiteForProject,
+  listPublishedSitesForProjects,
+} from "@/lib/server/project-publishing";
+import { normalizeProjectSeo } from "@/lib/seo";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   DB_DELETE_001,
@@ -22,6 +33,7 @@ import {
   DB_WRITE_002,
   DB_WRITE_003,
   createAppError,
+  isAppError,
   type ErrorCode,
 } from "@/lib/errors";
 
@@ -31,6 +43,7 @@ type ProjectRow = {
   name: string;
   brief_json: SiteBrief;
   blueprint_json: SiteBlueprint | null;
+  seo_json: Project["seo"] | null;
   status: Project["status"];
   created_at: string;
   updated_at: string;
@@ -73,6 +86,20 @@ type SupabaseErrorLike = {
 
 const CONSTRAINT_CODES = new Set(["23502", "23503", "23505", "23514"]);
 
+function isSeoSchemaMissing(error: unknown) {
+  const maybe = (error ?? {}) as SupabaseErrorLike;
+  return (
+    maybe.code === "42703" ||
+    maybe.message?.includes("seo_json") ||
+    maybe.details?.includes("seo_json") ||
+    maybe.hint?.includes("seo_json")
+  );
+}
+
+function getProjectDbClient(options?: { admin?: boolean }) {
+  return options?.admin ? getSupabaseAdminClient() : getSupabaseServerClient();
+}
+
 function buildDbError(
   error: unknown,
   fallbackCode: ErrorCode,
@@ -102,6 +129,32 @@ function buildDbError(
   });
 }
 
+async function safeListPublishedSitesForProjects(projectIds: string[], userId: string) {
+  try {
+    return await listPublishedSitesForProjects(projectIds, userId);
+  } catch (error) {
+    if (isAppError(error) && error.code === DB_SCHEMA_001) {
+      return new Map();
+    }
+    throw error;
+  }
+}
+
+async function safeGetPublishedSiteForProject(
+  projectId: string,
+  userId: string,
+  options?: { admin?: boolean }
+) {
+  try {
+    return await getPublishedSiteForProject(projectId, userId, options);
+  } catch (error) {
+    if (isAppError(error) && error.code === DB_SCHEMA_001) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 const defaultEditorState: EditorState = {
   selectedPageId: null,
   selectedFileId: null,
@@ -118,6 +171,10 @@ const defaultEditorState: EditorState = {
   leftPanelWidth: 220,
   rightPanelWidth: 280,
   visualEditMode: true,
+  canvasZoom: 1,
+  canvasPanX: 0,
+  canvasPanY: 0,
+  canvasGridVisible: false,
 };
 
 function normalizeProject(project: Partial<Project>): Project {
@@ -133,13 +190,69 @@ function normalizeProject(project: Partial<Project>): Project {
       features: "",
     },
     blueprint: project.blueprint ?? null,
+    seo: normalizeProjectSeo(project.seo, project),
     pages: Array.isArray(project.pages) ? project.pages : [],
     files: project.files && typeof project.files === "object" ? project.files : {},
     media: normalizeMediaAssets(project.media),
     createdAt: project.createdAt ?? new Date().toISOString(),
     updatedAt: project.updatedAt ?? new Date().toISOString(),
     status: project.status ?? "draft",
+    generationJob: project.generationJob ?? null,
+    publishedSite: project.publishedSite ?? null,
   };
+}
+
+function slugifyToken(value: string | null | undefined, fallback: string): string {
+  const normalized = (value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function scopeProjectToken(
+  projectId: string,
+  rawValue: string | null | undefined,
+  fallback: string,
+  kind: "page" | "file"
+): string {
+  const current = (rawValue ?? "").trim();
+  const prefix = `${projectId}__${kind}__`;
+  if (current.startsWith(prefix)) {
+    return current;
+  }
+  return `${prefix}${slugifyToken(current, fallback)}`;
+}
+
+function makeUniqueToken(base: string, used: Set<string>, fallback: string): string {
+  const seed = base.trim() || fallback;
+  let candidate = seed;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${seed}-${suffix}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function makeUniqueFilePath(path: string, used: Set<string>): string {
+  const trimmed = path.trim() || "/file";
+  const lastSlash = trimmed.lastIndexOf("/");
+  const dir = lastSlash >= 0 ? trimmed.slice(0, lastSlash) || "/" : "";
+  const rawName = lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
+  const dotIndex = rawName.lastIndexOf(".");
+  const baseName = dotIndex > 0 ? rawName.slice(0, dotIndex) : rawName;
+  const extension = dotIndex > 0 ? rawName.slice(dotIndex) : "";
+  let candidate = `${dir === "/" ? "" : dir}/${baseName}${extension}` || `/${baseName}${extension}`;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${dir === "/" ? "" : dir}/${baseName}-${suffix}${extension}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
 }
 
 function normalizePage(row: PageRow): ProjectPage {
@@ -158,7 +271,98 @@ function normalizePage(row: PageRow): ProjectPage {
   };
 }
 
-function rowToSnapshot(projectRow: ProjectRow, pageRows: PageRow[], fileRows: FileRow[]): ProjectSnapshot {
+function canonicalizeProjectPages(projectId: string, pages: ProjectPage[]): ProjectPage[] {
+  const usedIds = new Set<string>();
+  const usedSlugs = new Set<string>();
+
+  return pages.map((page, index) => {
+    const normalized = normalizePage({
+      id: page.id,
+      project_id: "",
+      name: page.name,
+      slug: page.slug,
+      purpose: page.purpose,
+      html: page.html,
+      sections_json: page.sections,
+      status: page.status,
+      error: page.error ?? null,
+      sort_order: index,
+      updated_at: new Date().toISOString(),
+    });
+    const fallback = `page-${index + 1}`;
+    const name = normalized.name?.trim() || `Page ${index + 1}`;
+    const slug = makeUniqueToken(slugifyToken(normalized.slug || name, fallback), usedSlugs, fallback);
+    const id = makeUniqueToken(
+      scopeProjectToken(projectId, normalized.id || slug, fallback, "page"),
+      usedIds,
+      scopeProjectToken(projectId, fallback, fallback, "page")
+    );
+
+    return {
+      ...normalized,
+      id,
+      name,
+      slug,
+      purpose: normalized.purpose || "",
+    };
+  });
+}
+
+function canonicalizeProjectFiles(project: Project, pages: ProjectPage[]): Record<string, VirtualFile> {
+  const originalPageIds = new Set(project.pages.map((page) => page.id));
+  const usedIds = new Set<string>();
+  const usedPaths = new Set<string>();
+  const files: Record<string, VirtualFile> = {};
+
+  function upsertFile(file: VirtualFile, preferredId?: string) {
+    const fallbackId = preferredId || slugifyToken(file.name || file.path || file.id, `file-${Object.keys(files).length + 1}`);
+    const kind = preferredId ? "page" : "file";
+    const id = makeUniqueToken(
+      preferredId
+        ? preferredId
+        : scopeProjectToken(project.id, file.id || fallbackId, fallbackId, kind),
+      usedIds,
+      preferredId || scopeProjectToken(project.id, fallbackId, fallbackId, kind)
+    );
+    const path = makeUniqueFilePath(file.path || `/${file.name || id}`, usedPaths);
+    files[id] = {
+      ...file,
+      id,
+      path,
+      name: file.name?.trim() || path.split("/").filter(Boolean).pop() || id,
+    };
+  }
+
+  for (const file of Object.values(project.files)) {
+    const isPageHtmlFile = file.type === "html" && originalPageIds.has(file.id);
+    if (isPageHtmlFile) continue;
+    upsertFile(file);
+  }
+
+  for (const page of pages) {
+    upsertFile(
+      {
+        id: page.id,
+        name: `${page.slug}.html`,
+        path: `/pages/${page.slug}.html`,
+        content: page.html || "",
+        type: "html",
+        language: "html",
+      },
+      page.id
+    );
+  }
+
+  return files;
+}
+
+function rowToSnapshot(
+  projectRow: ProjectRow,
+  pageRows: PageRow[],
+  fileRows: FileRow[],
+  generationJob: ProjectGenerationJob | null = null,
+  publishedSite: Project["publishedSite"] = null
+): ProjectSnapshot {
   const extracted = extractMediaLibraryFromFileList(fileRows);
   const pages = [...pageRows]
     .sort((a, b) => a.sort_order - b.sort_order)
@@ -186,12 +390,15 @@ function rowToSnapshot(projectRow: ProjectRow, pageRows: PageRow[], fileRows: Fi
       name: projectRow.name,
       brief: projectRow.brief_json,
       blueprint: projectRow.blueprint_json,
+      seo: projectRow.seo_json ?? undefined,
       pages,
       files,
       media: extracted.media,
       createdAt: projectRow.created_at,
       updatedAt: projectRow.updated_at,
       status: projectRow.status,
+      generationJob,
+      publishedSite,
     }),
     editorState: {
       ...defaultEditorState,
@@ -210,18 +417,25 @@ async function saveProjectSnapshotLegacy(
   userId: string
 ) {
   const mediaFile = createMediaLibraryFile(project.media);
-  const { error: projectError } = await supabase.from("projects").upsert({
+  const projectPayload = {
     id: project.id,
     user_id: userId,
     name: project.name,
     brief_json: project.brief,
     blueprint_json: project.blueprint,
+    seo_json: project.seo,
     status: project.status,
     created_at: project.createdAt,
     updated_at: project.updatedAt,
     editor_state_json: editorState,
     ai_chats_json: aiChats,
-  });
+  };
+  let { error: projectError } = await supabase.from("projects").upsert(projectPayload);
+
+  if (projectError && isSeoSchemaMissing(projectError)) {
+    const { seo_json: _seoJson, ...legacyPayload } = projectPayload;
+    ({ error: projectError } = await supabase.from("projects").upsert(legacyPayload));
+  }
 
   if (projectError) {
     throw buildDbError(projectError, DB_WRITE_001, `Legacy save failed while upserting project ${project.id}`, {
@@ -320,48 +534,63 @@ export async function listProjects(userId: string): Promise<Project[]> {
   if (!projects.length) return [];
 
   const projectIds = projects.map((project) => project.id);
-
-  const [{ data: pageRows, error: pagesError }, { data: fileRows, error: filesError }] = await Promise.all([
-    supabase
-      .from("pages")
-      .select("*")
-      .in("project_id", projectIds)
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("files")
-      .select("*")
-      .in("project_id", projectIds)
-      .order("sort_order", { ascending: true }),
-  ]);
+  const { data: pageRows, error: pagesError } = await supabase
+    .from("pages")
+    .select("id, project_id, name, slug, purpose, status")
+    .in("project_id", projectIds)
+    .order("sort_order", { ascending: true });
 
   if (pagesError) {
     throw buildDbError(pagesError, DB_READ_001, `Failed to load pages for listed projects`, { userId, projectIds });
   }
-  if (filesError) {
-    throw buildDbError(filesError, DB_READ_001, `Failed to load files for listed projects`, { userId, projectIds });
-  }
 
-  const pages = (pageRows ?? []) as PageRow[];
-  const files = (fileRows ?? []) as FileRow[];
+  const pages = (pageRows ?? []) as Array<Pick<PageRow, "id" | "project_id" | "name" | "slug" | "purpose" | "status">>;
+  const activeJobs = await listLatestActiveGenerationJobs(projectIds);
+  const publishedSites = await safeListPublishedSitesForProjects(projectIds, userId);
 
   return projects.map((projectRow) =>
-    rowToSnapshot(
-      projectRow,
-      pages.filter((page) => page.project_id === projectRow.id),
-      files.filter((file) => file.project_id === projectRow.id)
-    ).project
+    normalizeProject({
+      id: projectRow.id,
+      name: projectRow.name,
+      brief: projectRow.brief_json,
+      blueprint: projectRow.blueprint_json,
+      seo: projectRow.seo_json ?? undefined,
+      pages: pages
+        .filter((page) => page.project_id === projectRow.id)
+        .map((page) => ({
+          id: page.id,
+          name: page.name || "Page",
+          slug: page.slug || "",
+          purpose: page.purpose || "",
+          html: "",
+          sections: [],
+          status: (["pending", "generating", "done", "error"].includes(page.status) ? page.status : "done") as ProjectPage["status"],
+          error: undefined,
+        })),
+      files: {},
+      media: [],
+      createdAt: projectRow.created_at,
+      updatedAt: projectRow.updated_at,
+      status: projectRow.status,
+      generationJob: activeJobs.get(projectRow.id) ?? null,
+      publishedSite: publishedSites.get(projectRow.id) ?? null,
+    })
   );
 }
 
-export async function getProjectSnapshot(projectId: string, userId: string): Promise<ProjectSnapshot | null> {
-  const supabase = getSupabaseServerClient();
+export async function getProjectSnapshot(
+  projectId: string,
+  userId: string,
+  options?: { admin?: boolean }
+): Promise<ProjectSnapshot | null> {
+  const supabase = getProjectDbClient(options);
 
-  const { data: projectRow, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const projectQuery = supabase.from("projects").select("*").eq("id", projectId);
+  if (!options?.admin) {
+    projectQuery.eq("user_id", userId);
+  }
+
+  const { data: projectRow, error } = await projectQuery.maybeSingle();
 
   if (error) {
     throw buildDbError(error, DB_READ_001, `Failed to load project ${projectId}`, { projectId, userId });
@@ -387,25 +616,46 @@ export async function getProjectSnapshot(projectId: string, userId: string): Pro
   if (filesError) {
     throw buildDbError(filesError, DB_READ_001, `Failed to load files for project ${projectId}`, { projectId, userId });
   }
-  return rowToSnapshot(projectRow as ProjectRow, (pageRows ?? []) as PageRow[], (fileRows ?? []) as FileRow[]);
+  const [generationJob, publishedSite] = await Promise.all([
+    getActiveGenerationJobForProject(projectId, options),
+    safeGetPublishedSiteForProject(projectId, userId, options),
+  ]);
+  return rowToSnapshot(
+    projectRow as ProjectRow,
+    (pageRows ?? []) as PageRow[],
+    (fileRows ?? []) as FileRow[],
+    generationJob,
+    publishedSite
+  );
 }
 
-export async function createDraftProject(project: Project, userId: string): Promise<ProjectSnapshot> {
-  const supabase = getSupabaseServerClient();
+export async function createDraftProject(
+  project: Project,
+  userId: string,
+  options?: { admin?: boolean }
+): Promise<ProjectSnapshot> {
+  const supabase = getProjectDbClient(options);
   const normalized = normalizeProject(project);
 
-  const { error } = await supabase.from("projects").insert({
+  const projectPayload = {
     id: normalized.id,
     user_id: userId,
     name: normalized.name,
     brief_json: normalized.brief,
     blueprint_json: normalized.blueprint,
+    seo_json: normalized.seo,
     status: normalized.status,
     created_at: normalized.createdAt,
     updated_at: normalized.updatedAt,
     editor_state_json: defaultEditorState,
     ai_chats_json: [],
-  });
+  };
+  let { error } = await supabase.from("projects").insert(projectPayload);
+
+  if (error && isSeoSchemaMissing(error)) {
+    const { seo_json: _seoJson, ...legacyPayload } = projectPayload;
+    ({ error } = await supabase.from("projects").insert(legacyPayload));
+  }
 
   if (error) {
     throw buildDbError(error, DB_WRITE_001, `Failed to create draft project ${normalized.id}`, {
@@ -421,18 +671,39 @@ export async function createDraftProject(project: Project, userId: string): Prom
   };
 }
 
-export async function saveProjectSnapshot(snapshot: ProjectSnapshot, userId: string): Promise<ProjectSnapshot> {
-  const supabase = getSupabaseServerClient();
-  const project = normalizeProject(snapshot.project);
+export async function saveProjectSnapshot(
+  snapshot: ProjectSnapshot,
+  userId: string,
+  options?: { admin?: boolean }
+): Promise<ProjectSnapshot> {
+  const supabase = getProjectDbClient(options);
+  const baseProject = normalizeProject(snapshot.project);
+  const pages = canonicalizeProjectPages(baseProject.id, baseProject.pages);
+  const project = normalizeProject({
+    ...baseProject,
+    pages,
+    files: canonicalizeProjectFiles(baseProject, pages),
+  });
   const editorState = { ...defaultEditorState, ...snapshot.editorState };
   const aiChats = Array.isArray(snapshot.aiChats) ? snapshot.aiChats : [];
   const mediaFile = createMediaLibraryFile(project.media);
+
+  if (options?.admin) {
+    await saveProjectSnapshotLegacy(supabase, project, editorState, aiChats, userId);
+    return {
+      project,
+      editorState,
+      aiChats,
+    };
+  }
+
   const { error } = await supabase.rpc("save_project_snapshot", {
     p_project: {
       id: project.id,
       name: project.name,
       brief_json: project.brief,
       blueprint_json: project.blueprint,
+      seo_json: project.seo,
       status: project.status,
       created_at: project.createdAt,
       updated_at: project.updatedAt,

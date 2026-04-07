@@ -25,7 +25,7 @@ export function EditorSwitch({
       className={`relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/45 disabled:cursor-not-allowed disabled:opacity-45 ${
         checked
           ? "border-accent-400/32 bg-[linear-gradient(135deg,rgba(129,140,255,0.92),rgba(92,104,255,0.96))] shadow-[0_12px_28px_rgba(83,97,255,0.24)]"
-          : "border-white/[0.08] bg-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.12]"
+          : "border-[var(--border-default)] bg-[var(--surface-4)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-5)]"
       } ${className}`}
     >
       <span

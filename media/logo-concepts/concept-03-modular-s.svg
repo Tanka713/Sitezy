@@ -1,0 +1,67 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient03" x1="202" y1="90" x2="1380" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111621"/>
+      <stop offset="1" stop-color="#070A10"/>
+    </linearGradient>
+    <linearGradient id="accentGradient03" x1="218" y1="268" x2="620" y2="602" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B8CFF"/>
+      <stop offset="1" stop-color="#37E6B5"/>
+    </linearGradient>
+    <radialGradient id="glow03" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(356 406) rotate(44.7) scale(492 368)">
+      <stop stop-color="#5B8CFF" stop-opacity="0.23"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1600" height="900" rx="40" fill="#06080C"/>
+  <rect x="24" y="24" width="1552" height="852" rx="28" fill="url(#bgGradient03)" stroke="rgba(255,255,255,0.08)"/>
+  <rect x="84" y="84" width="1432" height="732" rx="28" fill="url(#glow03)"/>
+
+  <text x="114" y="126" fill="#97A3B6" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="17" letter-spacing="4">SITEZY LOGO SYSTEM</text>
+  <text x="114" y="168" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="44" font-weight="700">Concept 03 / Modular S</text>
+  <text x="114" y="205" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="20">
+    A more ownable monogram built like interface panels being pulled into one controlled motion.
+  </text>
+
+  <g transform="translate(144 248)">
+    <rect x="0" y="0" width="760" height="470" rx="36" fill="rgba(11,13,18,0.48)" stroke="rgba(255,255,255,0.08)"/>
+    <path d="M204 102C270 56 391 60 446 116" stroke="url(#accentGradient03)" stroke-width="34" stroke-linecap="round"/>
+    <path d="M446 116C496 166 481 240 406 270L302 312C227 342 211 416 259 464" stroke="url(#accentGradient03)" stroke-width="34" stroke-linecap="round"/>
+    <path d="M259 464C315 520 438 520 500 472" stroke="#F5F7FB" stroke-width="34" stroke-linecap="round"/>
+    <circle cx="228" cy="100" r="22" fill="#F5F7FB"/>
+    <circle cx="500" cy="472" r="22" fill="#5B8CFF"/>
+    <rect x="564" y="116" width="114" height="114" rx="30" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.11)"/>
+    <rect x="564" y="250" width="114" height="114" rx="30" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.11)"/>
+    <path d="M590 173H652" stroke="#F5F7FB" stroke-width="10" stroke-linecap="round"/>
+    <path d="M590 307H633" stroke="#F5F7FB" stroke-width="10" stroke-linecap="round"/>
+    <text x="82" y="404" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="150" font-weight="700" letter-spacing="-10">Sitezy</text>
+    <text x="84" y="448" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="20">The most branded route. Feels like creative software, not just another SaaS tool.</text>
+  </g>
+
+  <g transform="translate(956 248)">
+    <rect x="0" y="0" width="500" height="470" rx="36" fill="rgba(9,11,17,0.76)" stroke="rgba(255,255,255,0.08)"/>
+    <text x="44" y="70" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="20" font-weight="700" letter-spacing="1.2">Why it fits</text>
+
+    <text x="44" y="126" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">01</text>
+    <text x="92" y="126" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">The line system feels like panels, layout modules, and design motion converging into one mark.</text>
+
+    <text x="44" y="186" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">02</text>
+    <text x="92" y="186" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">More ownable than a literal frame and more iconic than a pure wordmark.</text>
+
+    <text x="44" y="246" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">03</text>
+    <text x="92" y="246" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">Strong route if Sitezy wants to look like premium creative software over time.</text>
+
+    <text x="44" y="324" fill="#97A3B6" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="14" letter-spacing="3">CHARACTER</text>
+    <text x="44" y="360" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">Modern luxury software</text>
+    <text x="44" y="396" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">Design-led, not template-led</text>
+    <text x="44" y="432" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="18">Confident enough for product and brand</text>
+
+    <rect x="294" y="338" width="146" height="146" rx="38" fill="#0B0D12" stroke="rgba(255,255,255,0.08)"/>
+    <path d="M334 382C360 364 409 366 432 390" stroke="url(#accentGradient03)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M432 390C454 412 447 447 416 460L374 478C343 491 336 525 357 547" stroke="url(#accentGradient03)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M357 547C381 569 432 569 456 548" stroke="#F5F7FB" stroke-width="12" stroke-linecap="round"/>
+  </g>
+
+  <text x="114" y="786" fill="#97A3B6" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="15" letter-spacing="3">OWNABLE / CREATIVE SOFTWARE / MODULAR / LONG-TERM BRAND ROUTE</text>
+</svg>

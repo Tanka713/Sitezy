@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { generateBlueprint } from "@/lib/ai/service";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   handleRouteError,
   parseRequestBody,
   createAppError,
@@ -16,6 +19,15 @@ export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to generate blueprint",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{ brief?: SiteBrief }>(req);
     const brief = body.brief;
 
@@ -27,6 +39,8 @@ export async function POST(req: NextRequest) {
         metadata: { hasSiteName: !!brief?.siteName, hasDescription: !!brief?.description },
       });
     }
+
+    await consumeAIUsageCredits(user.id, "blueprint");
 
     const blueprint = await generateBlueprint(brief).catch((err) => {
       throw createAppError({

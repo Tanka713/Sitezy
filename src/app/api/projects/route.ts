@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createDraftProject, listProjects } from "@/lib/server/project-db";
+import { buildDefaultProjectSeo } from "@/lib/seo";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
   API_REQUEST_002,
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
         features: "",
       },
       blueprint: null,
+      seo: buildDefaultProjectSeo(project ?? { name: brief?.siteName?.trim() || "Untitled Project", brief }),
       pages: [],
       files: {},
       media: [],

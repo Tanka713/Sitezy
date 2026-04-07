@@ -4,7 +4,7 @@ Date: March 29, 2026
 
 ## What Changed
 
-- Replaced the old raw insertion categories (`layout`, `nav`, `text`, `cards`, `cta`, `decorative`) with a cleaner user-facing category system in `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/registry.ts`
+- Replaced the old raw insertion categories (`layout`, `nav`, `text`, `cards`, `cta`, `decorative`) with a cleaner user-facing category system in `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/registry.ts`
 - Added category metadata for:
   - label
   - icon
@@ -13,7 +13,7 @@ Date: March 29, 2026
   - search keywords
 - Added cleaner user-facing labels for ambiguous or duplicate-prone blocks
 - Kept legacy raw block categories as `sourceCategory` so the system can still trace the original library data without exposing it in the UI
-- Rebuilt the Elements sidebar grouping logic in `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx` so it reads from the registry category model instead of the old raw category strings
+- Rebuilt the Elements sidebar grouping logic in `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx` so it reads from the registry category model instead of the old raw category strings
 
 ## New Category Model
 
@@ -95,8 +95,8 @@ This makes the library easier to scan without changing insertion behavior.
 
 ## Files Updated
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/registry.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/registry.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
 
 ## Result
 

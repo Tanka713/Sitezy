@@ -4,7 +4,7 @@ This phase focused on runtime structure safety inside the visual editor. The goa
 
 ### What changed
 
-- Added guarded drop normalization in [visualEditor.ts](/Users/hashem/Desktop/sitezyV2%20copy/src/lib/utils/visualEditor.ts).
+- Added guarded drop normalization in [visualEditor.ts](/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts).
 - Added composite-block protection so large block inserts and drops no longer land inside the internal markup of structured widget/collection blocks.
 - Added safer nav handling so:
   - inline nav-compatible nodes still insert inside nav rows
@@ -23,7 +23,7 @@ This phase focused on runtime structure safety inside the visual editor. The goa
 
 ### Files changed
 
-- [src/lib/utils/visualEditor.ts](/Users/hashem/Desktop/sitezyV2%20copy/src/lib/utils/visualEditor.ts)
+- [src/lib/utils/visualEditor.ts](/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts)
 
 ### Verification
 

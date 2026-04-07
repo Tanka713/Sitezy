@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiAssist } from "@/lib/ai/service";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   handleRouteError,
   parseRequestBody,
   createAppError,
@@ -19,6 +22,15 @@ export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to AI assist",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{
       instruction?: string;
       context?: {
@@ -37,6 +49,8 @@ export async function POST(req: NextRequest) {
         severity: "warn",
       });
     }
+
+    await consumeAIUsageCredits(user.id, "assist");
 
     const { instruction, context } = body;
     const encoder = new TextEncoder();

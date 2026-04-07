@@ -6,11 +6,11 @@ Last reviewed: March 30, 2026
 
 Sitezy uses a centralized structured error system under:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/codes.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/messages.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/AppError.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/api.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/logger.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/codes.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/messages.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/AppError.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/api.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/logger.ts`
 
 Core usage pattern:
 
@@ -52,18 +52,18 @@ Structured handling is in place across the main application boundaries:
 
 Representative files:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/projects/route.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/projects/[id]/route.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/media/route.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/media/[id]/route.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/server/project-db.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/server/user-media.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/dashboard/CreateProjectModal.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/EditorTopBar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/LeftSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/marketing/AuthScreen.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/projects/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/projects/[id]/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/media/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/media/[id]/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/server/project-db.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/server/user-media.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/dashboard/CreateProjectModal.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/EditorTopBar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/LeftSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/marketing/AuthScreen.tsx`
 
 ## Registry summary
 
@@ -115,7 +115,7 @@ Examples:
 
 Safe human-facing copy still comes from:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/errors/messages.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/errors/messages.ts`
 
 ## Current weak spots
 
@@ -125,7 +125,7 @@ These are the notable remaining gaps in the current codebase.
 
 File:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/MediaLibraryModal.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/MediaLibraryModal.tsx`
 
 Current case:
 

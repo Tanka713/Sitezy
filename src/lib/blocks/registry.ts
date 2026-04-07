@@ -844,6 +844,34 @@ const canonicalBlocks = BLOCK_LIBRARY.filter((block) => block.id === resolveBloc
 
 export const BLOCK_DEFINITIONS: BlockElementDefinition[] = canonicalBlocks.map(buildBlockDefinition);
 export const BLOCK_DEFINITION_MAP = new Map(BLOCK_DEFINITIONS.map((definition) => [definition.id, definition]));
+const EDITOR_BLOCK_PICKER_HIDDEN_IDS = new Set([
+  "pricing-toggle",
+  "carousel",
+  "testimonial-slider",
+  "modal-popup",
+  "notification",
+  "countdown",
+  "tag-cloud",
+  "breadcrumb",
+  "pagination",
+  "menu-item",
+  "shape-circle",
+  "shape-ring",
+  "shape-square",
+  "shape-diamond",
+  "shape-triangle",
+  "shape-pill",
+  "shape-line",
+  "shape-blob",
+  "shape-cross",
+  "shape-dots",
+  "shape-row",
+  "wave-divider",
+  "alert-bar",
+]);
+export const BLOCK_PICKER_DEFINITIONS: BlockElementDefinition[] = BLOCK_DEFINITIONS.filter(
+  (definition) => !EDITOR_BLOCK_PICKER_HIDDEN_IDS.has(definition.id)
+);
 export const ICON_DEFINITIONS: IconElementDefinition[] = ICONS.map(buildIconDefinition);
 export const ICON_DEFINITION_MAP = new Map(ICON_DEFINITIONS.map((definition) => [definition.id, definition]));
 export const EDITOR_ELEMENT_DEFINITIONS: EditorElementDefinition[] = [

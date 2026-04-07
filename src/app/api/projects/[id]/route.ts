@@ -101,6 +101,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         leftPanelWidth: 220,
         rightPanelWidth: 280,
         visualEditMode: true,
+        canvasZoom: 1,
+        canvasPanX: 0,
+        canvasPanY: 0,
+        canvasGridVisible: false,
       },
       aiChats: Array.isArray(body.aiChats) ? body.aiChats : [],
     }, user.id);

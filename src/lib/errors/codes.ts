@@ -128,6 +128,8 @@ export const DB_DELETE_001      = "DB_DELETE_001"      as const; // Failed to de
 export const DB_CONNECTION_001  = "DB_CONNECTION_001"  as const; // Database connection failed
 export const DB_CONNECTION_002  = "DB_CONNECTION_002"  as const; // Database timeout
 export const DB_SCHEMA_001      = "DB_SCHEMA_001"      as const; // Schema mismatch detected
+export const DB_SCHEMA_002      = "DB_SCHEMA_002"      as const; // Background generation schema missing
+export const DB_SCHEMA_003      = "DB_SCHEMA_003"      as const; // CMS schema missing
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
@@ -157,6 +159,7 @@ export const API_AUTH_001       = "API_AUTH_001"       as const; // Invalid API 
 
 export const VALIDATION_PROJECT_001 = "VALIDATION_PROJECT_001" as const; // Project payload invalid
 export const VALIDATION_PROJECT_002 = "VALIDATION_PROJECT_002" as const; // Project missing required fields
+export const VALIDATION_DOMAIN_001  = "VALIDATION_DOMAIN_001"  as const; // Domain hostname invalid or unsupported
 
 export const VALIDATION_PAGE_001    = "VALIDATION_PAGE_001"    as const; // Page payload invalid
 export const VALIDATION_PAGE_002    = "VALIDATION_PAGE_002"    as const; // Page missing required fields
@@ -186,6 +189,12 @@ export const AUTH_REQUIRED_001  = "AUTH_REQUIRED_001"  as const; // Authenticati
 export const AUTH_SESSION_001   = "AUTH_SESSION_001"   as const; // Session invalid
 export const AUTH_PERMISSION_001 = "AUTH_PERMISSION_001" as const; // Permission denied
 export const AUTH_TOKEN_001     = "AUTH_TOKEN_001"     as const; // Invalid auth token
+export const AUTH_VERIFY_001    = "AUTH_VERIFY_001"    as const; // Email verification required
+export const AUTH_INVITE_001    = "AUTH_INVITE_001"    as const; // Invite dispatch failed
+export const AUTH_MFA_001       = "AUTH_MFA_001"       as const; // MFA setup failed
+export const AUTH_MFA_002       = "AUTH_MFA_002"       as const; // MFA challenge dispatch failed
+export const AUTH_MFA_003       = "AUTH_MFA_003"       as const; // MFA verification failed
+export const AUTH_MFA_004       = "AUTH_MFA_004"       as const; // MFA management failed
 
 // ─── NETWORK ─────────────────────────────────────────────────────────────────
 
@@ -193,6 +202,7 @@ export const NETWORK_001        = "NETWORK_001"        as const; // Network requ
 export const NETWORK_002        = "NETWORK_002"        as const; // Network unavailable
 export const NETWORK_003        = "NETWORK_003"        as const; // Request aborted
 export const NETWORK_004        = "NETWORK_004"        as const; // Request timed out
+export const NETWORK_DNS_001    = "NETWORK_DNS_001"    as const; // DNS verification failed
 
 // ─── UNKNOWN / FALLBACK ───────────────────────────────────────────────────────
 
@@ -230,14 +240,14 @@ export type ErrorCode =
   | typeof DB_UPDATE_001 | typeof DB_UPDATE_002
   | typeof DB_DELETE_001
   | typeof DB_CONNECTION_001 | typeof DB_CONNECTION_002
-  | typeof DB_SCHEMA_001
+  | typeof DB_SCHEMA_001 | typeof DB_SCHEMA_002 | typeof DB_SCHEMA_003
   | typeof API_REQUEST_001 | typeof API_REQUEST_002 | typeof API_REQUEST_003
   | typeof API_RESPONSE_001 | typeof API_RESPONSE_002
   | typeof API_GENERATE_001 | typeof API_GENERATE_002 | typeof API_GENERATE_003
   | typeof API_SAVE_001 | typeof API_SAVE_002
   | typeof API_TIMEOUT_001 | typeof API_RATE_LIMIT_001 | typeof API_UNKNOWN_001
   | typeof API_BILLING_001 | typeof API_AUTH_001
-  | typeof VALIDATION_PROJECT_001 | typeof VALIDATION_PROJECT_002
+  | typeof VALIDATION_PROJECT_001 | typeof VALIDATION_PROJECT_002 | typeof VALIDATION_DOMAIN_001
   | typeof VALIDATION_PAGE_001 | typeof VALIDATION_PAGE_002
   | typeof VALIDATION_NODE_001 | typeof VALIDATION_NODE_002
   | typeof VALIDATION_NODE_003 | typeof VALIDATION_NODE_004
@@ -246,6 +256,7 @@ export type ErrorCode =
   | typeof UI_ACTION_001 | typeof UI_ACTION_002
   | typeof UI_MODAL_001 | typeof UI_TOAST_001 | typeof UI_BOUNDARY_001
   | typeof AUTH_REQUIRED_001 | typeof AUTH_SESSION_001
-  | typeof AUTH_PERMISSION_001 | typeof AUTH_TOKEN_001
-  | typeof NETWORK_001 | typeof NETWORK_002 | typeof NETWORK_003 | typeof NETWORK_004
+  | typeof AUTH_PERMISSION_001 | typeof AUTH_TOKEN_001 | typeof AUTH_VERIFY_001 | typeof AUTH_INVITE_001
+  | typeof AUTH_MFA_001 | typeof AUTH_MFA_002 | typeof AUTH_MFA_003 | typeof AUTH_MFA_004
+  | typeof NETWORK_001 | typeof NETWORK_002 | typeof NETWORK_003 | typeof NETWORK_004 | typeof NETWORK_DNS_001
   | typeof UNKNOWN_001 | typeof UNKNOWN_002 | typeof UNKNOWN_003;

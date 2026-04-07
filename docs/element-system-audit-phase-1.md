@@ -8,18 +8,18 @@ This audit maps the current editor element system end to end before any architec
 
 Primary files inspected:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/library.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/EditPanel.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/PreviewCanvas.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/LeftSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/editor/structure.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/media/library.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/MediaLibraryModal.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/types/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/EditPanel.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/PreviewCanvas.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/LeftSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/editor/structure.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/media/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/MediaLibraryModal.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/types/index.ts`
 
 ## Concise Audit Summary
 
@@ -218,10 +218,10 @@ Icons are not part of `BLOCK_LIBRARY`.
 
 They are handled through:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/iconLibrary.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts` via `buildIconHtml`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/iconLibrary.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts` via `buildIconHtml`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 That means the current "element system" is already split into:
 
@@ -237,7 +237,7 @@ before it even reaches the canvas.
 
 Current source:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/library.ts`
 
 What it defines:
 
@@ -263,7 +263,7 @@ What it does not define:
 
 Current sources:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts`
 
 Rendering is split into:
 
@@ -282,9 +282,9 @@ Important finding:
 
 Current sources:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 Insertion paths:
 
@@ -310,7 +310,7 @@ Important finding:
 
 Current source:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 Selection is resolved by DOM heuristics:
 
@@ -333,9 +333,9 @@ Important finding:
 
 Current sources:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/EditPanel.tsx`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/types/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/EditPanel.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/types/index.ts`
 
 The editor does not edit typed element props.
 
@@ -377,7 +377,7 @@ Important finding:
 
 Current source:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 Operations are DOM-based:
 
@@ -396,8 +396,8 @@ Important finding:
 
 Current sources:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
 
 Nesting is currently governed by:
 
@@ -415,9 +415,9 @@ Important finding:
 
 Current sources:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/editor/structure.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/PreviewCanvas.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/editor/structure.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/PreviewCanvas.tsx`
 
 Persistence model:
 
@@ -527,7 +527,7 @@ But it is not the same thing as a complete element schema.
 
 Broken point:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/library.ts`
 
 Missing:
 
@@ -548,7 +548,7 @@ Impact:
 
 Broken point:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts`
 
 Problems:
 
@@ -568,7 +568,7 @@ Impact:
 
 Broken point:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 Problems:
 
@@ -586,7 +586,7 @@ Impact:
 
 Broken point:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/EditPanel.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/EditPanel.tsx`
 
 Problems:
 
@@ -961,19 +961,19 @@ Missing or incomplete:
 
 ### File-Level Weak Points
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/library.ts`
+#### `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/library.ts`
 
 - inventory only
 - not a true registry yet
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts`
+#### `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts`
 
 - two large switch renderers
 - no typed props
 - alias drift
 - static HTML as defaults
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/lib/utils/visualEditor.ts`
+#### `/Users/hashem/Desktop/sitezyV2/src/lib/utils/visualEditor.ts`
 
 - too much responsibility:
   - selection
@@ -985,25 +985,25 @@ Missing or incomplete:
   - drag/drop
   - nav/media/icon special cases
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/EditPanel.tsx`
+#### `/Users/hashem/Desktop/sitezyV2/src/components/editor/EditPanel.tsx`
 
 - inspector monolith
 - not schema-driven
 - very large local state buffer
 - many family-specific branches mixed with generic controls
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
+#### `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
 
 - insertion UX, AI insert, icons, drag overlays, category UI, and block scoring all mixed together
 - icons remain a separate system
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
+#### `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
 
 - persistence model is page HTML plus derived sections
 - no nested structured element state
 - insert fallback still bypasses the richer runtime path
 
-#### `/Users/hashem/Desktop/sitezyV2 copy/src/lib/editor/structure.ts`
+#### `/Users/hashem/Desktop/sitezyV2/src/lib/editor/structure.ts`
 
 - stable for top-level sections
 - intentionally not aware of nested element schemas
@@ -1085,10 +1085,10 @@ Build a new central registry and normalize aliases, families, children rules, an
 
 Primary targets:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/library.ts`
 - new registry/config files under `src/lib/editor` or `src/lib/elements`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/blocks/factory.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/RightSidebar.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/blocks/factory.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/RightSidebar.tsx`
 
 ### Phase 3: Defaults, Validation, Safe Fallbacks
 

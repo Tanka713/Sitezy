@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { SiteBlueprint } from "@/types";
+import type { ResolvedSeoMeta } from "@/lib/seo";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -66,12 +67,34 @@ function extractTopLevelTag(html: string, tag: string): string | null {
 }
 
 export function formatDate(dateString: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(dateString));
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+
+  const month = MONTH_LABELS[parsed.getMonth()] ?? "";
+  const day = parsed.getDate();
+  const year = parsed.getFullYear();
+  return `${month} ${day}, ${year}`;
 }
+
+export function formatShortDateTime(dateString: string): string {
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  const month = MONTH_LABELS[parsed.getMonth()] ?? "";
+  const day = parsed.getDate();
+  const hours24 = parsed.getHours();
+  const minutes = parsed.getMinutes().toString().padStart(2, "0");
+  const meridiem = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 || 12;
+  return `${month} ${day}, ${hours12}:${minutes} ${meridiem}`;
+}
+
+export function formatSupportTicketNumber(ticketNumber?: number | null): string {
+  return typeof ticketNumber === "number" && Number.isFinite(ticketNumber)
+    ? `ST-${ticketNumber}`
+    : "Ticket pending";
+}
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function buildResponsiveOverrideScript(): string {
   return `<script>
@@ -143,6 +166,73 @@ function buildResponsiveOverrideScript(): string {
         document.addEventListener("DOMContentLoaded", refresh, { once: true });
       }else{
         refresh();
+      }
+    })();
+  <\/script>`;
+}
+
+function buildNavbarFlowGuardScript(): string {
+  return `<script>
+    (function(){
+      function firstNavbar(){
+        return document.querySelector('body > nav[data-sz-section-type="navbar"], body > header[data-sz-section-type="navbar"], body > nav, body > header');
+      }
+
+      function firstContentSibling(nav){
+        var el = nav ? nav.nextElementSibling : null;
+        while(el && (el.tagName === "SCRIPT" || el.tagName === "STYLE")) el = el.nextElementSibling;
+        return el;
+      }
+
+      function adjust(){
+        var nav = firstNavbar();
+        var next = firstContentSibling(nav);
+        if(!nav || !next) return;
+
+        var nextStyle = window.getComputedStyle(next);
+        if(!next.hasAttribute("data-sitezy-base-padding-top")){
+          next.setAttribute("data-sitezy-base-padding-top", nextStyle.paddingTop || "0px");
+        }
+        if(!next.hasAttribute("data-sitezy-base-scroll-margin-top")){
+          next.setAttribute("data-sitezy-base-scroll-margin-top", nextStyle.scrollMarginTop || "0px");
+        }
+
+        var basePaddingTop = parseFloat(next.getAttribute("data-sitezy-base-padding-top") || "0") || 0;
+        var baseScrollMarginTop = parseFloat(next.getAttribute("data-sitezy-base-scroll-margin-top") || "0") || 0;
+
+        next.style.paddingTop = basePaddingTop + "px";
+        next.style.scrollMarginTop = baseScrollMarginTop > 0 ? baseScrollMarginTop + "px" : "";
+
+        var navStyle = window.getComputedStyle(nav);
+        var navRect = nav.getBoundingClientRect();
+        var nextRect = next.getBoundingClientRect();
+        var navHeight = Math.ceil(navRect.height);
+        var overlap = Math.ceil(navRect.bottom - nextRect.top);
+
+        if(navHeight <= 0) return;
+
+        var scrollPadding = Math.max(baseScrollMarginTop, navHeight + 16);
+        document.documentElement.style.scrollPaddingTop = scrollPadding + "px";
+        next.style.scrollMarginTop = scrollPadding + "px";
+
+        if(navStyle.position === "fixed" || overlap > 0){
+          var requiredOffset = Math.max(navHeight, overlap, 0);
+          if(requiredOffset > 0){
+            next.style.paddingTop = basePaddingTop + requiredOffset + "px";
+          }
+        }
+      }
+
+      if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", adjust, { once: true });
+      }else{
+        adjust();
+      }
+
+      window.addEventListener("load", adjust);
+      window.addEventListener("resize", adjust);
+      if(document.fonts && document.fonts.ready){
+        document.fonts.ready.then(adjust).catch(function(){});
       }
     })();
   <\/script>`;
@@ -455,14 +545,44 @@ export function buildFullPageHtml(
   blueprint: SiteBlueprint | null,
   pageName: string,
   editorScript = "",
-  globalCss = ""
+  globalCss = "",
+  seo: ResolvedSeoMeta | null = null
 ): string {
   const headingFont = blueprint?.typography?.headingFont || "Inter";
   const bodyFont    = blueprint?.typography?.bodyFont    || "Inter";
   const colors = blueprint?.colorScheme;
 
   const googleFonts = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(headingFont)}:wght@400;500;600;700;800;900&family=${encodeURIComponent(bodyFont)}:wght@300;400;500;600&display=swap`;
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const resolvedTitle = seo?.title?.trim() || `${pageName}${blueprint?.siteName ? ` — ${blueprint.siteName}` : ""}`;
+  const descriptionMeta = seo?.description?.trim()
+    ? `<meta name="description" content="${escapeHtml(seo.description.trim())}" />`
+    : "";
+  const canonicalMeta = seo?.canonicalUrl?.trim()
+    ? `<link rel="canonical" href="${escapeHtml(seo.canonicalUrl.trim())}" />`
+    : "";
+  const robotsMeta = seo?.noindex ? `<meta name="robots" content="noindex, nofollow" />` : "";
+  const openGraphMeta = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:title" content="${escapeHtml(resolvedTitle)}" />`,
+    seo?.description?.trim() ? `<meta property="og:description" content="${escapeHtml(seo.description.trim())}" />` : "",
+    seo?.canonicalUrl?.trim() ? `<meta property="og:url" content="${escapeHtml(seo.canonicalUrl.trim())}" />` : "",
+    seo?.ogImageUrl?.trim() ? `<meta property="og:image" content="${escapeHtml(seo.ogImageUrl.trim())}" />` : "",
+    `<meta name="twitter:card" content="${seo?.ogImageUrl?.trim() ? "summary_large_image" : "summary"}" />`,
+    `<meta name="twitter:title" content="${escapeHtml(resolvedTitle)}" />`,
+    seo?.description?.trim() ? `<meta name="twitter:description" content="${escapeHtml(seo.description.trim())}" />` : "",
+    seo?.ogImageUrl?.trim() ? `<meta name="twitter:image" content="${escapeHtml(seo.ogImageUrl.trim())}" />` : "",
+  ]
+    .filter(Boolean)
+    .join("\n  ");
   const responsiveOverrideScript = buildResponsiveOverrideScript();
+  const navbarFlowGuardScript = buildNavbarFlowGuardScript();
   const widgetRuntimeScript = buildWidgetRuntimeScript();
   const embedFixScript = `<script>
     (function(){
@@ -502,7 +622,11 @@ export function buildFullPageHtml(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${pageName}${blueprint?.siteName ? ` — ${blueprint.siteName}` : ""}</title>
+  <title>${escapeHtml(resolvedTitle)}</title>
+  ${descriptionMeta}
+  ${canonicalMeta}
+  ${robotsMeta}
+  ${openGraphMeta}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="${googleFonts}" rel="stylesheet" />
@@ -684,6 +808,7 @@ export function buildFullPageHtml(
 <body>
 ${pageHtml}
 ${responsiveOverrideScript}
+${navbarFlowGuardScript}
 ${widgetRuntimeScript}
 ${embedFixScript}
 ${editorScript}

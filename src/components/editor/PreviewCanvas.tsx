@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { isSignificantNode, type LiveIntelligenceSuggestion } from "@/lib/editor/intelligence";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
 import { useAppStore } from "@/lib/store";
@@ -8,8 +8,9 @@ import { buildFullPageHtml } from "@/lib/utils";
 import { buildVisualEditorScript } from "@/lib/utils/visualEditor";
 import {
   Loader2, MousePointer2, Eye, Code2, Columns,
-  Undo2, Redo2, ZoomIn, ZoomOut, Monitor, Tablet, Smartphone,
-  ChevronUp, ChevronDown, Scissors, Sparkles, Trash2, Copy, ClipboardPaste,
+  Undo2, Redo2, Monitor, Tablet, Smartphone,
+  ChevronUp, Scissors, Sparkles, Trash2, Copy, ClipboardPaste,
+  ChevronRight, Minus, Plus, Edit2,
 } from "lucide-react";
 import type { CanvasNodeInfo, Project } from "@/types";
 
@@ -74,10 +75,11 @@ const NAV_GUARD_SCRIPT = `<script>
 })();
 <\/script>`;
 
-function ToolbarTooltip({ label }: { label: string }) {
+function ToolbarTooltip({ label, shortcut }: { label: string; shortcut?: string }) {
   return (
-    <span className="pointer-events-none absolute left-1/2 top-full z-[120] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] border border-white/[0.08] bg-[#11141d] px-2.5 py-1 text-[10px] font-medium text-white/90 opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+    <span className="sz-tooltip pointer-events-none absolute left-1/2 top-full z-[120] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] px-2.5 py-1 text-[10px] font-medium opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
       {label}
+      {shortcut ? <span className="ml-1 text-[9px] font-normal text-[var(--fg-muted)]">({shortcut})</span> : null}
     </span>
   );
 }
@@ -109,11 +111,16 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   const toggleRightSidebar    = useAppStore((s) => s.toggleRightSidebar);
   const undo              = useAppStore((s) => s.undo);
   const redo              = useAppStore((s) => s.redo);
-  const undoStack         = useAppStore((s) => s.undoStack);
-  const redoStack         = useAppStore((s) => s.redoStack);
+  const undoStack          = useAppStore((s) => s.undoStack);
+  const redoStack          = useAppStore((s) => s.redoStack);
+  const generationStatus   = useAppStore((s) => s.generationStatus);
+  const generationProgress = useAppStore((s) => s.generationProgress);
 
-  const [zoom, setZoom]               = useState(100);
+  const [zoom, setZoom] = useState(100);
+  const zoomRef = useRef(100);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   const [showErrorLog, setShowErrorLog] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: CanvasNodeInfo } | null>(null);
   const [iframeCanUndo, setIframeCanUndo] = useState(false);
   const [iframeCanRedo, setIframeCanRedo] = useState(false);
   const [iframeHasClipboard, setIframeHasClipboard] = useState(false);
@@ -149,6 +156,42 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   const page = pages.find((p) => p.id === activePageId) ?? null;
   const file = files[selectedFileId ?? ""] ?? null;
   const codeContextKeyRef = useRef<string>("");
+  const hasGeneratingPages = pages.some((entry) => entry.status === "pending" || entry.status === "generating");
+  const backgroundProgress =
+    project.generationJob?.status === "queued" || project.generationJob?.status === "running"
+      ? project.generationJob.progressMessage?.trim() || ""
+      : "";
+  const backgroundJobActive =
+    project.generationJob?.status === "queued" || project.generationJob?.status === "running";
+  const isGlobalGenerating =
+    generationStatus === "blueprint" ||
+    generationStatus === "pages" ||
+    generationStatus === "normalizing" ||
+    backgroundJobActive ||
+    project.status === "generating" ||
+    hasGeneratingPages;
+  const progressLower = (backgroundProgress || generationProgress.trim()).toLowerCase();
+  const progressTargetsCurrentPage = !!page?.name && progressLower.includes(page.name.trim().toLowerCase());
+  const showGeneratingState =
+    page?.status === "pending" ||
+    page?.status === "generating" ||
+    (isGlobalGenerating && (!activePageId || !page?.html || progressTargetsCurrentPage));
+  const generatingLabel =
+    backgroundProgress ||
+    generationProgress.trim() ||
+    (page?.status === "generating"
+      ? page.name
+        ? `Regenerating ${page.name}`
+        : "Regenerating page"
+      : page?.status === "pending"
+        ? page.name
+          ? `Generating ${page.name}`
+          : "Generating page"
+      : page?.name
+        ? `Generating ${page.name}`
+        : pages.length === 0
+          ? "Analyzing your brief"
+          : "Generating page");
 
   const codeContent = (leftPanelTab === "files" && file && file.type !== "html")
     ? file.content : page?.html ?? "";
@@ -274,7 +317,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     if (!iframe || !iframeReady) return;
     if (!page?.html) {
       const doc = iframe.contentDocument;
-      if (doc) { doc.open(); doc.write(emptyState(page?.status === "generating", page?.status === "error")); doc.close(); }
+      if (doc) { doc.open(); doc.write(emptyState(showGeneratingState, page?.status === "error", generatingLabel)); doc.close(); }
       return;
     }
     // Skip rewrite if the HTML change originated from the iframe itself
@@ -283,7 +326,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     if (visualEditMode && page.html === lastIframeHtmlRef.current) return;
     lastIframeHtmlRef.current = "";
     writeToIframe(page.html, visualEditMode);
-  }, [iframeReady, page?.html, page?.id, page?.status, visualEditMode, writeToIframe, previewMode]);
+  }, [generatingLabel, iframeReady, page?.html, page?.id, page?.status, previewMode, showGeneratingState, visualEditMode, writeToIframe]);
 
   // postMessage from iframe
   useEffect(() => {
@@ -343,6 +386,15 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
             ? payload.path
             : [payload?.sectionName, payload?.label].filter(Boolean)
         );
+        // Auto-switch panel: section root → Properties (content editing),
+        // inner elements → Style (CSS controls).
+        if (!rightSidebarOpen) toggleRightSidebar();
+        const clickedRole = (payload as { role?: string } | null)?.role;
+        if (clickedRole === "section") {
+          setRightPanel("properties");
+        } else {
+          setRightPanel("style");
+        }
       }
       if (type === "deselect") {
         setIsIframeEditing(false);
@@ -389,6 +441,15 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
       }
       if (type === "hover-out") {
         setHoveredNode(null);
+      }
+      if (type === "contextmenu") {
+        const iframeEl = internalIframeRef.current;
+        if (!iframeEl) return;
+        const rect = iframeEl.getBoundingClientRect();
+        const scale = zoomRef.current / 100;
+        const menuX = rect.left + (payload.x as number) * scale;
+        const menuY = rect.top + (payload.y as number) * scale;
+        setContextMenu({ x: menuX, y: menuY, node: payload.nodeInfo as CanvasNodeInfo });
       }
     }
     window.addEventListener("message", handler);
@@ -444,6 +505,22 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     sendToIframe("trigger-analysis");
   }
 
+  // ── Simple zoom helpers ──────────────────────────────────────────────
+  const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
+  function zoomIn() {
+    setZoom((z) => {
+      const next = ZOOM_STEPS.find((s) => s > z);
+      return next ?? Math.min(200, z + 25);
+    });
+  }
+  function zoomOut() {
+    setZoom((z) => {
+      const next = [...ZOOM_STEPS].reverse().find((s) => s < z);
+      return next ?? Math.max(50, z - 25);
+    });
+  }
+  function resetZoom() { setZoom(100); }
+
   // Parent-window keyboard shortcuts (fire when parent has focus, not iframe)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -478,6 +555,13 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
         }
       }
 
+      // Zoom shortcuts
+      if (mod && previewMode !== "code") {
+        if (e.key === "=" || e.key === "+") { e.preventDefault(); zoomIn(); return; }
+        if (e.key === "-") { e.preventDefault(); zoomOut(); return; }
+        if (e.key === "0") { e.preventDefault(); resetZoom(); return; }
+      }
+
       if (mod || e.altKey) return;
 
       // E — toggle visual edit mode (smart: won't fire while typing inside iframe)
@@ -504,6 +588,18 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visualEditMode, previewMode, isIframeEditing, rightSidebarOpen, selectedNode?.nodeId]);
+
+  // Close context menu on any click/keydown outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    function dismiss() { setContextMenu(null); }
+    window.addEventListener("mousedown", dismiss, true);
+    window.addEventListener("keydown", dismiss, true);
+    return () => {
+      window.removeEventListener("mousedown", dismiss, true);
+      window.removeEventListener("keydown", dismiss, true);
+    };
+  }, [contextMenu]);
 
   function handleUndo() { if (visualEditMode) sendToIframe("undo"); else undo(); }
   function handleRedo() { if (visualEditMode) sendToIframe("redo"); else redo(); }
@@ -532,57 +628,151 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0a0a0b]">
-      <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#080809] px-3">
-        <div className="flex shrink-0 items-center gap-1.5 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-1">
+    <>
+    <div className="editor-preview-shell editor-preview-surface flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      {/* ── Premium Toolbar ── */}
+      <div className="editor-preview-toolbar flex h-11 flex-shrink-0 items-center border-b border-white/[0.06] px-2">
+        {/* Left: View modes */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.03] p-0.5">
           {([
-            { mode: "preview" as const, icon: <Eye size={11} />, label: "Preview" },
-            { mode: "split" as const, icon: <Columns size={11} />, label: "Split" },
-            { mode: "code" as const, icon: <Code2 size={11} />, label: "Code" },
+            { mode: "preview" as const, icon: <Eye size={13} />, label: "Preview" },
+            { mode: "split" as const, icon: <Columns size={13} />, label: "Split" },
+            { mode: "code" as const, icon: <Code2 size={13} />, label: "Code" },
           ] as const).map(({ mode, icon, label }) => (
             <button
               key={mode}
               onClick={() => { setPreviewMode(mode); if (mode !== "preview") setVisualEditMode(false); }}
-              title={label}
-              className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] transition-colors hover:z-30 ${
-                previewMode === mode ? "bg-white/[0.08] text-white" : "text-white/34 hover:bg-white/[0.05] hover:text-white/68"
+              className={`group relative flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all ${
+                previewMode === mode
+                  ? "bg-white/[0.08] text-white/90 shadow-sm shadow-black/20"
+                  : "text-white/30 hover:text-white/55"
               }`}
             >
               {icon}
+              <span className="hidden sm:inline">{label}</span>
               <ToolbarTooltip label={label} />
             </button>
           ))}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-1">
-            {([
-              { d: "desktop" as const, icon: <Monitor size={11} />, label: "Desktop" },
-              { d: "tablet" as const, icon: <Tablet size={11} />, label: "Tablet" },
-              { d: "mobile" as const, icon: <Smartphone size={11} />, label: "Mobile" },
-            ] as const).map(({ d, icon, label }) => (
-              <button
-                key={d}
-                onClick={() => setDevicePreview(d)}
-                title={label}
-                className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] transition-colors hover:z-30 ${
-                  devicePreview === d ? "bg-white/[0.08] text-white" : "text-white/34 hover:bg-white/[0.05] hover:text-white/68"
-                }`}
-              >
-                {icon}
-                <ToolbarTooltip label={label} />
-                {selectedNode && d === "tablet" && selectedNode.responsiveHasTabletOverrides && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_0_2px_rgba(8,8,9,0.9)]" />
-                )}
-                {selectedNode && d === "mobile" && selectedNode.responsiveHasMobileOverrides && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_0_2px_rgba(8,8,9,0.9)]" />
-                )}
-              </button>
-            ))}
-          </div>
+        <div className="mx-2 h-4 w-px bg-white/[0.06]" />
+
+        {/* Device switcher */}
+        <div className="flex items-center gap-0.5">
+          {([
+            { d: "desktop" as const, icon: <Monitor size={13} />, label: "Desktop" },
+            { d: "tablet" as const, icon: <Tablet size={13} />, label: "Tablet" },
+            { d: "mobile" as const, icon: <Smartphone size={13} />, label: "Mobile" },
+          ] as const).map(({ d, icon, label }) => (
+            <button
+              key={d}
+              onClick={() => setDevicePreview(d)}
+              className={`group relative flex h-7 w-7 items-center justify-center rounded-md transition-all ${
+                devicePreview === d
+                  ? "text-white/80"
+                  : "text-white/25 hover:text-white/50"
+              }`}
+            >
+              {icon}
+              <ToolbarTooltip label={label} />
+              {selectedNode && d === "tablet" && selectedNode.responsiveHasTabletOverrides && (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5B8CFF]" />
+              )}
+              {selectedNode && d === "mobile" && selectedNode.responsiveHasMobileOverrides && (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5B8CFF]" />
+              )}
+            </button>
+          ))}
+        </div>
 
         <div className="flex-1" />
 
-        <button
+        {/* Center: Edit mode + actions */}
+        {visualEditMode && (
+          <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.03] p-0.5">
+            <button onClick={handleSelectParent} disabled={!selectedNode?.parentNodeId}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-white/65 disabled:opacity-15 disabled:pointer-events-none">
+              <ChevronUp size={13} /><ToolbarTooltip label="Parent" />
+            </button>
+            <div className="mx-0.5 h-3.5 w-px bg-white/[0.06]" />
+            <button onClick={handleCut} disabled={!canEditSelection}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-white/65 disabled:opacity-15 disabled:pointer-events-none">
+              <Scissors size={12} /><ToolbarTooltip label="Cut" shortcut="⌘X" />
+            </button>
+            <button onClick={handleCopy} disabled={!canEditSelection}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-white/65 disabled:opacity-15 disabled:pointer-events-none">
+              <Copy size={12} /><ToolbarTooltip label="Copy" shortcut="⌘C" />
+            </button>
+            <button onClick={handlePaste} disabled={!iframeHasClipboard}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-white/65 disabled:opacity-15 disabled:pointer-events-none">
+              <ClipboardPaste size={12} /><ToolbarTooltip label="Paste" shortcut="⌘V" />
+            </button>
+            <button onClick={handleDuplicate} disabled={!canEditSelection}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-white/65 disabled:opacity-15 disabled:pointer-events-none">
+              <Copy size={12} /><ToolbarTooltip label="Duplicate" shortcut="⌘D" />
+            </button>
+            <div className="mx-0.5 h-3.5 w-px bg-white/[0.06]" />
+            <button onClick={handleDelete} disabled={!canEditSelection}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition-all hover:bg-white/[0.06] hover:text-red-400/80 disabled:opacity-15 disabled:pointer-events-none">
+              <Trash2 size={12} /><ToolbarTooltip label="Delete" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Right: Edit toggle, Undo/Redo, Zoom, Intelligence */}
+        <div className="flex items-center gap-1.5">
+          {/* Undo / Redo */}
+          <div className="hidden items-center gap-0.5 xl:flex">
+            <button onClick={handleUndo} disabled={!canUndo}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/25 transition-all hover:bg-white/[0.05] hover:text-white/60 disabled:opacity-15 disabled:pointer-events-none">
+              <Undo2 size={13} /><ToolbarTooltip label="Undo" shortcut="⌘Z" />
+            </button>
+            <button onClick={handleRedo} disabled={!canRedo}
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md text-white/25 transition-all hover:bg-white/[0.05] hover:text-white/60 disabled:opacity-15 disabled:pointer-events-none">
+              <Redo2 size={13} /><ToolbarTooltip label="Redo" shortcut="⌘⇧Z" />
+            </button>
+          </div>
+
+          <div className="mx-0.5 hidden h-4 w-px bg-white/[0.06] xl:block" />
+
+          {/* Zoom controls */}
+          <div className="hidden items-center gap-0 rounded-lg bg-white/[0.03] p-0.5 xl:flex">
+            <button onClick={zoomOut} disabled={zoom <= 50}
+              className="group relative flex h-6 w-6 items-center justify-center rounded-[5px] text-white/30 transition-all hover:bg-white/[0.06] hover:text-white/60 disabled:opacity-15">
+              <Minus size={11} /><ToolbarTooltip label="Zoom out" shortcut="⌘−" />
+            </button>
+            <button onClick={resetZoom}
+              className="group relative flex h-6 min-w-[38px] items-center justify-center rounded-[5px] text-white/40 transition-all hover:bg-white/[0.06] hover:text-white/65">
+              <span className="font-mono text-[10px] font-medium tabular-nums">{zoom}%</span>
+              <ToolbarTooltip label="Reset zoom" shortcut="⌘0" />
+            </button>
+            <button onClick={zoomIn} disabled={zoom >= 200}
+              className="group relative flex h-6 w-6 items-center justify-center rounded-[5px] text-white/30 transition-all hover:bg-white/[0.06] hover:text-white/60 disabled:opacity-15">
+              <Plus size={11} /><ToolbarTooltip label="Zoom in" shortcut="⌘+" />
+            </button>
+          </div>
+
+          <div className="mx-0.5 hidden h-4 w-px bg-white/[0.06] xl:block" />
+
+          {/* Intelligence */}
+          {visualEditMode && previewMode === "preview" && (
+            <button
+              onClick={triggerAnalysis}
+              className={`group relative flex h-7 w-7 items-center justify-center rounded-md transition-all ${
+                liveIsAI
+                  ? "text-teal-300 bg-teal-400/10"
+                  : "text-white/30 hover:bg-white/[0.05] hover:text-white/55"
+              }`}
+            >
+              {liveLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              <ToolbarTooltip label="Analyze" shortcut="I" />
+            </button>
+          )}
+
+          {/* Edit mode toggle */}
+          <button
             onClick={() => {
               const nextEnabled = !visualEditMode;
               setVisualEditMode(nextEnabled);
@@ -591,151 +781,33 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                 setRightPanel("style");
               }
             }}
-            title={visualEditMode ? "Exit live edit (E)" : "Edit content directly (E)"}
-            className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border transition-all hover:z-30 ${
+            className={`group relative flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-all ${
               visualEditMode
-                ? "border-orange-500/25 bg-orange-500/15 text-orange-400 shadow-sm shadow-orange-500/10"
-                : "border-white/[0.07] text-white/40 hover:border-white/[0.15] hover:text-white/70"
+                ? "bg-[#5B8CFF]/12 text-[#5B8CFF] ring-1 ring-[#5B8CFF]/20"
+                : "text-white/35 hover:bg-white/[0.05] hover:text-white/60"
             }`}
           >
-            <MousePointer2 size={11} />
-            <ToolbarTooltip label={visualEditMode ? "Editing" : "Edit"} />
-          </button>
-
-        {visualEditMode && previewMode === "preview" && (
-          <button
-            onClick={triggerAnalysis}
-            title="Live Intelligence — AI reads page and suggests improvements (I)"
-            className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border transition-all hover:z-30 ${
-              liveIsAI
-                ? "border-accent-400/25 bg-accent-500/15 text-accent-300"
-                : "border-white/[0.07] text-white/40 hover:border-white/[0.15] hover:text-white/60"
-            }`}
-          >
-            {liveLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-            <ToolbarTooltip label="Analyze" />
-          </button>
-        )}
-
-        {visualEditMode && (
-          <div className="flex shrink-0 items-center gap-1 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-1">
-            <button
-              onClick={handleSelectParent}
-              disabled={!selectedNode?.parentNodeId}
-              title="Select parent element"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/40 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/76 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <ChevronUp size={12} />
-              <ToolbarTooltip label="Parent" />
-            </button>
-            <button
-              onClick={handleCut}
-              disabled={!canEditSelection}
-              title="Cut selected element (⌘X)"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/40 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/76 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <Scissors size={11} />
-              <ToolbarTooltip label="Cut" />
-            </button>
-            <button
-              onClick={handleCopy}
-              disabled={!canEditSelection}
-              title="Copy selected element (⌘C)"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/42 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/76 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <Copy size={11} />
-              <ToolbarTooltip label="Copy" />
-            </button>
-            <button
-              onClick={handlePaste}
-              disabled={!iframeHasClipboard}
-              title="Paste copied element (⌘V)"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/42 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/76 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <ClipboardPaste size={11} />
-              <ToolbarTooltip label="Paste" />
-            </button>
-            <button
-              onClick={handleDuplicate}
-              disabled={!canEditSelection}
-              title="Duplicate selected element (⌘D)"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/42 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/76 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <Copy size={11} />
-              <ToolbarTooltip label="Duplicate" />
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={!canEditSelection}
-              title="Delete selected element"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/40 transition-colors hover:z-30 hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-20"
-            >
-              <Trash2 size={11} />
-              <ToolbarTooltip label="Delete" />
-            </button>
-          </div>
-        )}
-
-        <div className="hidden shrink-0 items-center gap-1 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-1 xl:flex">
-          <button
-            onClick={handleUndo}
-            disabled={!canUndo}
-            title="Undo (⌘Z)"
-            className="group relative flex h-8 w-8 items-center justify-center rounded-[12px] text-white/30 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-20"
-          >
-            <Undo2 size={12} />
-            <ToolbarTooltip label="Undo" />
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={!canRedo}
-            title="Redo (⌘⇧Z)"
-            className="group relative flex h-8 w-8 items-center justify-center rounded-[12px] text-white/30 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-20"
-          >
-            <Redo2 size={12} />
-            <ToolbarTooltip label="Redo" />
+            <MousePointer2 size={12} />
+            <span className="hidden sm:inline">{visualEditMode ? "Editing" : "Edit"}</span>
+            <ToolbarTooltip label={visualEditMode ? "Editing" : "Edit"} shortcut="E" />
           </button>
         </div>
 
-        <div className="hidden shrink-0 items-center gap-1 rounded-[16px] border border-white/[0.06] bg-white/[0.02] p-1 2xl:flex">
-            <button
-              onClick={() => setZoom((z) => Math.max(z - 10, 40))}
-              disabled={zoom <= 40}
-              title="Zoom out"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/30 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/70 disabled:opacity-20"
-            >
-              <ZoomOut size={12} />
-              <ToolbarTooltip label="Zoom out" />
-            </button>
-            <span className="w-10 text-center font-mono text-[10px] tabular-nums text-white/34">{zoom}%</span>
-            <button
-              onClick={() => setZoom((z) => Math.min(z + 10, 150))}
-              disabled={zoom >= 150}
-              title="Zoom in"
-              className="group relative flex h-7 w-7 items-center justify-center rounded-[10px] text-white/30 transition-colors hover:z-30 hover:bg-white/[0.05] hover:text-white/70 disabled:opacity-20"
-            >
-              <ZoomIn size={12} />
-              <ToolbarTooltip label="Zoom in" />
-            </button>
-          </div>
-
-        {page?.status === "generating" && (
-          <Loader2 size={10} className="spin ml-1 shrink-0 text-accent-400" />
+        {showGeneratingState && (
+          <Loader2 size={10} className="ml-2 shrink-0 animate-spin text-[#5B8CFF]/60" />
         )}
       </div>
 
-      <div
-        ref={liveCardRef}
-        className="flex-shrink-0 overflow-hidden border-b transition-all duration-200"
+        <div
+          ref={liveCardRef}
+        className="editor-preview-livebar flex-shrink-0 overflow-hidden border-b transition-all duration-200"
         style={{
           maxHeight: liveCardVisible || liveLoading ? "48px" : "0px",
           borderColor: liveIsAI ? "rgba(45,212,191,0.18)" : "rgba(255,255,255,0.05)",
-          background: liveIsAI
-            ? "linear-gradient(90deg, rgba(8,20,24,0.98) 0%, rgba(12,26,28,0.98) 100%)"
-            : "rgba(7,12,18,0.98)",
           opacity: liveCardVisible || liveLoading ? 1 : 0,
-          transition: "max-height 0.2s ease, opacity 0.15s ease, border-color 0.4s ease, background 0.4s ease",
+          transition: "max-height 0.2s ease, opacity 0.15s ease, border-color 0.4s ease",
         }}
+        data-ai={liveIsAI ? "true" : "false"}
       >
         <div className="flex h-[48px] items-center gap-2 px-3">
           <div className="flex flex-shrink-0 items-center gap-1.5 border-r border-white/[0.06] pr-3">
@@ -791,29 +863,38 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {(previewMode === "preview" || previewMode === "split") && (
           <div
-            className={`overflow-auto flex-1 ${previewMode === "split" ? "border-r border-white/[0.06]" : ""}`}
-            style={{ background: "radial-gradient(ellipse at 50% 0%, #0f0f14 0%, #080809 100%)" }}
+            className={`editor-preview-stage relative flex-1 ${previewMode === "split" ? "border-r border-white/[0.06]" : ""}`}
+            style={{
+              height: "100%",
+              overflow: zoom !== 100 ? "auto" : "hidden",
+            }}
           >
-            <div className="flex min-h-full items-start justify-center p-6">
+            <div
+              className={`${isConstrained ? "flex justify-center p-6" : ""}`}
+              style={{
+                height: "100%",
+                transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
+                transformOrigin: "top center",
+                width: zoom !== 100 ? `${10000 / zoom}%` : undefined,
+              }}
+            >
+              {/* Canvas content container */}
               <div
-                className={`relative bg-white transition-[width] duration-300 ${
+                className={`relative bg-white ${
                   isConstrained
                     ? "overflow-hidden rounded-2xl shadow-2xl shadow-black/70 ring-1 ring-white/5"
-                    : "overflow-hidden rounded-xl shadow-xl shadow-black/50 ring-1 ring-white/5"
+                    : ""
                 }`}
                 style={{
-                  width: deviceWidth,
-                  minHeight: "calc(100vh - 7.75rem)",
+                  width: isConstrained ? deviceWidth : "100%",
+                  height: "100%",
                   flexShrink: 0,
-                  transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
-                  transformOrigin: "top center",
                 }}
               >
                 <iframe
                   ref={internalIframeRef}
                   data-sitezy-preview-frame="1"
-                  className="block w-full border-none"
-                  style={{ minHeight: "calc(100vh - 8rem)" }}
+                  className="block h-full w-full border-none"
                   src="/api/preview-frame"
                   onLoad={() => setIframeReady(true)}
                   sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
@@ -822,8 +903,39 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                 {visualEditMode && (
                   <div
                     className="absolute inset-0 pointer-events-none rounded-xl"
-                    style={{ boxShadow: "inset 0 0 0 2px rgba(249,115,22,0.2)" }}
+                    style={{ boxShadow: "inset 0 0 0 2px rgba(91,140,255,0.15)" }}
                   />
+                )}
+                {showGeneratingState && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-5"
+                    style={{ background: "linear-gradient(180deg, rgba(7,9,13,0.92) 0%, rgba(5,7,11,0.96) 100%)", backdropFilter: "blur(2px)" }}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <div className="h-14 w-14 rounded-full border-2 border-white/[0.06]" />
+                      <div className="absolute h-14 w-14 rounded-full border-2 border-transparent border-t-[#5B8CFF] animate-spin" style={{ animationDuration: "1s" }} />
+                      <div className="absolute h-8 w-8 rounded-full border border-[#5B8CFF]/30 animate-ping" style={{ animationDuration: "1.8s" }} />
+                      <Loader2 size={16} className="absolute text-[#5B8CFF]/60 animate-spin" style={{ animationDuration: "2s", animationDirection: "reverse" }} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[13px] font-semibold text-white/80">
+                        {generatingLabel}
+                      </p>
+                      {generationProgress && generationProgress.trim() !== generatingLabel && (
+                        <p className="mt-1 text-[11px] text-white/36 tabular-nums">
+                          {generationProgress}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex w-64 flex-col gap-2 opacity-40">
+                      {[80, 60, 72, 48].map((w, i) => (
+                        <div
+                          key={i}
+                          className="h-2 rounded-full bg-white/[0.08] animate-pulse"
+                          style={{ width: `${w}%`, animationDelay: `${i * 150}ms` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {page?.status === "error" && !page?.html && (
                   <div className="absolute inset-0 flex items-center justify-center bg-[#080809]">
@@ -865,18 +977,42 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                 )}
               </div>
             </div>
+
+            {/* Breadcrumb bar */}
+            {visualEditMode && breadcrumb.length > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 z-50 flex items-center gap-0.5 border-t border-white/[0.04] bg-[#0e1117]/80 px-3 py-1 backdrop-blur-md">
+                {breadcrumb.map((seg, i) => (
+                  <span key={i} className="flex items-center gap-0.5">
+                    {i > 0 && <ChevronRight size={8} className="flex-shrink-0 text-white/12" />}
+                    <button
+                      onClick={() => {
+                        const stepsUp = breadcrumb.length - 1 - i;
+                        for (let s = 0; s < stepsUp; s++) sendToIframe("select-parent");
+                      }}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors ${
+                        i === breadcrumb.length - 1
+                          ? "bg-[#5B8CFF]/8 text-[#5B8CFF]"
+                          : "text-white/30 hover:bg-white/[0.04] hover:text-white/55"
+                      }`}
+                    >
+                      {seg}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {(previewMode === "code" || previewMode === "split") && (
           <div
-            className={`flex min-h-0 flex-col overflow-hidden bg-[#05070b] ${
+            className={`editor-code-shell editor-preview-surface flex min-h-0 flex-col overflow-hidden ${
               previewMode === "split"
                 ? "w-[42%] flex-shrink-0"
                 : "flex-1"
             }`}
           >
-            <div className="flex h-11 flex-shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#080b11] px-4">
+            <div className="editor-code-header flex h-11 flex-shrink-0 items-center gap-3 border-b border-white/[0.06] px-4">
               <span className="truncate font-mono text-[10px] uppercase tracking-widest text-white/25">{codeLanguage}</span>
               <span className="truncate font-mono text-[11px] text-white/58">{codeFileName}</span>
               <div className="flex-1" />
@@ -891,7 +1027,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                   else if (activePageId) updateFileContent(activePageId, e.target.value);
                 }}
                 spellCheck={false}
-                className="flex-1 bg-[#050508] text-[12px] font-mono text-emerald-300/80 p-4 resize-none focus:outline-none leading-relaxed h-full w-full"
+                className="editor-code-area h-full w-full flex-1 resize-none p-4 font-mono text-[12px] leading-relaxed text-emerald-300/80 focus:outline-none"
                 style={{ tabSize: 2 }}
               />
             </div>
@@ -899,12 +1035,136 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
         )}
       </div>
     </div>
+
+    {/* ── Right-click context menu ── */}
+    {contextMenu && visualEditMode && (
+      <>
+        {/* Invisible full-screen backdrop — clicking anywhere outside closes the menu */}
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 99998 }}
+          onMouseDown={() => setContextMenu(null)}
+        />
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenu.node}
+          hasClipboard={iframeHasClipboard}
+          onAction={(action) => {
+            setContextMenu(null);
+            sendToIframe(action);
+          }}
+          onClose={() => setContextMenu(null)}
+        />
+      </>
+    )}
+  </>
   );
 }
 
-function emptyState(isGenerating: boolean, isError: boolean): string {
+interface ContextMenuProps {
+  x: number;
+  y: number;
+  node: CanvasNodeInfo;
+  hasClipboard: boolean;
+  onAction: (action: string) => void;
+  onClose: () => void;
+}
+
+function ContextMenu({ x, y, node, hasClipboard, onAction }: ContextMenuProps) {
+  const isSection = node.role === "section" || node.isSec;
+  const canEditText = node.hasEditableText;
+  const canSelectParent = !!node.parentNodeId;
+
+  // Clamp to viewport
+  const MENU_W = 200;
+  const MENU_H = isSection ? 280 : 240;
+  const clampedX = Math.min(x, window.innerWidth - MENU_W - 8);
+  const clampedY = Math.min(y, window.innerHeight - MENU_H - 8);
+
+  function item(
+    icon: React.ReactNode,
+    label: string,
+    action: string,
+    disabled = false,
+    destructive = false,
+    shortcut?: string,
+  ) {
+    return (
+      <button
+        key={action}
+        disabled={disabled}
+        onMouseDown={(e) => { e.stopPropagation(); if (!disabled) onAction(action); }}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[11.5px] font-medium transition-colors ${
+          disabled
+            ? "pointer-events-none text-white/20"
+            : destructive
+              ? "text-red-400/80 hover:bg-red-500/10 hover:text-red-300"
+              : "text-white/65 hover:bg-white/[0.06] hover:text-white/90"
+        }`}
+      >
+        <span className="flex-shrink-0 text-current opacity-70">{icon}</span>
+        <span className="flex-1">{label}</span>
+        {shortcut && <span className="text-[10px] text-white/22">{shortcut}</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()} // prevent backdrop from catching clicks inside menu
+      style={{ position: "fixed", left: clampedX, top: clampedY, zIndex: 99999 }}
+      className="w-[200px] rounded-xl border border-white/[0.09] bg-[#12141a] p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl"
+    >
+      {/* Header: element label */}
+      <div className="mb-1 border-b border-white/[0.06] px-2.5 pb-1.5 pt-0.5">
+        <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-white/25">
+          {node.label || node.tag}
+        </p>
+      </div>
+
+      {/* Edit text */}
+      {canEditText && item(<Edit2 size={11} />, "Edit Text", "start-edit")}
+
+      {/* Select parent */}
+      {canSelectParent && item(<ChevronUp size={11} />, "Select Parent", "select-parent")}
+
+      {(canEditText || canSelectParent) && (
+        <div className="my-1 h-px bg-white/[0.06]" />
+      )}
+
+      {/* Clipboard */}
+      {item(<Scissors size={11} />, "Cut", "cut", false, false, "⌘X")}
+      {item(<Copy size={11} />, "Copy", "copy", false, false, "⌘C")}
+      {item(<ClipboardPaste size={11} />, "Paste", "paste", !hasClipboard, false, "⌘V")}
+      {item(<Copy size={11} />, "Duplicate", "duplicate", false, false, "⌘D")}
+
+      {/* Section-specific: move up/down */}
+      {isSection && (
+        <>
+          <div className="my-1 h-px bg-white/[0.06]" />
+          {item(<ChevronUp size={11} />, "Move Section Up", "move-up")}
+          {item(<ChevronRight size={11} className="rotate-90" />, "Move Section Down", "move-down")}
+        </>
+      )}
+
+      <div className="my-1 h-px bg-white/[0.06]" />
+      {item(<Trash2 size={11} />, "Delete", "delete", false, true)}
+    </div>
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function emptyState(isGenerating: boolean, isError: boolean, label?: string): string {
   const body = isGenerating
-    ? `<div class="sp"></div><p style="font-size:13px;color:#666;margin-top:14px;font-family:system-ui,sans-serif">Generating page…</p>`
+    ? `<div class="sp"></div><p style="font-size:13px;color:#666;margin-top:14px;font-family:system-ui,sans-serif">${escapeHtml(label || "Generating page…")}</p>`
     : isError
     ? `<span style="font-size:28px">⚠️</span><p style="font-size:13px;color:#ef4444;margin-top:10px;font-family:system-ui,sans-serif">Generation failed</p>`
     : `<p style="font-size:13px;color:#333;font-family:system-ui,sans-serif">Select a page to preview</p>`;

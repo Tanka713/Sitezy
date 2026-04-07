@@ -1,7 +1,23 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isPotentialPublishedHost } from "@/lib/publishing";
 
 export async function middleware(request: NextRequest) {
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.hostname;
+  const { pathname } = request.nextUrl;
+  const shouldBypassPublishedRewrite =
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/live") ||
+    pathname.startsWith("/_sites") ||
+    pathname === "/favicon.ico";
+
+  if (!shouldBypassPublishedRewrite && isPotentialPublishedHost(host)) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = `/_sites/resolve${pathname}`;
+    return NextResponse.rewrite(rewriteUrl);
+  }
+
   let response = NextResponse.next({
     request,
   });

@@ -33,16 +33,16 @@ export class EditorErrorBoundary extends Component<Props, State> {
             <AlertTriangle size={18} className="text-red-400" />
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-white/72">
+            <p className="text-[13px] font-semibold text-[var(--text-secondary)]">
               {this.props.label ?? "Panel"} crashed
             </p>
-            <p className="mt-1 text-[11px] text-white/36">
+            <p className="mt-1 text-[11px] text-[var(--fg-muted)]">
               {this.state.error.message}
             </p>
           </div>
           <button
             onClick={() => this.setState({ error: null })}
-            className="flex items-center gap-2 rounded-[12px] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[11px] text-white/60 transition-all hover:bg-white/[0.08] hover:text-white"
+            className="flex items-center gap-2 rounded-[12px] border border-[var(--border-default)] bg-[var(--surface-3)] px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-all hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
           >
             <RefreshCw size={11} />
             Try again

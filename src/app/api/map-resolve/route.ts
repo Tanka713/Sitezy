@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   API_REQUEST_002,
   API_RESPONSE_001,
   API_UNKNOWN_001,
@@ -147,6 +149,15 @@ export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to resolve map embed URL",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{ url?: string }>(req);
     assertFields(body as Record<string, unknown>, ["url"], API_REQUEST_002);
 

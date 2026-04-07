@@ -59,17 +59,17 @@ export function ErrorToast() {
           to   { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
       `}</style>
-      <div className="rounded-2xl border border-red-500/20 bg-[#0e0a0a] shadow-2xl overflow-hidden">
+      <div className="isolate overflow-hidden rounded-2xl border border-red-500/20 bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]">
         {/* Header */}
         <div className="flex items-start gap-3 px-4 pt-4 pb-3">
-          <div className="w-8 h-8 rounded-xl bg-red-500/12 border border-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-[rgba(240,106,116,0.12)]">
             <AlertTriangle size={14} className="text-red-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-semibold text-white/80 leading-snug">
+            <p className="text-[13px] font-semibold leading-snug text-[var(--text-primary)]">
               {isBilling ? "Billing limit reached" : isAuth ? "Authentication failed" : "Something went wrong"}
             </p>
-            <p className="text-[12px] text-white/40 mt-0.5 leading-relaxed line-clamp-2">
+            <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--fg-muted)]">
               {isBilling
                 ? "API credit balance is too low. Please upgrade or add credits to continue."
                 : isAuth
@@ -79,21 +79,21 @@ export function ErrorToast() {
           </div>
           <button
             onClick={dismiss}
-            className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-white/25 hover:text-white/50 transition-colors flex-shrink-0"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-[var(--fg-faint)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--fg-soft)]"
           >
             <X size={12} />
           </button>
         </div>
 
         {/* Reference strip */}
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-white/[0.025] border-t border-white/[0.04]">
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-soft)] bg-[var(--bg-soft)] px-4 py-2.5">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[9px] font-bold tracking-widest uppercase text-white/20 flex-shrink-0">Ref</span>
-            <code className="text-[11px] font-mono text-white/35 truncate">{refId}</code>
+            <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-widest text-[var(--fg-subtle)]">Ref</span>
+            <code className="truncate font-mono text-[11px] text-[var(--fg-muted)]">{refId}</code>
           </div>
           <button
             onClick={copy}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-[11px] text-white/40 hover:text-white/65 transition-all flex-shrink-0"
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--fg-muted)] transition-all hover:bg-[var(--bg-subtle)] hover:text-[var(--fg-soft)]"
           >
             {copied ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
             {copied ? "Copied" : "Copy"}

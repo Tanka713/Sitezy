@@ -4,11 +4,13 @@
   "description": "AI-powered multi-page website builder SaaS",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-with-worker.mjs",
+    "dev:app": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "worker:project-generation": "node scripts/project-generation-worker.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
@@ -21,7 +23,10 @@
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.1",
     "clsx": "^2.1.1",
+    "dom-serializer": "^3.0.0",
+    "domutils": "^4.0.2",
     "framer-motion": "^11.3.19",
+    "htmlparser2": "^12.0.0",
     "immer": "^10.1.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.417.0",

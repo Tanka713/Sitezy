@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { formatDate } from "@/lib/utils";
+import { resolvePublishedHref } from "@/lib/publishing";
 import {
-  Check, Copy, ExternalLink, FileCode2, MoreHorizontal, Pencil, Trash2,
+  Check, Copy, Database, ExternalLink, FileCode2, Globe2, Loader2, MoreHorizontal, Pencil, Rocket, Trash2,
 } from "lucide-react";
+import { API_UNKNOWN_001, createAppError, normalizeError, type ErrorCode } from "@/lib/errors";
 import { SitezyButton, SitezyBadge } from "@/components/ui/sitezy";
 import type { Project } from "@/types";
 
@@ -15,9 +17,9 @@ function ProjectThumbnail({ projectId }: { projectId: string }) {
   const [loaded, setLoaded] = useState(false);
 
   return (
-    <div className="absolute inset-0 bg-[#080b11]">
+    <div className="absolute inset-0 bg-[var(--bg-subtle)]">
       {!loaded && (
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/[0.05] to-transparent" />
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--surface-5)] to-transparent" />
       )}
       <iframe
         src={`/api/preview-frame?projectId=${projectId}`}
@@ -53,20 +55,51 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
   const deleteProject   = useAppStore((s) => s.deleteProject);
   const duplicateProject = useAppStore((s) => s.duplicateProject);
   const renameProject   = useAppStore((s) => s.renameProject);
+  const hydrateProjects = useAppStore((s) => s.hydrateProjects);
+  const setApiError     = useAppStore((s) => s.setApiError);
 
   const [showMenu, setShowMenu]       = useState(false);
   const [editing, setEditing]         = useState(false);
   const [nameVal, setNameVal]         = useState(project.name);
   const [armedDelete, setArmedDelete] = useState(false);
   const [hovered, setHovered]         = useState(false);
+  const [publishing, setPublishing]   = useState(false);
   const armRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const bp         = project?.blueprint ?? null;
   const pageCount  = project?.pages?.length ?? 0;
   const donePages  = project?.pages?.filter((p) => p.status === "done").length ?? 0;
   const isReady    = project.status === "ready" || donePages > 0;
-  const isGenerating = project.status === "generating";
+  const isGenerating =
+    project.status === "generating" ||
+    project.generationJob?.status === "queued" ||
+    project.generationJob?.status === "running";
+  const isPublished = project.publishedSite?.status === "published";
   const primaryColor = bp?.colorScheme?.primary ?? "#6b77ff";
+
+  useEffect(() => {
+    if (!showMenu) return;
+
+    function handlePointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowMenu(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointer);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handlePointer);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [showMenu]);
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
@@ -87,11 +120,91 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
     setEditing(false);
   }
 
+  async function handlePublish(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (publishing || isGenerating) return;
+
+    setPublishing(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/publish`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        publishedSite?: unknown;
+        error?: string;
+        code?: string;
+        requestId?: string | null;
+      };
+      if (!res.ok || !data.publishedSite) {
+        throw createAppError({
+          code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
+          devMessage: `Dashboard publish failed for project ${project.id} (${res.status})`,
+          userMessage: data.error ?? "We couldn't publish this project right now.",
+          severity: "error",
+          metadata: {
+            projectId: project.id,
+            status: res.status,
+            requestId: data.requestId ?? null,
+          },
+        });
+      }
+
+      await hydrateProjects();
+      setShowMenu(false);
+    } catch (error) {
+      const appErr = normalizeError(error, API_UNKNOWN_001, { action: "dashboardPublishProject", projectId: project.id });
+      setApiError({
+        message: appErr.userMessage,
+        requestId: typeof appErr.metadata?.requestId === "string" ? appErr.metadata.requestId : null,
+        code: appErr.code,
+      });
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  function handleOpenLive(e: React.MouseEvent) {
+    e.stopPropagation();
+    const subdomain = project.publishedSite?.subdomain;
+    if (!subdomain) return;
+    window.open(resolvePublishedHref(subdomain), "_blank", "noopener");
+    setShowMenu(false);
+  }
+
+  function handleOpenCms(e: React.MouseEvent) {
+    e.stopPropagation();
+    window.location.assign(`/studio/cms/${project.id}`);
+    setShowMenu(false);
+  }
+
+  function renderProjectMenu() {
+    return (
+      <div className="absolute right-0 top-11 z-20 w-44 rounded-[18px] border border-[var(--border-softer)] bg-[var(--surface-overlay)] p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
+        <MenuAction onClick={() => { void openProject(project.id); setShowMenu(false); }} icon={<ExternalLink size={14} />} label="Open editor" />
+        <MenuAction onClick={handleOpenCms} icon={<Database size={14} />} label="Open CMS" />
+        <MenuAction
+          onClick={handlePublish}
+          icon={publishing ? <Loader2 size={14} className="spin" /> : <Rocket size={14} />}
+          label={isPublished ? "Republish" : "Publish"}
+        />
+        {isPublished ? (
+          <MenuAction onClick={handleOpenLive} icon={<Globe2 size={14} />} label="Open live" />
+        ) : null}
+        <MenuAction onClick={() => { setEditing(true); setShowMenu(false); }} icon={<Pencil size={14} />} label="Rename" />
+        <MenuAction onClick={() => { void duplicateProject(project.id); setShowMenu(false); }} icon={<Copy size={14} />} label="Duplicate" />
+        <div className="my-1.5 h-px bg-[var(--border-soft)]" />
+        <MenuAction onClick={handleDelete} icon={<Trash2 size={14} />} label={armedDelete ? "Confirm delete?" : "Delete"} danger />
+      </div>
+    );
+  }
+
   // ── List view ────────────────────────────────────────────────────────────────
 
   if (viewMode === "list") {
     return (
       <div
+        ref={rootRef}
         role="button"
         tabIndex={0}
         onClick={() => void openProject(project.id)}
@@ -100,17 +213,17 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="grid w-full grid-cols-[2.8fr_1fr_1.3fr_100px] items-center gap-4 rounded-[22px] border border-white/[0.05] bg-white/[0.02] px-5 py-4 text-left transition-all hover:border-white/[0.1] hover:bg-white/[0.04]"
+        className="relative grid w-full grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto] items-center gap-4 rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-5 py-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-4)]"
       >
         <div className="flex min-w-0 items-center gap-4">
           {/* Mini thumbnail */}
-          <div className="relative h-12 w-20 flex-shrink-0 overflow-hidden rounded-[12px] border border-white/[0.08]">
+          <div className="relative h-12 w-20 flex-shrink-0 overflow-hidden rounded-[12px] border border-[var(--border-softer)]">
             {isReady ? (
               <ProjectThumbnail projectId={project.id} />
             ) : (
               <div
                 className="absolute inset-0"
-                style={{ background: `linear-gradient(135deg, ${primaryColor}26, rgba(255,255,255,0.04))` }}
+                style={{ background: `linear-gradient(135deg, ${primaryColor}26, var(--surface-4))` }}
               />
             )}
           </div>
@@ -123,13 +236,16 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
         </div>
 
         <div>
-          {isGenerating && <SitezyBadge className="bg-[rgba(107,119,255,0.14)] text-[var(--text-accent)]">Generating</SitezyBadge>}
-          {isReady && <SitezyBadge className="bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]">{donePages}/{pageCount} pages</SitezyBadge>}
+          <div className="flex flex-wrap gap-1.5">
+            {isGenerating && <SitezyBadge className="sz-status-info">Generating</SitezyBadge>}
+            {isReady && <SitezyBadge className="sz-status-success">{donePages}/{pageCount} pages</SitezyBadge>}
+            {isPublished ? <SitezyBadge className="sz-status-success">Live</SitezyBadge> : null}
+          </div>
         </div>
 
-        <p className="text-[12px] text-[var(--text-tertiary)]">{formatDate(project.createdAt)}</p>
+        <p className="text-[12px] text-[var(--fg-muted)]">{formatDate(project.createdAt)}</p>
 
-        <div className="flex justify-end">
+        <div className="relative flex justify-end gap-2">
           <SitezyButton
             variant={hovered ? "primary" : "secondary"}
             size="sm"
@@ -138,6 +254,19 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
           >
             Open
           </SitezyButton>
+          <button
+            type="button"
+            aria-label="Project actions"
+            aria-expanded={showMenu}
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowMenu((current) => !current);
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-softer)] bg-[var(--bg-frost)] text-[var(--fg-soft)] transition-all hover:text-[var(--text-primary)]"
+          >
+            <MoreHorizontal size={15} />
+          </button>
+          {showMenu ? renderProjectMenu() : null}
         </div>
       </div>
     );
@@ -147,102 +276,97 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
 
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-[24px] border border-white/[0.06] bg-[rgba(255,255,255,0.02)] transition-all duration-200"
+      ref={rootRef}
+      role="button"
+      tabIndex={0}
+      onClick={() => void openProject(project.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openProject(project.id); }
+      }}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-[26px] border border-[var(--border-soft)] bg-[linear-gradient(160deg,rgba(255,255,255,0.035),rgba(255,255,255,0.015))] transition-all duration-300"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setShowMenu(false); }}
       style={{
-        transform: hovered ? "translateY(-4px)" : "translateY(0)",
+        transform: hovered ? "translateY(-5px)" : "translateY(0)",
         boxShadow: hovered
-          ? "0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.09)"
-          : "0 2px 16px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06)",
+          ? "0 28px 72px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.08)"
+          : "0 4px 16px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.04)",
       }}
     >
       {/* Thumbnail area */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => void openProject(project.id)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openProject(project.id); }
-        }}
-        className="relative h-[260px] cursor-pointer overflow-hidden"
-      >
-        {isReady ? (
-          <ProjectThumbnail projectId={project.id} />
-        ) : (
-          <div
-            className="absolute inset-0"
-            style={{
-              background: bp
-                ? `radial-gradient(circle at top left, ${primaryColor}35, transparent 55%), linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))`
-                : "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
-            }}
-          >
-            {!bp && (
-              <div className="flex h-full items-center justify-center">
-                <FileCode2 size={32} className="text-white/[0.12]" />
-              </div>
+      <div className="relative h-[220px]">
+        <div className="absolute inset-0 overflow-hidden">
+          {isReady ? (
+            <ProjectThumbnail projectId={project.id} />
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: bp
+                  ? `radial-gradient(circle at top left, ${primaryColor}35, transparent 55%), linear-gradient(160deg, var(--surface-5), var(--surface-3))`
+                  : "linear-gradient(180deg, var(--surface-4), var(--surface-3))",
+              }}
+            >
+              {!bp && (
+                <div className="flex h-full items-center justify-center">
+                  <FileCode2 size={32} className="text-[var(--fg-subtle)]" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bottom fade */}
+          <div className="pointer-events-none absolute inset-0" style={{ background: "var(--surface-card-fade)" }} />
+
+          {/* Date overlay at bottom */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-4">
+            {!editing && (
+              <p className="text-[11px] font-medium text-[var(--fg-muted)]">
+                {formatDate(project.createdAt)}
+                {bp?.typography?.headingFont ? ` · ${bp.typography.headingFont}` : ""}
+              </p>
             )}
           </div>
-        )}
-
-        {/* Bottom fade */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(9,11,18,0.88)] via-[rgba(9,11,18,0.1)] to-transparent" />
+        </div>
 
         {/* Status badges — top left */}
-        <div className="absolute left-4 top-4 flex flex-wrap gap-1.5">
+        <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-1.5">
           {isGenerating && (
-            <SitezyBadge className="bg-[rgba(107,119,255,0.18)] text-[var(--text-accent)] backdrop-blur-sm">
+            <SitezyBadge className="sz-status-info backdrop-blur-sm">
               Generating
             </SitezyBadge>
           )}
           {isReady && (
-            <SitezyBadge className="bg-[rgba(49,196,141,0.14)] text-[#9fe5c6] backdrop-blur-sm">
+            <SitezyBadge className="sz-status-success backdrop-blur-sm">
               <Check size={10} />
               {donePages}/{pageCount} pages
             </SitezyBadge>
           )}
+          {isPublished ? (
+            <SitezyBadge className="sz-status-success backdrop-blur-sm">
+              Live
+            </SitezyBadge>
+          ) : null}
         </div>
 
         {/* Menu — top right */}
-        <div className="absolute right-3 top-3">
+        <div className="absolute right-3 top-3 z-20">
           <button
             type="button"
+            aria-label="Project actions"
+            aria-expanded={showMenu}
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.1] bg-black/40 text-white/50 opacity-0 backdrop-blur-sm transition-all hover:text-white group-hover:opacity-100"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-softer)] bg-[var(--bg-frost)] text-[var(--fg-soft)] opacity-100 backdrop-blur-sm transition-all hover:text-[var(--text-primary)] lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100"
           >
             <MoreHorizontal size={15} />
           </button>
 
-          {showMenu && (
-            <div className="absolute right-0 top-11 z-20 w-44 rounded-[18px] border border-white/[0.08] bg-[rgba(12,15,24,0.98)] p-2 shadow-[0_24px_54px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-              <MenuAction onClick={() => { void openProject(project.id); setShowMenu(false); }} icon={<ExternalLink size={14} />} label="Open editor" />
-              <MenuAction onClick={() => { setEditing(true); setShowMenu(false); }} icon={<Pencil size={14} />} label="Rename" />
-              <MenuAction onClick={() => { void duplicateProject(project.id); setShowMenu(false); }} icon={<Copy size={14} />} label="Duplicate" />
-              <div className="my-1.5 h-px bg-white/[0.06]" />
-              <MenuAction onClick={handleDelete} icon={<Trash2 size={14} />} label={armedDelete ? "Confirm delete?" : "Delete"} danger />
-            </div>
-          )}
-        </div>
-
-        {/* Name overlay at bottom */}
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-5">
-          {editing ? null : (
-            <>
-              <h3 className="truncate text-[17px] font-semibold tracking-[-0.03em] text-white drop-shadow-sm">
-                {project.name}
-              </h3>
-              <p className="mt-1 text-[11px] text-white/[0.42]">
-                {formatDate(project.createdAt)}
-                {bp?.typography?.headingFont ? ` · ${bp.typography.headingFont}` : ""}
-              </p>
-            </>
-          )}
+          {showMenu ? renderProjectMenu() : null}
         </div>
       </div>
 
       {/* Bottom strip */}
-      <div className="flex items-center justify-between gap-3 border-t border-white/[0.05] px-5 py-4">
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--border-soft)] px-5 py-4">
         {editing ? (
           <input
             autoFocus
@@ -257,15 +381,15 @@ export function ProjectCard({ project, viewMode = "grid" }: Props) {
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <p className="max-w-[70%] truncate text-[12px] text-[var(--text-secondary)]">
-            {project.brief?.description || "Open to start editing."}
-          </p>
-        )}
-        {!editing && (
-          <SitezyButton variant="primary" size="sm" onClick={() => void openProject(project.id)}>
-            Open
-            <ExternalLink size={13} />
-          </SitezyButton>
+          <>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-semibold tracking-[-0.02em]">{project.name}</p>
+              <p className="mt-0.5 truncate text-[12px] text-[var(--fg-muted)] tracking-[-0.005em]">
+                {project.brief?.description || "Open to start editing."}
+              </p>
+            </div>
+            <ExternalLink size={13} className="flex-shrink-0 text-[var(--fg-subtle)] transition-colors duration-200 group-hover:text-[var(--accent-default)]" />
+          </>
         )}
       </div>
     </div>
@@ -288,8 +412,8 @@ function MenuAction({
       onClick={onClick}
       className={`flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left text-[13px] transition-all ${
         danger
-          ? "text-[#ffb7c0] hover:bg-[rgba(240,106,116,0.12)]"
-          : "text-[var(--text-secondary)] hover:bg-white/[0.05] hover:text-[var(--text-primary)]"
+          ? "text-[var(--danger-fg)] hover:bg-[rgba(240,106,116,0.12)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
       }`}
     >
       {icon}

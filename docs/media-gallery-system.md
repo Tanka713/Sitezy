@@ -37,7 +37,7 @@ That means:
 
 ### Client UI
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/components/editor/MediaLibraryModal.tsx`
+- `/Users/hashem/Desktop/sitezyV2/src/components/editor/MediaLibraryModal.tsx`
 
 This is the main media manager UI. It handles:
 
@@ -50,7 +50,7 @@ This is the main media manager UI. It handles:
 
 ### Shared state
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/store/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/store/index.ts`
 
 The store now keeps:
 
@@ -65,7 +65,7 @@ Important behavior:
 
 ### Media normalization
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/media/library.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/media/library.ts`
 
 This file defines normalization and shared constants, including:
 
@@ -73,7 +73,7 @@ This file defines normalization and shared constants, including:
 
 ### Types
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/types/index.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/types/index.ts`
 
 Key asset fields now include:
 
@@ -93,8 +93,8 @@ Key asset fields now include:
 
 ### API routes
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/media/route.ts`
-- `/Users/hashem/Desktop/sitezyV2 copy/src/app/api/media/[id]/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/media/route.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/app/api/media/[id]/route.ts`
 
 Supported actions:
 
@@ -107,7 +107,7 @@ These routes are auth-protected and use the centralized error system.
 
 ### Server persistence
 
-- `/Users/hashem/Desktop/sitezyV2 copy/src/lib/server/user-media.ts`
+- `/Users/hashem/Desktop/sitezyV2/src/lib/server/user-media.ts`
 
 This layer persists user media rows in Supabase and removes storage objects during delete.
 
@@ -121,8 +121,8 @@ User media records live in:
 
 SQL setup:
 
-- `/Users/hashem/Desktop/sitezyV2 copy/supabase/add-user-media.sql`
-- `/Users/hashem/Desktop/sitezyV2 copy/supabase/reset-from-scratch.sql`
+- `/Users/hashem/Desktop/sitezyV2/supabase/add-user-media.sql`
+- `/Users/hashem/Desktop/sitezyV2/supabase/reset-from-scratch.sql`
 
 ### Storage bucket
 

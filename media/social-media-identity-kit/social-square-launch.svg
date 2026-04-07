@@ -1,0 +1,59 @@
+<svg width="1080" height="1080" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sqBg" x1="116" y1="78" x2="919" y2="1018" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#131A27"/>
+      <stop offset="1" stop-color="#06080C"/>
+    </linearGradient>
+    <linearGradient id="sqAccent" x1="672" y1="298" x2="928" y2="592" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B8CFF"/>
+      <stop offset="1" stop-color="#7A5CFF"/>
+    </linearGradient>
+    <radialGradient id="sqGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(792 278) rotate(96.7) scale(484 362)">
+      <stop stop-color="#5B8CFF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1080" height="1080" rx="56" fill="#05070B"/>
+  <rect x="22" y="22" width="1036" height="1036" rx="38" fill="url(#sqBg)" stroke="rgba(255,255,255,0.08)"/>
+  <rect x="72" y="72" width="936" height="936" rx="34" fill="url(#sqGlow)"/>
+
+  <text x="96" y="132" fill="#97A3B6" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="20" letter-spacing="4">SITEZY / LAUNCH POST</text>
+  <text x="96" y="292" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="94" font-weight="700" letter-spacing="-4">
+    Create a site
+  </text>
+  <text x="96" y="390" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="94" font-weight="700" letter-spacing="-4">
+    that looks
+  </text>
+  <text x="96" y="488" fill="#8FB0FF" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="94" font-weight="700" letter-spacing="-4">
+    designed.
+  </text>
+
+  <text x="96" y="560" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="28">
+    The AI website builder for people who want speed without
+  </text>
+  <text x="96" y="596" fill="#97A3B6" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="28">
+    sacrificing taste.
+  </text>
+
+  <rect x="564" y="198" width="396" height="626" rx="34" fill="rgba(9,11,17,0.68)" stroke="rgba(255,255,255,0.08)"/>
+  <rect x="594" y="228" width="336" height="42" rx="14" fill="rgba(255,255,255,0.04)"/>
+  <circle cx="620" cy="249" r="6" fill="#F5F7FB" fill-opacity="0.55"/>
+  <circle cx="644" cy="249" r="6" fill="#F5F7FB" fill-opacity="0.22"/>
+  <circle cx="668" cy="249" r="6" fill="#F5F7FB" fill-opacity="0.22"/>
+  <rect x="594" y="294" width="336" height="188" rx="22" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.06)"/>
+  <rect x="616" y="322" width="160" height="18" rx="9" fill="#F5F7FB" fill-opacity="0.92"/>
+  <rect x="616" y="356" width="214" height="12" rx="6" fill="#97A3B6" fill-opacity="0.58"/>
+  <rect x="616" y="378" width="188" height="12" rx="6" fill="#97A3B6" fill-opacity="0.38"/>
+  <rect x="616" y="424" width="292" height="24" rx="12" fill="url(#sqAccent)"/>
+  <rect x="594" y="510" width="156" height="132" rx="22" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.06)"/>
+  <rect x="768" y="510" width="162" height="132" rx="22" fill="rgba(245,247,251,0.04)" stroke="rgba(245,247,251,0.06)"/>
+  <rect x="594" y="664" width="336" height="130" rx="22" fill="rgba(91,140,255,0.1)" stroke="rgba(91,140,255,0.28)"/>
+  <path d="M628 706H680" stroke="#F5F7FB" stroke-width="10" stroke-linecap="round"/>
+  <path d="M680 706L706 732" stroke="#F5F7FB" stroke-width="10" stroke-linecap="round"/>
+  <path d="M680 706L706 680" stroke="#F5F7FB" stroke-width="10" stroke-linecap="round"/>
+  <text x="628" y="760" fill="#F5F7FB" font-family="General Sans, Satoshi, Inter, Segoe UI, sans-serif" font-size="22">Generate with direction.</text>
+
+  <rect x="96" y="900" width="266" height="54" rx="18" fill="rgba(245,247,251,0.06)" stroke="rgba(245,247,251,0.08)"/>
+  <text x="122" y="935" fill="#F5F7FB" font-family="Satoshi, General Sans, Inter, Segoe UI, sans-serif" font-size="24" font-weight="700">Design the direction.</text>
+</svg>

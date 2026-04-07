@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { generateNewPage } from "@/lib/ai/service";
+import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
+  AUTH_REQUIRED_001,
   handleRouteError,
   parseRequestBody,
   assertFields,
@@ -11,12 +14,21 @@ import {
 import type { SiteBlueprint, SiteBrief } from "@/types";
 
 export const runtime   = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
 
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      throw createAppError({
+        code: AUTH_REQUIRED_001,
+        devMessage: "Unauthenticated request to add page",
+        severity: "warn",
+      });
+    }
+
     const body = await parseRequestBody<{
       blueprint?: SiteBlueprint;
       pageName?: string;
@@ -25,6 +37,7 @@ export async function POST(req: NextRequest) {
     }>(req);
 
     assertFields(body as Record<string, unknown>, ["blueprint", "pageName", "brief"], API_REQUEST_002);
+    await consumeAIUsageCredits(user.id, "add-page");
 
     const { blueprint, pageName, pageDescription, brief } = body;
 

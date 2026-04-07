@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sitezy UI Component Style Guide</title>
+    <link rel="stylesheet" href="./tokens.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <article class="hero-copy panel">
+          <div class="eyebrow">Sitezy UI Brand Language</div>
+          <h1 class="hero-title">Create a site that looks <span class="accent">designed.</span></h1>
+          <p class="hero-body">
+            This guide turns the Sitezy brand system into usable product surfaces: dark-first materials, sharp blue-violet accents,
+            editorial spacing, and components that feel like creative software instead of generic SaaS chrome.
+          </p>
+          <div class="pill-row">
+            <span class="pill">Premium simplicity</span>
+            <span class="pill">Directed creation</span>
+            <span class="pill">Bold restraint</span>
+            <span class="pill">Motion with purpose</span>
+          </div>
+        </article>
+
+        <aside class="hero-preview panel">
+          <div class="preview-stack">
+            <div class="mini-window">
+              <div class="window-bar"><span></span><span></span><span></span></div>
+              <div class="display-line medium"></div>
+              <div class="display-line short"></div>
+              <div class="body-line"></div>
+              <div class="body-line"></div>
+              <div class="body-line short"></div>
+              <div class="hero-cta"></div>
+            </div>
+            <div class="mini-window">
+              <div class="window-bar"><span></span><span></span><span></span></div>
+              <div class="display-line medium"></div>
+              <div class="body-line"></div>
+              <div class="body-line short"></div>
+            </div>
+            <div class="mini-window">
+              <div class="window-bar"><span></span><span></span><span></span></div>
+              <div class="display-line short"></div>
+              <div class="body-line"></div>
+              <div class="body-line short"></div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Palette</div>
+          <h2 class="section-title">Dark materials, controlled contrast, focused accent energy.</h2>
+          <p class="section-description">
+            Sitezy should feel cinematic and digital, but never neon-heavy or noisy. Most surfaces stay neutral so the accent can do real
+            work when something is selected, active, or meant to lead the eye.
+          </p>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel panel">
+            <div class="swatch-grid">
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:#0B0D12"></div>
+                <div>
+                  <div class="swatch-label">Ink Black</div>
+                  <div class="swatch-code">#0B0D12</div>
+                </div>
+              </div>
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:#151922"></div>
+                <div>
+                  <div class="swatch-label">Soft Graphite</div>
+                  <div class="swatch-code">#151922</div>
+                </div>
+              </div>
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:#F5F7FB"></div>
+                <div>
+                  <div class="swatch-label">Cloud White</div>
+                  <div class="swatch-code">#F5F7FB</div>
+                </div>
+              </div>
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:#97A3B6"></div>
+                <div>
+                  <div class="swatch-label">Steel Mist</div>
+                  <div class="swatch-code">#97A3B6</div>
+                </div>
+              </div>
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:#5B8CFF"></div>
+                <div>
+                  <div class="swatch-label">Electric Blue</div>
+                  <div class="swatch-code">#5B8CFF</div>
+                </div>
+              </div>
+              <div class="swatch mini-card">
+                <div class="swatch-color" style="background:linear-gradient(135deg,#5B8CFF,#7A5CFF)"></div>
+                <div>
+                  <div class="swatch-label">Focus Gradient</div>
+                  <div class="swatch-code">#5B8CFF → #7A5CFF</div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Typography</div>
+          <h2 class="section-title">Editorial display, neutral body, short lines.</h2>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel panel">
+            <div class="type-grid">
+              <div>
+                <p class="type-sample-large">Design the direction.<br /><span>Let AI build it.</span></p>
+                <p class="type-sample-body">
+                  Headlines should feel compact and deliberate. Body copy should explain just enough, then get out of the way. Sitezy reads
+                  better when the interface feels composed rather than over-explained.
+                </p>
+              </div>
+              <div class="type-roles">
+                <div class="type-role mini-card">
+                  <strong>Display</strong>
+                  <p>Short, weighty headlines with tight tracking and strong contrast.</p>
+                </div>
+                <div class="type-role mini-card">
+                  <strong>Body</strong>
+                  <p>Readable, neutral text with enough air to keep the interface calm.</p>
+                </div>
+                <div class="type-role mini-card">
+                  <strong>UI Labels</strong>
+                  <p>Uppercase when needed, but only for orientation, not decoration.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Core Components</div>
+          <h2 class="section-title">Controls should feel premium, not bubbly or over-styled.</h2>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel panel">
+            <div class="component-grid">
+              <div class="component-card">
+                <h3>Buttons</h3>
+                <p>Use the gradient for clear action, secondary for framing, and ghost only when the surrounding surface is already strong.</p>
+                <div class="button-row">
+                  <div class="button primary">Start creating</div>
+                  <div class="button secondary">Preview</div>
+                  <div class="button ghost">Dismiss</div>
+                </div>
+              </div>
+
+              <div class="component-card">
+                <h3>Inputs</h3>
+                <p>Fields should feel quiet until focused. The accent belongs to intent, not decoration.</p>
+                <div class="input-grid">
+                  <div>
+                    <label class="label">Project name</label>
+                    <input class="input" value="A premium salon site" />
+                  </div>
+                  <div>
+                    <label class="label">Direction prompt</label>
+                    <textarea class="textarea">Minimal luxury. Strong contrast. Editorial serif moments. Clean booking CTA.</textarea>
+                  </div>
+                </div>
+              </div>
+
+              <div class="component-card">
+                <h3>Selection States</h3>
+                <p>Selection needs a visible halo and a sharper edge so the product feels active and precise.</p>
+                <div class="tag-row">
+                  <div class="chip active">Dark premium</div>
+                  <div class="chip">Bright editorial</div>
+                  <div class="chip">Studio minimal</div>
+                  <div class="chip">Launch-ready</div>
+                </div>
+                <div class="tag-row" style="margin-top:14px;">
+                  <div class="tab active">Canvas</div>
+                  <div class="tab">Layers</div>
+                  <div class="tab">Style</div>
+                  <div class="tab">Publish</div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Product Surface</div>
+          <h2 class="section-title">Creative software structure with restrained luxury.</h2>
+          <p class="section-description">
+            The editor should feel capable and design-literate. Rounded panels are acceptable, but they need weight, contrast, and density so
+            the experience reads as powerful rather than soft.
+          </p>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel panel">
+            <div class="editor-shell">
+              <div class="toolbar">
+                <div class="tool active"></div>
+                <div class="tool layers"></div>
+                <div class="tool"></div>
+                <div class="tool"></div>
+              </div>
+
+              <div class="canvas">
+                <div class="canvas-header">
+                  <span class="canvas-pill">Live preview</span>
+                  <span class="canvas-pill">Responsive canvas</span>
+                </div>
+                <div class="canvas-surface">
+                  <h3 class="canvas-title">A site that looks designed.</h3>
+                  <p class="canvas-copy">
+                    Start from a direction, then shape the result with controls that feel closer to a creative tool than a setup wizard.
+                  </p>
+                  <div class="canvas-actions">
+                    <div class="button primary">Generate my site</div>
+                    <div class="button secondary">See directions</div>
+                  </div>
+                  <div class="canvas-metrics">
+                    <div class="metric-card">
+                      <div class="metric-value">03</div>
+                      <div class="metric-label">Visual routes</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-value">12</div>
+                      <div class="metric-label">Editable blocks</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-value">1.2x</div>
+                      <div class="metric-label">Sharper contrast</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="inspector">
+                <h3>Style panel</h3>
+                <div class="field-group">
+                  <div class="label">Headline scale</div>
+                  <div class="field-set">64 / bold / tight</div>
+                </div>
+                <div class="field-group">
+                  <div class="label">Accent treatment</div>
+                  <div class="field-set">Blue-violet focus glow</div>
+                </div>
+                <div class="field-group">
+                  <div class="label">Mood</div>
+                  <div class="field-set">Cinematic / refined / direct</div>
+                </div>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Marketing System</div>
+          <h2 class="section-title">Show the product. Keep the message short.</h2>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel panel">
+            <div class="marketing-grid">
+              <div class="marketing-card">
+                <div class="marketing-bar accent"></div>
+                <h3>Hero blocks</h3>
+                <p>Use big type, quiet copy, and product frames with one accent area doing most of the visual work.</p>
+              </div>
+              <div class="marketing-card">
+                <div class="marketing-bar"></div>
+                <h3>Comparison cards</h3>
+                <p>Show generic output versus directed output without sounding defensive or overly technical.</p>
+              </div>
+              <div class="marketing-card">
+                <div class="marketing-bar"></div>
+                <h3>Proof modules</h3>
+                <p>Before-and-after transformations and live editor moments should carry more weight than feature lists.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div class="section-kicker">Guidelines</div>
+          <h2 class="section-title">Light mode should translate the hierarchy, not reset the brand.</h2>
+        </div>
+
+        <div class="section-grid">
+          <article class="section-panel half panel light-mode">
+            <div class="section-kicker" style="color:rgba(17,24,39,0.48);">Light translation</div>
+            <h3 style="margin:14px 0;font-size:30px;letter-spacing:-0.04em;">Keep the accent. Lift the surfaces.</h3>
+            <p>
+              Light mode should stay crisp and premium. The background becomes soft, the surface becomes white, and the accent remains the same
+              so the brand still reads as Sitezy.
+            </p>
+            <div style="margin-top:22px;">
+              <span class="light-chip">#F7F8FC background</span>
+              <span class="light-chip">#FFFFFF surface</span>
+              <span class="light-chip">#111827 text</span>
+            </div>
+          </article>
+
+          <article class="section-panel half panel">
+            <div class="guideline-grid">
+              <div class="guideline-card">
+                <h3>Do</h3>
+                <p>Use motion to reveal structure, reward selection, and confirm user direction.</p>
+              </div>
+              <div class="guideline-card">
+                <h3>Do not</h3>
+                <p>Flood the UI with gradients, noisy blur, or oversized glows that flatten hierarchy.</p>
+              </div>
+              <div class="guideline-card">
+                <h3>Rule</h3>
+                <p>If a component feels like every other AI startup, simplify it and sharpen the idea.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <p class="footnote">
+          Review this file in a browser to judge spacing, scale, and atmosphere. It is meant to act as a visual north star for future product
+          UI and marketing surfaces.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

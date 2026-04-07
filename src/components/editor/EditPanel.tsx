@@ -8,7 +8,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Underline, Strikethrough,
   ChevronDown, MousePointer2, Link, Globe, Mail, Phone, Anchor, FileText, X,
-  Video, FormInput, ToggleLeft, Monitor, Tablet, Smartphone,
+  Video, FormInput, ToggleLeft, Monitor, Tablet, Smartphone, Plus, Copy, Trash2,
 } from "lucide-react";
 import { EditorSwitch } from "./EditorSwitch";
 import type {
@@ -257,15 +257,17 @@ const RESPONSIVE_DEVICE_OPTIONS = [
   { value: "mobile" as const, label: "Mobile", icon: <Smartphone size={12} />, short: "Mobile" },
 ];
 
-const PANEL_CARD = "rounded-[18px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.042),rgba(255,255,255,0.018))] shadow-[0_8px_22px_rgba(0,0,0,0.12)]";
-const PANEL_SUBCARD = "rounded-[16px] border border-white/[0.08] bg-white/[0.03] px-3.5 py-3.5";
+const PANEL_CARD = "rounded-xl border border-white/[0.06] bg-white/[0.02]";
+const PANEL_SUBCARD = "rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-3";
 const PANEL_INPUT =
-  "w-full min-w-0 rounded-[14px] border border-white/[0.08] bg-white/[0.045] px-3.5 py-2.5 text-[11px] text-white/74 placeholder-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus:outline-none focus:border-accent-400/35 focus:bg-white/[0.06] transition-all";
+  "w-full min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.04] px-3 py-2 text-[11px] text-white/70 placeholder-white/20 focus:outline-none focus:border-[#5B8CFF]/30 focus:bg-white/[0.05] transition-colors";
 const PANEL_SELECT = `${PANEL_INPUT} appearance-none`;
 const PANEL_BUTTON_PRIMARY =
-  "px-3 py-2 rounded-xl border border-accent-400/22 bg-accent-500/14 text-[10px] font-semibold text-accent-200 hover:bg-accent-500/22 transition-all";
+  "px-2.5 py-1.5 rounded-lg bg-[#5B8CFF]/15 text-[10px] font-medium text-[#5B8CFF] hover:bg-[#5B8CFF]/25 transition-colors";
 const PANEL_BUTTON_SECONDARY =
-  "px-2.5 py-2 rounded-xl border border-white/[0.08] bg-white/[0.04] text-[10px] font-semibold text-white/48 hover:text-white/78 hover:border-white/[0.16] transition-all";
+  "px-2.5 py-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] font-medium text-white/45 hover:text-white/70 hover:border-white/[0.12] transition-colors";
+const PANEL_BUTTON_ICON =
+  "inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/[0.12] transition-colors";
 
 const createClosedAccordionState = (): Record<string, boolean> => ({
   responsive: false,
@@ -287,6 +289,32 @@ const createClosedAccordionState = (): Record<string, boolean> => ({
   section: false,
   icon: false,
 });
+
+/** Decide which accordion(s) to open automatically when a new element is selected. */
+function getDefaultOpenAccordions(node: CanvasNodeInfo): Partial<Record<string, boolean>> {
+  const n = node as unknown as Record<string, unknown>;
+  // Widget / collection content
+  if (n.widgetNodeId || n.widgetKind)  return { widget: true };
+  if (n.collectionNodeId)              return { content: true };
+  // Media
+  if (node.isImg)                      return { image: true };
+  if (node.isVideo)                    return { video: true };
+  if (n.isIframe)                      return { embed: true };
+  // Icon
+  if (n.isIconEl)                      return { icon: true };
+  // Form input
+  if (n.inputType || n.inputName)      return { input: true };
+  // Button / link — show link + typography
+  if (node.isBtn || node.href)         return { link: true, typography: true };
+  // Pure text
+  if (node.isText || node.role === "text") return { typography: true };
+  // Full section → background is the most impactful
+  if (node.role === "section")         return { background: true };
+  // Container / layout element
+  if (node.role === "container")       return { layout: true };
+  // Default: typography covers the most common case
+  return { typography: true };
+}
 
 function safeHex(v: string | null | undefined): string {
   if (!v || v === "transparent" || v === "rgba(0, 0, 0, 0)") return "#ffffff";
@@ -483,8 +511,34 @@ function normalizeCollectionDraft(
   });
 }
 
+function createCollectionItem(
+  fields: CanvasCollectionField[],
+  index: number,
+  source?: CanvasCollectionItem | null,
+): CanvasCollectionItem {
+  const nextFields = Object.fromEntries(
+    fields.map((field) => [field.key, String(source?.fields?.[field.key] ?? "")]),
+  );
+  const titleSeed =
+    nextFields.title ||
+    nextFields.name ||
+    nextFields.plan ||
+    nextFields.question ||
+    nextFields.label ||
+    Object.values(nextFields).find((entry) => String(entry || "").trim()) ||
+    source?.title ||
+    `Item ${index + 1}`;
+
+  return {
+    id: `item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    title: String(titleSeed),
+    fields: nextFields,
+  };
+}
+
 type EmbedMode = "youtube" | "map" | "custom";
 type MediaPickerTarget = "image" | "video" | "background" | "section-own-background" | "section-background" | "logos";
+type LinkInputType = "page" | "url" | "email" | "phone" | "anchor" | "none";
 
 function pageHrefFor(page: { slug?: string; name: string }): string {
   const raw = page.slug || page.name.toLowerCase().replace(/\s+/g, "-");
@@ -527,6 +581,20 @@ function isProjectPageHref(href: string, project?: Project): boolean {
   const normalized = normalizeInternalPageHref(href);
   if (!normalized || !project?.pages?.length) return false;
   return project.pages.some((page) => pageHrefFor(page) === normalized);
+}
+
+function inferLinkTypeFromValue(rawValue: string): LinkInputType {
+  const raw = (rawValue || "").trim();
+  if (!raw || raw === "#") return "none";
+  if (raw.startsWith("mailto:")) return "email";
+  if (raw.startsWith("tel:")) return "phone";
+  if (raw.startsWith("#")) return "anchor";
+  if (normalizeInternalPageHref(raw) !== null) return "page";
+  return "url";
+}
+
+function isWidgetLinkField(field: CanvasWidgetField): boolean {
+  return /url$/i.test(field.key);
 }
 
 function extractYouTubeId(url: string): string | null {
@@ -735,10 +803,10 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
       {/* Trigger row */}
       <div
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-[16px] border border-white/[0.07] bg-white/[0.04] p-1.5 cursor-pointer transition-all hover:border-white/[0.14]"
+        className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2 py-1.5 cursor-pointer transition-colors hover:border-white/[0.12]"
       >
         <span
-          className="block w-7 h-7 rounded-md ring-1 ring-inset ring-white/10 flex-shrink-0"
+          className="block w-5 h-5 rounded flex-shrink-0 ring-1 ring-inset ring-white/10"
           style={{ backgroundColor: currentHex }}
         />
         <span className="flex-1 text-[11px] text-white/55 font-mono">{currentHex}</span>
@@ -752,7 +820,7 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
 
       {/* Popover — opens inline below trigger to avoid overflow/z-index issues */}
       {open && (
-        <div className="mt-1.5 w-full bg-[#18181d] border border-white/[0.09] rounded-xl shadow-2xl overflow-hidden">
+        <div className="mt-1.5 w-full bg-[#12161f] border border-white/[0.08] rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.4)] overflow-hidden">
           {/* Gradient square */}
           <div
             ref={gradRef}
@@ -769,7 +837,7 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
           <div className="p-3 space-y-2.5">
             {/* Hue slider */}
             <div>
-              <style>{`.sz-hue::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5);cursor:pointer}.sz-hue::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5);cursor:pointer}`}</style>
+              <style>{`.sz-hue::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5);cursor:pointer}.sz-hue::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5);cursor:pointer}`}</style>
               <input
                 type="range" min={0} max={360} value={Math.round(h)}
                 onChange={(e) => {
@@ -780,13 +848,13 @@ function ColorPicker({ value, onChange, onClear, allowClear = false }: {
                   setHexInput(hex.replace("#", ""));
                   onChange(hex);
                 }}
-                className="sz-hue w-full h-3 rounded-full appearance-none cursor-pointer"
+                className="sz-hue w-full h-2 rounded-full appearance-none cursor-pointer"
                 style={{ background: "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)" }}
               />
             </div>
 
             {/* Hex input */}
-            <div className="flex items-center gap-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5">
+            <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded-md px-2 py-1.5">
               <span className="text-[11px] text-white/25 font-mono select-none">#</span>
               <input
                 value={hexInput}
@@ -811,22 +879,24 @@ function Accordion({ title, icon, open, toggle, children }: {
   title: string; icon: React.ReactNode; open: boolean; toggle: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className={`${PANEL_CARD} overflow-hidden ${open ? "border-white/[0.12]" : ""}`}>
+    <div className={`overflow-hidden rounded-lg transition-colors ${open ? "bg-white/[0.03]" : ""}`}>
       <button onClick={toggle}
-        className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.025]">
-        <span className={`flex h-8 w-8 items-center justify-center rounded-[12px] border transition-colors ${
+        className="group flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04] rounded-lg">
+        <span className={`flex h-5 w-5 items-center justify-center rounded-md transition-colors ${
           open
-            ? "border-accent-400/18 bg-accent-500/10 text-accent-200"
-            : "border-white/[0.07] bg-white/[0.03] text-white/28 group-hover:text-white/52"
+            ? "text-[#5B8CFF]"
+            : "text-white/25 group-hover:text-white/50"
         }`}>
           {icon}
         </span>
-        <div className="min-w-0 flex-1 text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/68 transition-colors group-hover:text-white/82">
+        <div className={`min-w-0 flex-1 text-[11px] font-medium transition-colors ${
+          open ? "text-white/80" : "text-white/50 group-hover:text-white/70"
+        }`}>
           {title}
         </div>
-        <ChevronDown size={14} className={`text-white/24 transition-transform flex-shrink-0 ${open ? "rotate-180 text-white/55" : ""}`} />
+        <ChevronDown size={12} className={`text-white/20 transition-transform duration-150 flex-shrink-0 ${open ? "rotate-180 text-white/40" : ""}`} />
       </button>
-      {open && <div className="border-t border-white/[0.06] px-4 pb-4 pt-3.5 space-y-4">{children}</div>}
+      {open && <div className="px-3 pb-3 pt-1.5 space-y-3.5">{children}</div>}
     </div>
   );
 }
@@ -840,8 +910,8 @@ const Label = ({
   overrideActive?: boolean;
   onReset?: () => void;
 }) => (
-  <div className="mb-2.5 flex items-center justify-between gap-2">
-    <p className="text-[9px] font-bold text-white/34 uppercase tracking-[0.18em]">{children}</p>
+  <div className="mb-2 flex items-center justify-between gap-2">
+    <p className="text-[9px] font-medium text-white/30 uppercase tracking-[0.14em]">{children}</p>
     {(overrideActive || onReset) && (
       <div className="flex items-center gap-1.5">
         {overrideActive && (
@@ -869,13 +939,13 @@ function ToggleGroup({ options, value, onChange }: {
   value: string; onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.04] p-1.5">
+    <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
       {options.map((o) => (
         <button key={o.val} title={o.title} onClick={() => onChange(o.val)}
-          className={`flex h-9 flex-1 items-center justify-center rounded-[12px] border text-[11px] transition-all ${
+          className={`flex h-7 flex-1 items-center justify-center rounded-md text-[11px] transition-colors ${
             value === o.val
-              ? "border-accent-400/18 bg-accent-500/12 text-white"
-              : "border-transparent text-white/36 hover:text-white/64 hover:bg-white/[0.04]"
+              ? "bg-white/[0.1] text-white/90"
+              : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]"
           }`}>
           {o.icon}
         </button>
@@ -902,7 +972,7 @@ function PresetSelect({
         if (!e.target.value) return;
         onChange(e.target.value);
       }}
-      className="h-11 min-w-[110px] rounded-[14px] border border-white/[0.08] bg-white/[0.045] px-3.5 text-[11px] text-white/72 focus:outline-none appearance-none leading-none"
+      className="h-8 min-w-[100px] rounded-lg border border-white/[0.07] bg-white/[0.04] px-2.5 text-[11px] text-white/65 focus:outline-none appearance-none leading-none"
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (
@@ -934,7 +1004,7 @@ function RangeSlider({
   const safeValue = Math.min(max, Math.max(min, value));
   const percent = max <= min ? 0 : ((safeValue - min) / (max - min)) * 100;
   const trackStyle = {
-    background: `linear-gradient(90deg, rgba(124,58,237,0.95) 0%, rgba(124,58,237,0.95) ${percent}%, rgba(255,255,255,0.16) ${percent}%, rgba(255,255,255,0.16) 100%)`,
+    background: `linear-gradient(90deg, rgba(91,140,255,0.5) 0%, rgba(91,140,255,0.5) ${percent}%, rgba(255,255,255,0.08) ${percent}%, rgba(255,255,255,0.08) 100%)`,
   } as React.CSSProperties;
 
   return (
@@ -943,45 +1013,49 @@ function RangeSlider({
         .sz-range {
           -webkit-appearance: none;
           appearance: none;
-          height: 12px;
+          height: 4px;
           border-radius: 9999px;
           outline: none;
           cursor: pointer;
-          background-color: rgba(255,255,255,0.12);
+          background-color: rgba(255,255,255,0.08);
         }
         .sz-range::-webkit-slider-runnable-track {
-          height: 12px;
+          height: 4px;
           border-radius: 9999px;
           background: transparent;
         }
         .sz-range::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 22px;
-          height: 22px;
+          width: 14px;
+          height: 14px;
           border-radius: 9999px;
           background: #ffffff;
-          border: 1px solid rgba(255,255,255,0.9);
-          box-shadow: 0 3px 10px rgba(0,0,0,0.28);
+          border: 2px solid rgba(91,140,255,0.4);
+          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
           margin-top: -5px;
+          transition: border-color 0.15s;
+        }
+        .sz-range::-webkit-slider-thumb:hover {
+          border-color: rgba(91,140,255,0.7);
         }
         .sz-range::-moz-range-track {
-          height: 12px;
+          height: 4px;
           border-radius: 9999px;
-          background: rgba(255,255,255,0.16);
+          background: rgba(255,255,255,0.08);
         }
         .sz-range::-moz-range-progress {
-          height: 12px;
+          height: 4px;
           border-radius: 9999px;
-          background: rgba(124,58,237,0.95);
+          background: rgba(91,140,255,0.5);
         }
         .sz-range::-moz-range-thumb {
-          width: 22px;
-          height: 22px;
+          width: 14px;
+          height: 14px;
           border-radius: 9999px;
           background: #ffffff;
-          border: 1px solid rgba(255,255,255,0.9);
-          box-shadow: 0 3px 10px rgba(0,0,0,0.28);
+          border: 2px solid rgba(91,140,255,0.4);
+          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
         }
       `}</style>
       <input
@@ -1029,63 +1103,55 @@ function SliderField({
   const rangeValue = Number.isNaN(parsed) ? min : Math.min(max, Math.max(min, parsed));
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/34">{label}</p>
-            {(overrideActive || onReset) && (
-              <div className="flex items-center gap-1.5">
-                {overrideActive && (
-                  <span className="rounded-full border border-sky-400/24 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-sky-200/78">
-                    Override
-                  </span>
-                )}
-                {overrideActive && onReset && (
-                  <button
-                    type="button"
-                    onClick={onReset}
-                    className="text-[8px] font-semibold uppercase tracking-[0.14em] text-white/36 hover:text-white/74 transition-colors"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="h-11 w-[108px] flex-shrink-0 rounded-[14px] border border-white/[0.08] bg-white/[0.045] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-all focus-within:border-accent-400/35 focus-within:bg-white/[0.06]">
-          <div className="flex h-full items-center gap-1.5">
-            <input
-              value={value}
-              type="number"
-              min={min}
-              max={max}
-              step={step}
-              onFocus={onFocus}
-              onChange={(e) => onChange(e.target.value)}
-              onBlur={() => onCommit(value)}
-              className="h-full w-full bg-transparent text-[11px] text-white/74 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            {unit ? (
-              <span className="shrink-0 text-[9px] uppercase tracking-[0.14em] text-white/30">
-                {unit}
-              </span>
-            ) : null}
-          </div>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-white/30 truncate">{label}</p>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {overrideActive && (
+            <span className="rounded-full bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-medium text-sky-300/70">
+              Override
+            </span>
+          )}
+          {overrideActive && onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-[8px] font-medium text-white/30 hover:text-white/60 transition-colors"
+            >
+              Reset
+            </button>
+          )}
         </div>
       </div>
-      <div className="pt-1">
-        <RangeSlider
-          value={rangeValue}
-          min={min}
-          max={max}
-          step={step}
-          onFocus={onFocus}
-          onBlur={() => onCommit(String(rangeValue))}
-          onChange={onChange}
-        />
+      <div className="h-7 w-full rounded-md border border-white/[0.07] bg-white/[0.04] px-2 transition-colors focus-within:border-[#5B8CFF]/30">
+        <div className="flex h-full items-center gap-1">
+          <input
+            value={value}
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            onFocus={onFocus}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={() => onCommit(value)}
+            className="h-full w-full bg-transparent text-[11px] text-white/70 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          {unit ? (
+            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-white/25">
+              {unit}
+            </span>
+          ) : null}
+        </div>
       </div>
+      <RangeSlider
+        value={rangeValue}
+        min={min}
+        max={max}
+        step={step}
+        onFocus={onFocus}
+        onBlur={() => onCommit(String(rangeValue))}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -1360,7 +1426,7 @@ function SurfaceBackgroundEditor({
                     onClick={() => onGradientDirChange(direction.value)}
                     className={`py-1 rounded-lg text-[11px] border transition-all ${
                       gradientDir === direction.value
-                        ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
+                        ? "border-[#5B8CFF]/30 bg-[#5B8CFF]/10 text-[#5B8CFF]"
                         : "border-white/[0.06] text-white/50 hover:border-white/20"
                     }`}
                   >
@@ -1452,7 +1518,7 @@ function BoxModel({ label, t, r, b, l, onT, onR, onB, onL, accent, fieldKey, set
         {inp("top", onT)}
         <div />
         {inp("left", onL)}
-        <div className={`h-10 rounded-xl border ${accent} flex items-center justify-center text-[8px] text-white/18 font-mono bg-white/[0.02]`}>
+        <div className={`h-8 rounded-lg border ${accent} flex items-center justify-center text-[8px] text-white/18 font-mono bg-white/[0.02]`}>
           {label.slice(0,1)}
         </div>
         {inp("right", onR)}
@@ -1502,7 +1568,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const [embedMode, setEmbedMode] = useState<EmbedMode>("custom");
   const [isResolvingEmbed, setIsResolvingEmbed] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-  const [linkType, setLinkType] = useState<"page"|"url"|"email"|"phone"|"anchor"|"none">("url");
+  const [linkType, setLinkType] = useState<LinkInputType>("url");
   // Text effects
   const [gradientOn, setGradientOn] = useState(false);
   const [gradFrom,   setGradFrom]   = useState("#7C3AED");
@@ -1516,6 +1582,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const [localEditableText, setLocalEditableText] = useState("");
   const [logoItemsDraft, setLogoItemsDraft] = useState("");
   const [widgetDraft, setWidgetDraft] = useState<Record<string, string>>({});
+  const [widgetLinkTypes, setWidgetLinkTypes] = useState<Record<string, LinkInputType>>({});
   const [collectionDraft, setCollectionDraft] = useState<CanvasCollectionItem[]>([]);
   const [mediaPickerTarget, setMediaPickerTarget] = useState<MediaPickerTarget | null>(null);
   // Size inputs
@@ -1589,6 +1656,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     activeFieldRef.current = null;
     lastSyncedSelectionKeyRef.current = null;
     setActiveField(null);
+    setWidgetLinkTypes({});
     setOpen((current) => {
       if (!Object.values(current).some(Boolean)) return current;
       return createClosedAccordionState();
@@ -1622,10 +1690,16 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     if (currentActiveField !== "editableText") setLocalEditableText((node as any).editableText ?? "");
     if (currentActiveField !== "logoItems") setLogoItemsDraft(((node as any).logoItems ?? []).join("\n"));
     if (!currentActiveField?.startsWith("widget:")) {
-      setWidgetDraft(
-        normalizeWidgetDraft(
+      const nextWidgetDraft = normalizeWidgetDraft(
           ((node as any).widgetFields ?? []) as CanvasWidgetField[],
           (((node as any).widgetState ?? {}) as Record<string, string>),
+        );
+      setWidgetDraft(nextWidgetDraft);
+      setWidgetLinkTypes(
+        Object.fromEntries(
+          ((((node as any).widgetFields ?? []) as CanvasWidgetField[])
+            .filter((field) => isWidgetLinkField(field))
+            .map((field) => [field.key, inferLinkTypeFromValue(nextWidgetDraft[field.key] ?? "")]))
         ),
       );
     }
@@ -1714,7 +1788,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       setBrTL(parseUnitDraft(tl)); setBrTR(parseUnitDraft(tr)); setBrBR(parseUnitDraft(br)); setBrBL(parseUnitDraft(bl));
     }
     if (selectionChanged) {
-      setOpen(createClosedAccordionState());
+      setOpen((prev) => ({ ...prev, ...createClosedAccordionState(), ...getDefaultOpenAccordions(node) }) as Record<string, boolean>);
     }
     if ((node as any).isIconEl) {
       setIconSize((node as any).iconSize ?? 32);
@@ -1811,14 +1885,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
 
   useEffect(() => {
     if (!node) return;
-    const raw = (node.href ?? "").trim();
-    if (!raw || raw === "#" || raw === "") setLinkType("none");
-    else if (raw.startsWith("mailto:")) setLinkType("email");
-    else if (raw.startsWith("tel:"))    setLinkType("phone");
-    else if (raw.startsWith("#"))       setLinkType("anchor");
-    // normalizeInternalPageHref returns non-null for all internal paths including "//" and "//slug"
-    else if (normalizeInternalPageHref(raw) !== null) setLinkType("page");
-    else setLinkType("url"); // only genuinely external URLs reach here
+    setLinkType(inferLinkTypeFromValue(node.href ?? ""));
   }, [node?.nodeId, node?.href, project]); // eslint-disable-line
 
   const send = useCallback((type: string, extra: Record<string, unknown> = {}) => {
@@ -2033,33 +2100,30 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   if (!node) {
     return (
       <div className="flex h-full flex-col p-3">
-        <div className="rounded-[22px] border border-white/[0.06] bg-[rgba(255,255,255,0.02)] p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[15px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))] shadow-[0_12px_30px_rgba(0,0,0,0.14)]">
-              <MousePointer2 size={17} className="text-accent-200/80" />
+        <div className="rounded-lg bg-white/[0.025] p-3">
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#5B8CFF]/10">
+              <MousePointer2 size={14} className="text-[#5B8CFF]/70" />
             </div>
             <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-white/78">Select an element</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-white/30">
-                The inspector opens content, layout, and style controls for the current selection.
+              <p className="text-[11px] font-medium text-white/70">Select an element</p>
+              <p className="mt-0.5 text-[10px] leading-relaxed text-white/30">
+                Click any element on the canvas to inspect and edit it.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="mt-3 rounded-[22px] border border-dashed border-white/[0.06] bg-black/10 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/22">Quick Start</p>
-          <div className="mt-3 grid gap-2">
-            {[
-              "Double-click text to edit directly on the canvas.",
-              "Use Layers when the canvas target is nested or hard to reach.",
-              "Adjust responsive settings after desktop styling is in place.",
-            ].map((tip) => (
-              <div key={tip} className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 text-[11px] leading-relaxed text-white/34">
-                {tip}
-              </div>
-            ))}
-          </div>
+        <div className="mt-2.5 space-y-1.5">
+          {[
+            "Double-click text to edit directly on the canvas.",
+            "Use Layers when the canvas target is nested or hard to reach.",
+            "Adjust responsive settings after desktop styling is in place.",
+          ].map((tip) => (
+            <div key={tip} className="rounded-md bg-white/[0.02] px-2.5 py-2 text-[10px] leading-relaxed text-white/28">
+              {tip}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -2152,6 +2216,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const widgetLabel = node?.widgetLabel || "Widget";
   const collectionFields = node?.collectionFields ?? [];
   const collectionLabel = node?.collectionLabel || "Items";
+  const useCompactCollectionGrid =
+    collectionFields.length > 1 &&
+    collectionFields.every((field) => field.type !== "textarea" && field.type !== "list");
   const mediaPickerTitle = mediaPickerTarget === "video"
     ? "Project Video Library"
     : mediaPickerTarget === "logos"
@@ -2227,6 +2294,40 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     setWidgetDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function setWidgetLinkType(fieldKey: string, nextType: LinkInputType) {
+    setWidgetLinkTypes((current) => ({ ...current, [fieldKey]: nextType }));
+    const currentValue = widgetDraft[fieldKey] ?? "";
+
+    if (nextType === "none") {
+      updateWidgetField(fieldKey, "");
+      return;
+    }
+
+    if (nextType === "email") {
+      updateWidgetField(fieldKey, currentValue.startsWith("mailto:") ? currentValue : "mailto:");
+      return;
+    }
+
+    if (nextType === "phone") {
+      updateWidgetField(fieldKey, currentValue.startsWith("tel:") ? currentValue : "tel:");
+      return;
+    }
+
+    if (nextType === "page" || nextType === "anchor") {
+      updateWidgetField(fieldKey, "");
+      return;
+    }
+
+    if (
+      currentValue.startsWith("mailto:") ||
+      currentValue.startsWith("tel:") ||
+      currentValue.startsWith("#") ||
+      normalizeInternalPageHref(currentValue) !== null
+    ) {
+      updateWidgetField(fieldKey, "");
+    }
+  }
+
   function applyCollectionItems(items: CanvasCollectionItem[]) {
     if (!node?.collectionNodeId) return;
     const normalized = normalizeCollectionDraft(collectionFields, items);
@@ -2254,6 +2355,30 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         };
       }),
     );
+  }
+
+  function addCollectionItem() {
+    setCollectionDraft((items) => [
+      ...items,
+      createCollectionItem(collectionFields, items.length),
+    ]);
+  }
+
+  function duplicateCollectionItem(index: number) {
+    setCollectionDraft((items) => {
+      const source = items[index];
+      if (!source) return items;
+      const next = [...items];
+      next.splice(index + 1, 0, createCollectionItem(collectionFields, index + 1, source));
+      return next;
+    });
+  }
+
+  function removeCollectionItem(index: number) {
+    setCollectionDraft((items) => {
+      if (items.length <= 1) return items;
+      return items.filter((_, itemIndex) => itemIndex !== index);
+    });
   }
 
   const mediaPickerKinds: ProjectMediaAsset["kind"][] = mediaPickerTarget === "video" ? ["video"] : ["image"];
@@ -2518,16 +2643,16 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         </div>
 
         <div className="space-y-2">
-          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/24">Visibility presets</p>
-          <div className="grid grid-cols-3 gap-2">
+          <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-white/25">Visibility presets</p>
+          <div className="grid grid-cols-3 gap-1.5">
             {(["desktop", "tablet", "mobile"] as const).map((device) => (
               <button
                 key={device}
                 onClick={() => setExclusiveVisibility(device)}
-                className={`rounded-xl border py-2 text-[10px] font-semibold uppercase tracking-[0.14em] transition-all ${
+                className={`rounded-lg py-1.5 text-[10px] font-medium transition-colors ${
                   devicePreview === device
-                    ? "border-accent-400/28 bg-accent-500/12 text-accent-200"
-                    : "border-white/[0.08] bg-white/[0.03] text-white/54 hover:border-white/[0.16] hover:text-white/80"
+                    ? "bg-[#5B8CFF]/12 text-[#5B8CFF]"
+                    : "bg-white/[0.03] text-white/45 hover:bg-white/[0.06] hover:text-white/70"
                 }`}
               >
                 Only {device}
@@ -2543,7 +2668,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           <button
             onClick={clearResponsiveOverrides}
             disabled={!node.responsiveHasCurrentOverrides}
-            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60 transition-all hover:border-white/[0.16] hover:text-white/82 disabled:cursor-not-allowed disabled:opacity-35"
+            className="w-full rounded-lg bg-white/[0.04] py-2 text-[10px] font-medium text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
           >
             Reset {devicePreview} overrides
           </button>
@@ -2554,9 +2679,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
 
   return (
     <>
-      <div className="flex flex-col h-full overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
+      <div className="flex flex-col h-full overflow-hidden">
       {/* Scrollable sections */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-1">
         {/* ── Link ── */}
         {showLinkPanel && (
           <Accordion title="Link" icon={<Link size={12}/>} open={open.link} toggle={() => toggle("link")}>
@@ -2589,7 +2714,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                   className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
                     linkType === val
-                      ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                      ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                       : "text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                   }`}>
                   {icon} {label}
@@ -2607,7 +2732,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     <button key={p.id} type="button"
                       onClick={() => { setLinkUrl(href); send("apply-attr", { attr: "href", value: href, nodeId: node?.nodeId ?? null }); }}
                       className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-all text-left ${
-                        isSel ? "bg-accent-500/15 text-accent-300" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
+                        isSel ? "bg-[#5B8CFF]/12 text-[#5B8CFF]" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
                       }`}>
                       <FileText size={9} className="flex-shrink-0 opacity-50" />
                       <span className="truncate">{p.name}</span>
@@ -2689,7 +2814,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               const targetPage = (project?.pages ?? []).find(p => pageHrefFor(p) === normalized);
               return targetPage ? (
                 <button onClick={() => selectPage(targetPage.id)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium border border-accent-500/20 text-accent-400 hover:bg-accent-500/10 transition-all">
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium border border-[#5B8CFF]/20 text-[#5B8CFF] hover:bg-[#5B8CFF]/10 transition-all">
                   <FileText size={9} /> Go to {targetPage.name} page
                 </button>
               ) : null;
@@ -2727,11 +2852,153 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   const value = widgetDraft[field.key] ?? "";
                   const focusKey = `widget:${field.key}`;
                   const isCountdownTarget = node?.widgetKind === "countdown" && field.key === "targetDate";
+                  const isLinkField = isWidgetLinkField(field);
+                  const widgetLinkType = widgetLinkTypes[field.key] ?? inferLinkTypeFromValue(value);
                   const placeholder =
                     field.placeholder ||
                     (isCountdownTarget
                       ? "Select a date"
                       : `Edit ${field.label.toLowerCase()}…`);
+
+                  if (isLinkField) {
+                    return (
+                      <div key={field.key} className="space-y-2">
+                        <Label>{field.label}</Label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { val: "page" as const, label: "Page", icon: <FileText size={11} /> },
+                            { val: "anchor" as const, label: "Section", icon: <Anchor size={11} /> },
+                            { val: "url" as const, label: "URL", icon: <Globe size={11} /> },
+                            { val: "email" as const, label: "Email", icon: <Mail size={11} /> },
+                            { val: "phone" as const, label: "Phone", icon: <Phone size={11} /> },
+                            { val: "none" as const, label: "None", icon: <X size={11} /> },
+                          ].map(({ val, label, icon }) => {
+                            const active = widgetLinkType === val;
+                            return (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setWidgetLinkType(field.key, val)}
+                                className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-medium transition-all ${
+                                  active
+                                    ? "border-[#5B8CFF]/20 bg-[#5B8CFF]/12 text-[#5B8CFF]"
+                                    : "border-white/[0.08] bg-white/[0.03] text-white/42 hover:border-white/[0.14] hover:text-white/72"
+                                }`}
+                              >
+                                {icon}
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {widgetLinkType === "page" && project?.pages && project.pages.length > 0 && (
+                          <div className="space-y-0.5 max-h-36 overflow-auto rounded-lg border border-white/[0.06] bg-white/[0.02] p-1">
+                            {project.pages.map((p) => {
+                              const href = pageHrefFor(p);
+                              const isSel = (normalizeInternalPageHref(value) ?? value) === href;
+                              return (
+                                <button
+                                  key={`${field.key}:${p.id}`}
+                                  type="button"
+                                  onClick={() => updateWidgetField(field.key, href)}
+                                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-all ${
+                                    isSel ? "bg-[#5B8CFF]/12 text-[#5B8CFF]" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
+                                  }`}
+                                >
+                                  <FileText size={9} className="flex-shrink-0 opacity-50" />
+                                  <span className="truncate">{p.name}</span>
+                                  {isSel && <span className="ml-auto flex-shrink-0 text-[9px] text-accent-400/60">selected</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {widgetLinkType === "anchor" && (
+                          currentPage && currentPage.sections.length > 0 ? (
+                            <div className="space-y-0.5 max-h-36 overflow-auto rounded-lg border border-white/[0.06] bg-white/[0.02] p-1">
+                              {currentPage.sections.map((sec) => {
+                                const anchorVal = `#${sec.id}`;
+                                const isSelected = value === anchorVal;
+                                return (
+                                  <button
+                                    key={`${field.key}:${sec.id}`}
+                                    type="button"
+                                    onClick={() => updateWidgetField(field.key, anchorVal)}
+                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-all ${
+                                      isSelected ? "bg-teal-500/15 text-teal-300" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
+                                    }`}
+                                  >
+                                    <Anchor size={9} className="flex-shrink-0 opacity-50" />
+                                    <span className="truncate">{sec.name || sec.type}</span>
+                                    {isSelected && <span className="ml-auto text-[9px] text-teal-400/60">selected</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : <p className="px-1 text-[10px] text-white/25">No sections on this page.</p>
+                        )}
+
+                        {widgetLinkType === "url" && (
+                          <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.05] px-2 py-1.5">
+                            <Globe size={10} className="flex-shrink-0 text-white/25" />
+                            <input
+                              value={value}
+                              onFocus={() => setActiveField(focusKey)}
+                              onChange={(e) => updateWidgetField(field.key, e.target.value)}
+                              onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                              placeholder="https://example.com"
+                              className="editor-plain-input min-w-0 flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {widgetLinkType === "email" && (
+                          <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.05] px-2 py-1.5">
+                            <Mail size={10} className="flex-shrink-0 text-white/25" />
+                            <input
+                              value={value.replace("mailto:", "")}
+                              onFocus={() => setActiveField(focusKey)}
+                              onChange={(e) => updateWidgetField(field.key, `mailto:${e.target.value}`)}
+                              onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                              placeholder="hello@example.com"
+                              className="editor-plain-input min-w-0 flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {widgetLinkType === "phone" && (
+                          <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.05] px-2 py-1.5">
+                            <Phone size={10} className="flex-shrink-0 text-white/25" />
+                            <input
+                              value={value.replace("tel:", "")}
+                              onFocus={() => setActiveField(focusKey)}
+                              onChange={(e) => updateWidgetField(field.key, `tel:${e.target.value}`)}
+                              onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                              placeholder="+1 555 000 0000"
+                              className="editor-plain-input min-w-0 flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {widgetLinkType === "page" && (() => {
+                          const normalized = value === "//" ? "/" : (normalizeInternalPageHref(value) ?? value);
+                          const targetPage = (project?.pages ?? []).find((p) => pageHrefFor(p) === normalized);
+                          return targetPage ? (
+                            <button
+                              type="button"
+                              onClick={() => selectPage(targetPage.id)}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#5B8CFF]/20 py-1.5 text-[10px] font-medium text-[#5B8CFF] transition-colors hover:bg-[#5B8CFF]/10"
+                            >
+                              <FileText size={9} />
+                              Go to {targetPage.name} page
+                            </button>
+                          ) : null;
+                        })()}
+                      </div>
+                    );
+                  }
 
                   if (field.type === "textarea") {
                     return (
@@ -2744,7 +3011,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                           onChange={(e) => updateWidgetField(field.key, e.target.value)}
                           onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
                           placeholder={placeholder}
-                          className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                          className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                         />
                       </div>
                     );
@@ -2836,7 +3103,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   applyLogoItems(logoItemsDraft);
                   setActiveField(null);
                 }}
-                className="w-full resize-y min-h-[96px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full resize-y min-h-[96px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 placeholder={"One item per line\nUse a company name or a logo image URL"}
               />
               <div className="flex items-center justify-between gap-2">
@@ -2852,7 +3119,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   </button>
                   <button
                     onClick={() => applyLogoItems(logoItemsDraft)}
-                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-accent-500/22 bg-accent-500/12 text-accent-200 hover:bg-accent-500/18 transition-colors"
+                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-[#5B8CFF]/20 bg-[#5B8CFF]/10 text-[#5B8CFF] hover:bg-[#5B8CFF]/18 transition-colors"
                   >
                     Apply
                   </button>
@@ -2871,31 +3138,71 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     Structured content
                   </p>
                   <p className="text-[10px] leading-relaxed text-white/28">
-                    Edit the repeated data inside this block without flattening its layout or losing the built-in interaction.
+                    Manage the repeated entries inside this block.
                   </p>
                 </div>
-                {node.collectionFixed && (
-                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/42">
-                    fixed set
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!node.collectionFixed && (
+                    <button
+                      type="button"
+                      onClick={addCollectionItem}
+                      className={`${PANEL_BUTTON_SECONDARY} inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2`}
+                    >
+                      <Plus size={11} />
+                      Add item
+                    </button>
+                  )}
+                  {node.collectionFixed && (
+                    <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/42">
+                      fixed set
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-3">
                 {collectionDraft.map((item, index) => (
-                  <div key={item.id || `${node.collectionKind}-${index}`} className={`${PANEL_SUBCARD} space-y-3`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-[11px] font-semibold text-white/78">
-                          {item.title || `Item ${index + 1}`}
-                        </p>
-                        <p className="text-[9px] uppercase tracking-[0.12em] text-white/24">
-                          Item {index + 1}
-                        </p>
+                  <div key={item.id || `${node.collectionKind}-${index}`} className={`${PANEL_SUBCARD} space-y-3 px-3 py-3`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/46">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-semibold text-white/78">
+                            {item.title || `Item ${index + 1}`}
+                          </p>
+                          <p className="text-[9px] uppercase tracking-[0.12em] text-white/24">
+                            Collection item
+                          </p>
+                        </div>
                       </div>
+                      {!node.collectionFixed && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => duplicateCollectionItem(index)}
+                            className={PANEL_BUTTON_ICON}
+                            title="Duplicate item"
+                            aria-label={`Duplicate item ${index + 1}`}
+                          >
+                            <Copy size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeCollectionItem(index)}
+                            disabled={collectionDraft.length <= 1}
+                            className={`${PANEL_BUTTON_ICON} text-rose-200/82 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-40`}
+                            title="Remove item"
+                            aria-label={`Remove item ${index + 1}`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="space-y-2.5">
+                    <div className={useCompactCollectionGrid ? "grid grid-cols-2 gap-2.5" : "space-y-2.5"}>
                       {collectionFields.map((field) => {
                         const value = item.fields?.[field.key] ?? "";
                         const focusKey = `collection:${index}:${field.key}`;
@@ -2921,7 +3228,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                                 onChange={(e) => updateCollectionField(index, field.key, e.target.value)}
                                 onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
                                 placeholder={placeholder}
-                                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                               />
                               {field.type === "list" && (
                                 <p className="text-[9px] text-white/24">Use one line per list item.</p>
@@ -2931,7 +3238,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                         }
 
                         return (
-                          <div key={field.key} className="space-y-1.5">
+                          <div key={field.key} className="min-w-0 space-y-1.5">
                             <Label>{labelText}</Label>
                             <input
                               value={value}
@@ -2951,7 +3258,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
 
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] leading-relaxed text-white/26">
-                  Changes stay scoped to this block’s item structure and preserve the block’s current styling.
+                  Changes stay scoped to this block’s item structure and preserve the block’s current styling and interaction.
                 </p>
                 <button
                   onClick={() => applyCollectionItems(collectionDraft)}
@@ -2977,7 +3284,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   applyTextContent(localEditableText);
                   setActiveField(null);
                 }}
-                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 placeholder="Edit the selected text…"
               />
               <div className="flex items-center justify-between gap-2">
@@ -2986,7 +3293,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 </p>
                 <button
                   onClick={() => applyTextContent(localEditableText)}
-                  className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-accent-500/22 bg-accent-500/12 text-accent-200 hover:bg-accent-500/18 transition-colors"
+                  className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-[#5B8CFF]/20 bg-[#5B8CFF]/10 text-[#5B8CFF] hover:bg-[#5B8CFF]/18 transition-colors"
                 >
                   Apply
                 </button>
@@ -3496,7 +3803,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                           ? `radial-gradient(${d.value}, ${gradFrom}, ${gradTo})`
                           : `linear-gradient(${d.value}, ${gradFrom}, ${gradTo})`;
                         applyStyleToNode(node.textTargetNodeId ?? node.nodeId, "backgroundImage", grad);
-                      }} className={`py-1 rounded-lg text-[11px] border transition-all ${gradDir === d.value ? "border-accent-500/40 bg-accent-500/10 text-accent-300" : "border-white/[0.06] text-white/50 hover:border-white/20"}`}>
+                      }} className={`py-1 rounded-lg text-[11px] border transition-all ${gradDir === d.value ? "border-[#5B8CFF]/30 bg-[#5B8CFF]/10 text-[#5B8CFF]" : "border-white/[0.06] text-white/50 hover:border-white/20"}`}>
                         {d.label}
                       </button>
                     ))}
@@ -3587,7 +3894,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 value={(node as any).altText ?? ""}
                 onChange={(e) => sendMediaAttr("alt", e.target.value)}
                 placeholder="Describe the image…"
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
             <div>
@@ -3622,7 +3929,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     onClick={() => applyMediaStyle("objectPosition", option.value)}
                     className={`h-7 rounded-lg border text-[10px] font-medium transition-all ${
                       (node.objectPosition || "50% 50%") === option.value
-                        ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                        ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                         : "bg-white/[0.03] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                     }`}
                   >
@@ -3678,7 +3985,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       send("apply-icon-size", { size: v, wrapperNodeId: (node as any).iconWrapperNodeId, batch: true });
                     }}
                     onMouseUp={() => send("apply-icon-size", { size: iconSize, wrapperNodeId: (node as any).iconWrapperNodeId })}
-                    className="flex-1 h-1 accent-accent-500"
+                    className="flex-1 h-1 accent-[#5B8CFF]"
                   />
                   <input
                     type="number"
@@ -3701,7 +4008,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 value={iconSearch}
                 onChange={(e) => setIconSearch(e.target.value)}
                 placeholder="Search icons…"
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-1.5 text-[11px] text-white/60 placeholder-white/20 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-1.5 text-[11px] text-white/60 placeholder-white/20 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
 
@@ -3719,7 +4026,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       key={ic.id}
                       title={ic.name}
                       onClick={() => send("replace-svg", { inner: ic.paths, stroke, strokeWidth: sw })}
-                      className="flex items-center justify-center w-full aspect-square rounded-lg bg-white/[0.03] border border-white/[0.05] hover:bg-accent-500/10 hover:border-accent-500/25 transition-all group"
+                      className="flex items-center justify-center w-full aspect-square rounded-lg bg-white/[0.03] border border-white/[0.05] hover:bg-[#5B8CFF]/10 hover:border-[#5B8CFF]/20 transition-all group"
                     >
                       <svg
                         viewBox="0 0 24 24"
@@ -3791,7 +4098,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     onClick={() => applyMediaStyle("objectPosition", option.value)}
                     className={`h-7 rounded-lg border text-[10px] font-medium transition-all ${
                       (node.objectPosition || "50% 50%") === option.value
-                        ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                        ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                         : "bg-white/[0.03] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                     }`}
                   >
@@ -3811,7 +4118,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   onClick={() => sendMediaAttr(key, active ? null : "")}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] border transition-all ${
                     active
-                      ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                      ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                       : "text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                   }`}>
                   <span>{label}</span>
@@ -3843,7 +4150,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     }}
                     className={`py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                       embedMode === key
-                        ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                        ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                         : "text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                     }`}
                   >
@@ -3921,7 +4228,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       onClick={() => { setInputType(t); send("apply-attr", { attr: "type", value: t }); }}
                       className={`py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
                         inputType === t
-                          ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                          ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                           : "text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                       }`}>
                       {t}
@@ -3938,7 +4245,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 onBlur={() => { send("apply-attr", { attr: "placeholder", value: inputPlaceholder }); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "placeholder", value: inputPlaceholder })}
                 placeholder="Enter placeholder text…"
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
             <div>
@@ -3949,7 +4256,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 onBlur={() => { send("apply-attr", { attr: "name", value: inputName }); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "name", value: inputName })}
                 placeholder="e.g. email"
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
           </Accordion>
@@ -4023,7 +4330,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }
               }}
               placeholder="auto"
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
             />
           </div>
 
@@ -4051,7 +4358,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("top", topVal.trim() === "" ? "auto" : topVal)}
                   placeholder="top"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 />
                 <input value={rightVal}
                   onFocus={() => setActiveField("right")}
@@ -4068,7 +4375,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("right", rightVal.trim() === "" ? "auto" : rightVal)}
                   placeholder="right"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 />
                 <input value={bottomVal}
                   onFocus={() => setActiveField("bottom")}
@@ -4085,7 +4392,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("bottom", bottomVal.trim() === "" ? "auto" : bottomVal)}
                   placeholder="bottom"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 />
                 <input value={leftVal}
                   onFocus={() => setActiveField("left")}
@@ -4102,7 +4409,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("left", leftVal.trim() === "" ? "auto" : leftVal)}
                   placeholder="left"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                 />
               </div>
             </div>
@@ -4121,7 +4428,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("width", wVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("width", wVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
             <div>
@@ -4135,7 +4442,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("height", hVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("height", hVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
           </div>
@@ -4152,7 +4459,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("minWidth", mwVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("minWidth", mwVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
             <div>
@@ -4166,7 +4473,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("maxWidth", mxVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("maxWidth", mxVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
               />
             </div>
           </div>
@@ -4329,7 +4636,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       setActiveField(null);
                     }}
                     placeholder="repeat(3, minmax(0, 1fr))"
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                   />
                 </div>
                 <div>
@@ -4347,7 +4654,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       setActiveField(null);
                     }}
                     placeholder="auto auto"
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                   />
                 </div>
               </div>
@@ -4509,7 +4816,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                             setActiveField(null);
                           }}
                           placeholder="auto"
-                          className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                          className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                         />
                       </div>
                     </div>
@@ -4535,7 +4842,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                         value={node.gridColumn || "auto"}
                         onChange={(e) => applyStyle("gridColumn", e.target.value)}
                         placeholder="auto / span 2"
-                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                       />
                     </div>
                     <div>
@@ -4544,7 +4851,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                         value={node.gridRow || "auto"}
                         onChange={(e) => applyStyle("gridRow", e.target.value)}
                         placeholder="auto / span 2"
-                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-accent-500/35 transition-colors"
+                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
                       />
                     </div>
                   </div>
@@ -4608,7 +4915,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             onR={(v) => { setPR(v); applyPad(pT, v, pB, pL); }}
             onB={(v) => { setPB(v); applyPad(pT, pR, v, pL); }}
             onL={(v) => { setPL(v); applyPad(pT, pR, pB, v); }}
-            accent="border-accent-500/15"
+            accent="border-[#5B8CFF]/12"
             fieldKey="padding"
             activeField={activeField}
             setActiveField={setActiveField}
@@ -4651,7 +4958,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       onClick={() => applyButtonSurfacePreset(option.id as "solid" | "outline" | "ghost")}
                       className={`h-10 rounded-[12px] border text-[11px] font-semibold transition-all ${
                         active
-                          ? "border-accent-400/18 bg-accent-500/12 text-white"
+                          ? "border-[#5B8CFF]/20 bg-[#5B8CFF]/10 text-white"
                           : "border-white/[0.08] bg-white/[0.045] text-white/62 hover:border-white/[0.14] hover:text-white/84"
                       }`}
                     >
@@ -4797,7 +5104,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               onBlur={() => applyStyle("border", localBorder)}
               onKeyDown={(e) => e.key === "Enter" && applyStyle("border", localBorder)}
               placeholder="1px solid #ccc"
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-accent-500/35 font-mono transition-colors"
+              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 font-mono transition-colors"
             />
           </div>
           {/* 4-corner radius */}
@@ -4852,31 +5159,28 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
 
         {/* ── Animation ── */}
         <Accordion title="Animation" icon={<Sparkles size={12}/>} open={open.animation} toggle={() => toggle("animation")}>
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 space-y-3">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-white/72">Motion control</p>
-              <p className="text-[10px] text-white/28 leading-relaxed">
-                Builder motion now overrides nested generated motion on the selected block.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="rounded-lg bg-white/[0.025] px-2.5 py-2 space-y-2">
+            <p className="text-[10px] text-white/35 leading-relaxed">
+              Builder motion overrides generated motion on this block.
+            </p>
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 onClick={() => previewAnimation("entrance")}
                 disabled={!node.animationIn || node.animationIn === "none" || node.animationIn === "custom"}
-                className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-white/[0.08] text-white/60 hover:text-white/82 hover:border-white/[0.16] disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Preview in
               </button>
               <button
                 onClick={() => previewAnimation("hover")}
                 disabled={!node.animationHover || node.animationHover === "none" || node.animationHover === "custom"}
-                className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-white/[0.08] text-white/60 hover:text-white/82 hover:border-white/[0.16] disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Preview hover
               </button>
               <button
                 onClick={() => applyAnimationConfig({ entrance: "none", hover: "none", duration: "600ms", delay: "0ms", ease: "cubic-bezier(0.22,1,0.36,1)" })}
-                className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-white/[0.08] text-white/60 hover:text-white/82 hover:border-white/[0.16] transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] transition-colors"
               >
                 Clear
               </button>
@@ -5165,7 +5469,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   onClick={() => applyStyle("boxShadow", s.value)}
                   className={`py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
                     node.boxShadow === s.value || (s.value === "none" && (!node.boxShadow || node.boxShadow === "none"))
-                      ? "bg-accent-500/15 text-accent-300 border-accent-500/25"
+                      ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20"
                       : "text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/60"
                   }`}>
                   {s.label}

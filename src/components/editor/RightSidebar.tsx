@@ -1,8 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
-  BLOCK_DEFINITIONS,
-  compareElementCategories,
+  BLOCK_PICKER_DEFINITIONS,
   EDITOR_INSERTION_CATEGORIES,
   ICON_DEFINITIONS,
   getElementCategoryDefinition,
@@ -27,10 +26,306 @@ import { uid, extractNavbarHtml } from "@/lib/utils";
 import {
   LayoutGrid, Send, Loader2,
   X, Wand2, ImageIcon, Link, ChevronDown, ChevronUp, Sparkles,
+  RefreshCw, Menu, Zap, HelpCircle, Users, Mail, Tag, BarChart2,
+  Quote, Info, Building2, Type,
 } from "lucide-react";
 import { EditorSwitch } from "./EditorSwitch";
 import { EditPanel } from "./EditPanel";
 import type { Project, AIChatMessage } from "@/types";
+
+// Parse a streaming AI assistant reply that may contain a Sitezy edit block.
+// Returns { message, edit } where edit is null if the block is missing/incomplete.
+function parseAssistReply(full: string): {
+  message: string;
+  edit: { sectionId?: string; sectionType?: string; html: string } | null;
+} {
+  const editIdx = full.indexOf("---SITEZY-EDIT---");
+  if (editIdx === -1) return { message: full.trim(), edit: null };
+  const message = full.slice(0, editIdx).trim();
+  const rest = full.slice(editIdx + "---SITEZY-EDIT---".length);
+  const htmlIdx = rest.indexOf("---SITEZY-HTML---");
+  if (htmlIdx === -1) return { message, edit: null };
+  const metaStr = rest.slice(0, htmlIdx).trim();
+  const afterHtml = rest.slice(htmlIdx + "---SITEZY-HTML---".length);
+  const endIdx = afterHtml.indexOf("---SITEZY-END---");
+  if (endIdx === -1) return { message, edit: null };
+  const html = afterHtml.slice(0, endIdx).trim();
+  let meta: { sectionId?: string; sectionType?: string } = {};
+  try { meta = JSON.parse(metaStr); } catch {}
+  if (!html) return { message, edit: null };
+  return { message, edit: { ...meta, html } };
+}
+
+// Strip the edit block + any partial markers from a streaming reply for display.
+function stripEditMarkers(full: string): string {
+  const editIdx = full.indexOf("---SITEZY-EDIT---");
+  if (editIdx !== -1) return full.slice(0, editIdx).trim();
+  // Hide a trailing partial marker so the user never sees "---SITE…" mid-stream.
+  const partial = full.match(/-{1,3}S?I?T?E?Z?Y?-?E?D?I?T?-{0,3}$/);
+  if (partial && partial.index !== undefined) return full.slice(0, partial.index).trim();
+  return full.trim();
+}
+
+// Replace a single section in pageHtml by data-sz-section-id, preserving the
+// surrounding document. Returns null if the target id can't be found.
+function replaceSectionById(pageHtml: string, sectionId: string, replacement: string): string | null {
+  const marker = `data-sz-section-id="${sectionId}"`;
+  const markerIdx = pageHtml.indexOf(marker);
+  if (markerIdx === -1) return null;
+  const start = pageHtml.lastIndexOf("<", markerIdx);
+  if (start === -1) return null;
+  const tagMatch = pageHtml.slice(start + 1).match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
+  if (!tagMatch) return null;
+  const tag = tagMatch[1];
+  const openEnd = pageHtml.indexOf(">", markerIdx);
+  if (openEnd === -1) return null;
+  const openRe = new RegExp(`<${tag}\\b`, "gi");
+  const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
+  let depth = 1;
+  let pos = openEnd + 1;
+  while (depth > 0) {
+    openRe.lastIndex = pos;
+    closeRe.lastIndex = pos;
+    const o = openRe.exec(pageHtml);
+    const c = closeRe.exec(pageHtml);
+    if (!c) return null;
+    if (o && o.index < c.index) {
+      depth++;
+      pos = o.index + o[0].length;
+    } else {
+      depth--;
+      pos = c.index + c[0].length;
+    }
+  }
+  return pageHtml.slice(0, start) + replacement.trim() + pageHtml.slice(pos);
+}
+
+// ── Props panel helpers ───────────────────────────────────────────────────────
+
+interface ExtractedField {
+  key: string;
+  label: string;
+  kind: "text" | "src" | "href";
+  selector: string;
+  nth: number;
+  value: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SECTION_TYPE_ICONS: Record<string, any> = {
+  navbar:      Menu,
+  hero:        LayoutGrid,
+  features:    LayoutGrid,
+  testimonial: Quote,
+  cta:         Zap,
+  footer:      Menu,
+  faq:         HelpCircle,
+  pricing:     Tag,
+  contact:     Mail,
+  about:       Info,
+  team:        Users,
+  gallery:     ImageIcon,
+  logos:       Building2,
+  stats:       BarChart2,
+};
+
+function getSectionIcon(type: string) {
+  const Icon = SECTION_TYPE_ICONS[type] ?? LayoutGrid;
+  return <Icon size={11} />;
+}
+
+/** Parse all sections directly from page HTML — more reliable than page.sections. */
+function parseSectionsFromPageHtml(html: string): { id: string; type: string; name: string }[] {
+  if (typeof window === "undefined" || !html) return [];
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+    return Array.from(doc.body.children)
+      .filter((el): el is HTMLElement => el instanceof HTMLElement &&
+        !["script","style","link","meta"].includes(el.tagName.toLowerCase()))
+      .map((el, i) => ({
+        id:   el.dataset.szSectionId   || `sec-fallback-${i}`,
+        type: el.dataset.szSectionType || "section",
+        name: el.dataset.szSectionName ||
+              el.querySelector("h1,h2,h3")?.textContent?.trim()?.slice(0, 52) ||
+              `Section ${i + 1}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Extract the HTML of a single section from full page HTML. */
+function extractSectionHtml(pageHtml: string, sectionId: string): string | null {
+  if (typeof window === "undefined" || !pageHtml) return null;
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${pageHtml}</body>`, "text/html");
+    const el = doc.querySelector(`[data-sz-section-id="${sectionId}"]`) as HTMLElement | null;
+    return el?.outerHTML ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Extract editable fields (headings, body text, CTAs, images) from section HTML. */
+function extractEditableFields(sectionHtml: string): ExtractedField[] {
+  if (typeof window === "undefined" || !sectionHtml) return [];
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${sectionHtml}</body>`, "text/html");
+    const root = doc.body.firstElementChild as HTMLElement | null;
+    if (!root) return [];
+
+    const fields: ExtractedField[] = [];
+    let h1n = 0, h2n = 0, h3n = 0;
+
+    root.querySelectorAll("h1,h2,h3").forEach((el) => {
+      const text = el.textContent?.trim() ?? "";
+      if (!text) return;
+      const tag = el.tagName.toLowerCase() as "h1" | "h2" | "h3";
+      const nth = tag === "h1" ? h1n++ : tag === "h2" ? h2n++ : h3n++;
+      const labelMap: Record<string, string[]> = {
+        h1: ["Headline", "Headline 2"],
+        h2: ["Subheading", "Subheading 2", "Subheading 3"],
+        h3: ["Section title", "Section title 2", "Section title 3"],
+      };
+      fields.push({ key: `${tag}-${nth}`, label: labelMap[tag]?.[nth] ?? `${tag.toUpperCase()} ${nth + 1}`,
+        kind: "text", selector: tag, nth, value: text });
+    });
+
+    const p = root.querySelector("p");
+    if (p) {
+      const text = p.textContent?.trim() ?? "";
+      if (text) fields.push({ key: "p-0", label: "Body text", kind: "text", selector: "p", nth: 0, value: text });
+    }
+
+    // CTAs: buttons + links that look like buttons (not nav/list items)
+    const ctaCandidates: Element[] = [];
+    root.querySelectorAll("a,button").forEach((el) => {
+      const text = el.textContent?.trim() ?? "";
+      if (!text || text.length > 80 || text.length < 2) return;
+      if (el.closest("nav") || el.closest("ul") || el.closest("ol")) return;
+      const cls = (el.getAttribute("class") || "").toLowerCase();
+      const isButtonLike =
+        el.tagName === "BUTTON" ||
+        cls.includes("btn") || cls.includes("button") || cls.includes("cta") ||
+        (cls.includes("px-") && cls.includes("py-")) ||
+        (cls.includes("px-") && cls.includes("rounded"));
+      if (isButtonLike) ctaCandidates.push(el);
+    });
+    const ctaLabels = ["CTA Button", "Secondary CTA", "Third CTA"];
+    ctaCandidates.slice(0, 3).forEach((el, i) => {
+      const text = el.textContent?.trim() ?? "";
+      fields.push({ key: `cta-text-${i}`, label: ctaLabels[i] ?? `Button ${i + 1}`,
+        kind: "text", selector: el.tagName.toLowerCase(), nth: i, value: text });
+      if (el.tagName === "A") {
+        const href = el.getAttribute("href") ?? "";
+        fields.push({ key: `cta-href-${i}`, label: `${ctaLabels[i]} Link`,
+          kind: "href", selector: "a", nth: i, value: href });
+      }
+    });
+
+    // Images
+    root.querySelectorAll("img[src]").forEach((img, i) => {
+      const src = img.getAttribute("src") ?? "";
+      if (!src) return;
+      const alt = img.getAttribute("alt")?.trim() || (i === 0 ? "Image" : `Image ${i + 1}`);
+      fields.push({ key: `img-${i}`, label: alt.slice(0, 32), kind: "src",
+        selector: "img", nth: i, value: src });
+    });
+
+    return fields;
+  } catch {
+    return [];
+  }
+}
+
+/** Update text content of an element while preserving inner elements (spans, em, etc.). */
+function updateElementText(el: HTMLElement, newValue: string, doc: Document): void {
+  const tag = el.tagName.toLowerCase();
+  // For CTAs/buttons just replace all text (simpler, icon HTML preserved via deep walk)
+  if (tag === "a" || tag === "button") {
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    } as NodeFilter);
+    const textNodes: Text[] = [];
+    let n;
+    while ((n = walker.nextNode() as Text | null)) textNodes.push(n);
+    if (textNodes.length > 0) {
+      textNodes[textNodes.length - 1].nodeValue = newValue;
+      for (let j = 0; j < textNodes.length - 1; j++) textNodes[j].nodeValue = "";
+    } else {
+      el.textContent = newValue;
+    }
+    return;
+  }
+  // For headings/paragraphs: preserve child elements (color spans, em, etc.)
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+  } as NodeFilter);
+  const textNodes: Text[] = [];
+  let n;
+  while ((n = walker.nextNode() as Text | null)) textNodes.push(n);
+  if (textNodes.length === 0) { el.textContent = newValue; return; }
+  if (textNodes.length === 1) { textNodes[0].nodeValue = newValue; return; }
+  // Multiple text nodes — put all text in first, clear others
+  textNodes[0].nodeValue = newValue;
+  for (let j = 1; j < textNodes.length; j++) textNodes[j].nodeValue = "";
+}
+
+/** Apply a batch of field edits to section HTML, return updated section outerHTML. */
+function applyFieldEditsToSection(
+  sectionHtml: string,
+  fields: ExtractedField[],
+  edits: Record<string, string>
+): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${sectionHtml}</body>`, "text/html");
+    const root = doc.body.firstElementChild as HTMLElement | null;
+    if (!root) return null;
+
+    for (const field of fields) {
+      const newVal = edits[field.key];
+      if (newVal === undefined) continue;
+
+      // CTA href/src fields — the selector and nth need to match the paired cta-text selector
+      // For `cta-href-N`, selector is "a" and nth is N among all `a` elements in the section.
+      // But we stored nth as the index among the ctaCandidates slice which may differ from DOM order.
+      // Re-use the same candidate list for consistency.
+      if (field.key.startsWith("cta-")) {
+        const allCandidates = Array.from(root.querySelectorAll("a,button")).filter((el) => {
+          const txt = el.textContent?.trim() ?? "";
+          if (!txt || txt.length > 80 || txt.length < 2) return false;
+          if (el.closest("nav") || el.closest("ul") || el.closest("ol")) return false;
+          const cls = (el.getAttribute("class") || "").toLowerCase();
+          return (
+            el.tagName === "BUTTON" ||
+            cls.includes("btn") || cls.includes("button") || cls.includes("cta") ||
+            (cls.includes("px-") && cls.includes("py-")) ||
+            (cls.includes("px-") && cls.includes("rounded"))
+          );
+        });
+        const ctaIdx = parseInt(field.key.replace(/\D/g, ""), 10);
+        const target = allCandidates[ctaIdx] as HTMLElement | null;
+        if (!target) continue;
+        if (field.kind === "text") updateElementText(target, newVal, doc);
+        else if (field.kind === "href") target.setAttribute("href", newVal);
+        continue;
+      }
+
+      const targets = Array.from(root.querySelectorAll(field.selector)) as HTMLElement[];
+      const target = targets[field.nth];
+      if (!target) continue;
+
+      if (field.kind === "text")      updateElementText(target, newVal, doc);
+      else if (field.kind === "src")  { target.setAttribute("src", newVal); target.removeAttribute("srcset"); }
+      else if (field.kind === "href") target.setAttribute("href", newVal);
+    }
+
+    return root.outerHTML;
+  } catch {
+    return null;
+  }
+}
 
 function getRequestId(error: unknown): string | null {
   if (typeof error !== "object" || error === null) return null;
@@ -67,6 +362,105 @@ function buildClientApiError(error: unknown, fallbackCode: ErrorCode, metadata?:
 }
 
 interface Props { project: Project; }
+
+function createPriorityMap(ids: string[]) {
+  return new Map(ids.map((id, index) => [id, index]));
+}
+
+const DEFAULT_BLOCK_PRIORITY = createPriorityMap([
+  "hero",
+  "hero-split",
+  "split-image",
+  "features",
+  "features-list",
+  "stats",
+  "cta",
+  "cta-strip",
+  "testimonials",
+  "pricing",
+  "faq",
+  "contact-form",
+  "newsletter",
+  "team",
+  "logo-wall",
+  "logo-scroller",
+  "video-section",
+  "navbar",
+  "navbar-center",
+  "navbar-minimal",
+  "footer",
+  "gallery",
+  "two-columns",
+  "three-columns",
+  "grid",
+  "container",
+  "flex-container",
+  "heading",
+  "paragraph",
+  "button",
+  "image",
+  "social-links",
+  "map-embed",
+]);
+
+const INLINE_BLOCK_PRIORITY = createPriorityMap([
+  "heading",
+  "paragraph",
+  "button",
+  "button-outline",
+  "badge",
+  "highlight-text",
+  "blockquote",
+  "image",
+  "video",
+  "youtube",
+  "embed",
+  "list",
+  "icon-list",
+  "pill-list",
+  "divider",
+  "icon-circle",
+]);
+
+const MEDIA_BLOCK_PRIORITY = createPriorityMap([
+  "image",
+  "video",
+  "youtube",
+  "embed",
+  "gallery",
+  "logo-wall",
+  "logo-scroller",
+  "map-embed",
+]);
+
+const FORM_BLOCK_PRIORITY = createPriorityMap([
+  "text-input",
+  "textarea-field",
+  "select-field",
+  "checkbox-field",
+  "radio-group",
+  "toggle-switch",
+  "contact-form",
+  "button",
+]);
+
+const TEXT_BLOCK_PRIORITY = createPriorityMap([
+  "heading",
+  "paragraph",
+  "button",
+  "button-outline",
+  "badge",
+  "highlight-text",
+  "blockquote",
+  "list",
+  "icon-list",
+  "pill-list",
+  "divider",
+]);
+
+function priorityRank(map: Map<string, number>, blockId: string) {
+  return map.get(blockId) ?? Number.MAX_SAFE_INTEGER;
+}
 
 export function RightSidebar({ project }: Props) {
   const rightPanelTab = useAppStore((s) => s.editor.rightPanelTab);
@@ -109,6 +503,10 @@ export function RightSidebar({ project }: Props) {
       title: "Inspector",
       subtitle: selectedNode ? "Style and settings for the current selection." : "Select something on the canvas to start editing.",
     },
+    theme: {
+      title: "Design System",
+      subtitle: "Site-wide design archetype, typography, spacing, and color direction.",
+    },
     blocks: {
       title: "Elements",
       subtitle: "Insert layout, content, media, and interaction blocks into the current page.",
@@ -124,32 +522,25 @@ export function RightSidebar({ project }: Props) {
   };
 
   return (
-    <aside className="sz-editor-dock flex h-full w-full flex-col overflow-hidden rounded-[26px]">
-      <div className="sz-editor-dock-header flex flex-shrink-0 flex-col gap-3 px-4 pb-3 pt-4">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/24">{tabMeta[rightPanelTab].title}</p>
-          <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)] whitespace-normal break-words">
-            {tabMeta[rightPanelTab].subtitle}
-          </p>
-        </div>
-
-        <div className="sz-editor-dock-switcher grid grid-cols-3 gap-1 rounded-[16px] p-1">
+    <aside className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/[0.04] bg-[#0e1117]/95 backdrop-blur-2xl">
+      <div className="flex flex-shrink-0 flex-col gap-2.5 px-3.5 pb-2.5 pt-3.5">
+        <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] p-1">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setRightPanel(t.key)}
-              className={`flex min-h-[38px] items-center justify-center rounded-[12px] px-2.5 text-center transition-all ${
+              className={`relative flex h-8 flex-1 items-center justify-center rounded-[10px] text-center transition-all duration-200 ${
                 rightPanelTab === t.key
-                  ? "bg-white/[0.08] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-                  : "text-white/36 hover:bg-white/[0.05] hover:text-white/72"
+                  ? "bg-white/[0.08] text-white/90 shadow-[0_1px_3px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                  : "text-white/32 hover:text-white/55"
               }`}
             >
-              <span className="text-[10px] font-medium">{t.label}</span>
+              <span className="text-[10.5px] font-medium tracking-wide">{t.label}</span>
             </button>
           ))}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3 pt-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3">
         {rightPanelTab === "style"      && <EditPanel iframeRef={iframeRef as React.RefObject<HTMLIFrameElement>} onClose={() => setRightPanel("ai")} project={project} />}
         {rightPanelTab === "ai"         && <AIPanel project={project} />}
         {rightPanelTab === "properties" && <PropsPanel project={project} />}
@@ -158,6 +549,8 @@ export function RightSidebar({ project }: Props) {
     </aside>
   );
 }
+
+// ── AI Panel ──────────────────────────────────────────────────────────────────
 
 // ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ project }: Props) {
@@ -169,6 +562,8 @@ function AIPanel({ project }: Props) {
   const currentProjectId = useAppStore((s) => s.currentProjectId);
   const clearChat        = useAppStore((s) => s.clearChat);
   const setApiError      = useAppStore((s) => s.setApiError);
+  const setPageContent   = useAppStore((s) => s.setPageContent);
+  const addGenLog        = useAppStore((s) => s.addGenLog);
 
   const pages    = project?.pages ?? [];
   const page     = pages.find((p) => p.id === selectedPageId) ?? null;
@@ -199,7 +594,7 @@ function AIPanel({ project }: Props) {
     try {
       const res = await fetch("/api/assist", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instruction: text, context: { projectName: project.name, blueprint: project.blueprint, pageName: page?.name, pageHtml: page?.html?.slice(0, 2000), siteType: project.brief?.siteType } }),
+        body: JSON.stringify({ instruction: text, context: { projectName: project.name, blueprint: project.blueprint, pageName: page?.name, pageHtml: page?.html, siteType: project.brief?.siteType } }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
@@ -230,12 +625,40 @@ function AIPanel({ project }: Props) {
           if (!l.startsWith("data: ")) continue;
           try {
             const d = JSON.parse(l.slice(6)) as { type: string; chunk?: string; error?: string; requestId?: string; code?: string };
-            if (d.type === "chunk") { full += d.chunk; addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: full, timestamp: Date.now() }); }
+            if (d.type === "chunk") {
+              full += d.chunk;
+              const display = stripEditMarkers(full) || "▌";
+              addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: display, timestamp: Date.now() });
+            }
             if (d.type === "error") {
               if (d.requestId || d.code) setApiError({ message: d.error ?? "AI error", requestId: d.requestId ?? null, code: d.code ?? API_UNKNOWN_001 });
               addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: `⚠️ ${d.error ?? "Something went wrong"}`, timestamp: Date.now() });
             }
           } catch {}
+        }
+      }
+
+      // Stream complete — parse the reply, finalise the visible message, apply any edit.
+      const parsed = parseAssistReply(full);
+      const finalMessage = parsed.message || (parsed.edit ? "Done." : full.trim());
+      addChatMessage(currentProjectId ?? "", { id: aid, role: "assistant", content: finalMessage, timestamp: Date.now() });
+
+      if (parsed.edit && page && parsed.edit.html) {
+        const sectionId = parsed.edit.sectionId?.trim();
+        let nextHtml: string | null = null;
+        if (sectionId) {
+          nextHtml = replaceSectionById(page.html ?? "", sectionId, parsed.edit.html);
+        }
+        if (nextHtml) {
+          setPageContent(page.id, nextHtml, page.sections);
+          addGenLog(`✅ ${parsed.edit.sectionType ?? "Section"} updated`, "success");
+        } else {
+          addChatMessage(currentProjectId ?? "", {
+            id: uid(),
+            role: "assistant",
+            content: "⚠️ I couldn't locate that section to update. Try selecting it first or rephrasing the request.",
+            timestamp: Date.now(),
+          });
         }
       }
     } catch (err) {
@@ -257,17 +680,17 @@ function AIPanel({ project }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="editor-scroll flex-1 overflow-auto p-3.5 space-y-2.5 min-h-0">
+      <div className="flex-1 overflow-auto p-3 space-y-2 min-h-0">
         {deduped.length === 0 ? (
-          <div className="editor-panel-soft py-6 px-4 text-center space-y-3 rounded-[24px]">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(45,212,191,0.16),rgba(251,191,36,0.08))]">
-              <Sparkles size={16} className="text-white/68"/>
+          <div className="py-6 px-3 text-center space-y-3">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#5B8CFF]/10">
+              <Sparkles size={15} className="text-[#5B8CFF]/70"/>
             </div>
-            <p className="text-[11px] text-white/42">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
+            <p className="text-[11px] text-white/35">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
             <div className="space-y-1.5 text-left">
               {suggestions.map((s) => (
                 <button key={s} onClick={() => send(s)}
-                  className="block w-full rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-left text-[11px] text-white/44 transition-all hover:border-white/[0.1] hover:bg-white/[0.05] hover:text-white/82">
+                  className="block w-full rounded-xl px-3 py-2.5 text-left text-[11px] text-white/40 transition-all duration-150 bg-white/[0.02] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] hover:bg-white/[0.04] hover:text-white/70 hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                   {s}
                 </button>
               ))}
@@ -276,15 +699,15 @@ function AIPanel({ project }: Props) {
         ) : (
           <>
             <button onClick={() => clearChat(currentProjectId ?? "")}
-              className="editor-action-btn ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] text-white/48">
+              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[9.5px] text-white/30 hover:bg-white/[0.04] hover:text-white/55 transition-colors">
               <X size={9}/> Clear
             </button>
             {deduped.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[88%] px-3.5 py-2.5 text-[12px] leading-relaxed rounded-[22px] ${
+                <div className={`max-w-[88%] px-3.5 py-2.5 text-[11.5px] leading-relaxed rounded-2xl ${
                   m.role === "user"
-                    ? "bg-accent-600/22 text-white/82 rounded-br-sm"
-                    : "bg-white/[0.04] text-white/60 rounded-bl-sm border border-white/[0.05]"
+                    ? "bg-[#5B8CFF]/15 text-white/80 rounded-br-sm"
+                    : "bg-white/[0.03] text-white/55 rounded-bl-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
                 }`}>
                   {m.content}
                 </div>
@@ -292,8 +715,8 @@ function AIPanel({ project }: Props) {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white/[0.04] border border-white/[0.05] rounded-2xl rounded-bl-sm px-3 py-2">
-                  <Loader2 size={12} className="text-accent-400 animate-spin"/>
+                <div className="bg-white/[0.03] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] rounded-2xl rounded-bl-sm px-3 py-2">
+                  <Loader2 size={11} className="text-[#5B8CFF] animate-spin"/>
                 </div>
               </div>
             )}
@@ -301,15 +724,15 @@ function AIPanel({ project }: Props) {
           </>
         )}
       </div>
-      <div className="border-t border-white/[0.05] p-3.5 flex-shrink-0">
-        <div className="editor-panel-soft flex items-end gap-2 rounded-[22px] p-2">
+      <div className="border-t border-white/[0.04] p-3 flex-shrink-0">
+        <div className="flex items-end gap-2">
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
             placeholder="Ask AI to improve your site…" rows={2}
-            className="flex-1 bg-white/[0.04] border border-white/[0.07] rounded-xl px-3 py-2 text-[12px] text-white/70 placeholder-white/14 focus:outline-none focus:border-accent-500/25 resize-none transition-colors"/>
+            className="flex-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11.5px] text-white/65 placeholder-white/16 outline-none resize-none transition-colors focus:border-white/[0.1]"/>
           <button onClick={() => send(input)} disabled={!input.trim() || loading}
-            className="w-8 h-8 flex items-center justify-center bg-accent-600 hover:bg-accent-500 disabled:opacity-25 rounded-xl transition-colors flex-shrink-0">
-            {loading ? <Loader2 size={13} className="animate-spin"/> : <Send size={13}/>}
+            className="w-8 h-8 flex items-center justify-center bg-[#5B8CFF] hover:bg-[#6B99FF] disabled:opacity-20 rounded-xl transition-colors flex-shrink-0 shadow-[0_2px_8px_rgba(91,140,255,0.2)]">
+            {loading ? <Loader2 size={12} className="animate-spin"/> : <Send size={12}/>}
           </button>
         </div>
       </div>
@@ -319,162 +742,387 @@ function AIPanel({ project }: Props) {
 
 // ── Properties Panel ──────────────────────────────────────────────────────────
 function PropsPanel({ project }: Props) {
-  const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
-  const setPageContent = useAppStore((s) => s.setPageContent);
-  const addGenLog      = useAppStore((s) => s.addGenLog);
-  const setApiError    = useAppStore((s) => s.setApiError);
+  const selectedPageId    = useAppStore((s) => s.editor.selectedPageId);
+  const selectedNode      = useAppStore((s) => s.editor.selectedNode);
+  const selectedSectionId = useAppStore((s) => s.editor.selectedSectionId);
+  const setPageContent    = useAppStore((s) => s.setPageContent);
+  const addGenLog         = useAppStore((s) => s.addGenLog);
+  const setApiError       = useAppStore((s) => s.setApiError);
 
   const page = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
-  const [open,    setOpen]    = useState<string | null>(null);
-  const [applying,setApplying]= useState<string | null>(null);
-  const [texts,   setTexts]   = useState<Record<string,string>>({});
-  const [imgs,    setImgs]    = useState<Record<string,string>>({});
 
-  useEffect(() => { setOpen(null); setTexts({}); setImgs({}); }, [selectedPageId]);
+  // Always derive sections fresh from page HTML so we never miss any
+  const liveSections = useMemo(
+    () => (page?.html ? parseSectionsFromPageHtml(page.html) : page?.sections ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page?.html]
+  );
 
-  async function applyEdit(secId: string, secType: string, instr: string) {
-    if (!page || !project.blueprint || !instr.trim()) return;
-    setApplying(secId);
-    try {
-      const res = await fetch("/api/assist", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instruction: `Edit only the "${secType}" section. ${instr}. Return the complete updated page HTML.`, context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html } }) });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
-        throw createAppError({
-          code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
-          devMessage: `Section edit failed for ${secType} (${res.status}): ${data.error ?? "unknown error"}`,
-          userMessage: data.error,
-          severity: res.status >= 500 ? "error" : "warn",
-          metadata: { pageId: page.id, pageName: page.name, sectionId: secId, sectionType: secType, requestId: data.requestId ?? null, status: res.status },
-        });
-      }
-      const r = res.body?.getReader(); const d = new TextDecoder(); if (!r) {
-        throw createAppError({
-          code: API_RESPONSE_001,
-          devMessage: `Section edit response for ${secType} had no readable stream`,
-          severity: "error",
-          metadata: { pageId: page.id, pageName: page.name, sectionId: secId, sectionType: secType },
-        });
-      }
-      let buf = "", full = "";
-      while (true) { const { done, value } = await r.read(); if (done) break; buf += d.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? ""; for (const l of ls) { if (!l.startsWith("data: ")) continue; try { const x = JSON.parse(l.slice(6)); if (x.type === "chunk") full += x.chunk; } catch {} } }
-      if (full.includes("<") && full.length > 100) { setPageContent(page.id, full, page.sections); addGenLog(`✅ ${secType} updated`, "success"); }
-    } catch (error) {
-      const { appErr, apiError } = buildClientApiError(error, API_UNKNOWN_001, {
-        pageId: page.id,
-        pageName: page.name,
-        sectionId: secId,
-        sectionType: secType,
-      });
-      logAppError(appErr);
-      setApiError(apiError);
-      addGenLog(`❌ ${appErr.userMessage}`, "error");
+  const [expandedId,    setExpandedId]    = useState<string | null>(null);
+  const [activeTab,     setActiveTab]     = useState<Record<string, "fields" | "ai">>({});
+  const [fieldEdits,    setFieldEdits]    = useState<Record<string, Record<string, string>>>({});
+  const [aiInstructions,setAiInstructions]= useState<Record<string, string>>({});
+  const [applying,      setApplying]      = useState<string | null>(null);
+  // Fields are derived lazily when a section is expanded
+  const [sectionFields, setSectionFields] = useState<Record<string, ExtractedField[]>>({});
+
+  // Refs for scroll-to-section
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const sectionRefs        = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    setExpandedId(null);
+    setFieldEdits({});
+    setAiInstructions({});
+    setActiveTab({});
+    setSectionFields({});
+  }, [selectedPageId]);
+
+  // When canvas selection changes to a section, auto-expand + scroll to it
+  useEffect(() => {
+    if (!selectedSectionId) return;
+    const exists = liveSections.some(s => s.id === selectedSectionId);
+    if (!exists) return;
+    setExpandedId(selectedSectionId);
+  }, [selectedSectionId]); // eslint-disable-line
+
+  // Scroll to expanded section
+  useEffect(() => {
+    if (!expandedId) return;
+    const el = sectionRefs.current[expandedId];
+    if (el && scrollContainerRef.current) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-    finally { setApplying(null); }
+  }, [expandedId]);
+
+  // When a section is expanded, extract its fields
+  useEffect(() => {
+    if (!expandedId || !page?.html) return;
+    if (sectionFields[expandedId]) return; // already extracted
+    const html = extractSectionHtml(page.html, expandedId);
+    if (html) setSectionFields(prev => ({ ...prev, [expandedId]: extractEditableFields(html) }));
+  }, [expandedId, page?.html, sectionFields]);
+
+  // Refresh fields if the page HTML changes (after an AI edit)
+  const prevHtmlRef = useRef<string>("");
+  useEffect(() => {
+    if (!page?.html || page.html === prevHtmlRef.current) return;
+    prevHtmlRef.current = page.html;
+    if (expandedId) {
+      const html = extractSectionHtml(page.html, expandedId);
+      if (html) {
+        const newFields = extractEditableFields(html);
+        setSectionFields(prev => ({ ...prev, [expandedId]: newFields }));
+        // Clear field edits that are now stale (values match the updated page)
+        setFieldEdits(prev => {
+          const pending = prev[expandedId] ?? {};
+          const refreshed: Record<string, string> = {};
+          for (const [k, v] of Object.entries(pending)) {
+            const field = newFields.find(f => f.key === k);
+            if (field && v !== field.value) refreshed[k] = v;
+          }
+          return { ...prev, [expandedId]: refreshed };
+        });
+      }
+    }
+  }, [page?.html, expandedId]);
+
+  /** Apply direct field edits — no AI round-trip. */
+  async function applyFields(sec: { id: string; type: string; name: string }) {
+    if (!page) return;
+    const edits   = fieldEdits[sec.id] ?? {};
+    const fields  = sectionFields[sec.id] ?? [];
+    if (Object.keys(edits).length === 0 || fields.length === 0) return;
+    setApplying(sec.id);
+    try {
+      const secHtml = extractSectionHtml(page.html, sec.id);
+      if (!secHtml) { addGenLog("❌ Section not found in page", "error"); return; }
+
+      const updatedSec = applyFieldEditsToSection(secHtml, fields, edits);
+      if (!updatedSec) { addGenLog("❌ Field edit failed", "error"); return; }
+
+      const newPageHtml = replaceSectionById(page.html, sec.id, updatedSec);
+      if (!newPageHtml) { addGenLog("❌ Could not splice section", "error"); return; }
+
+      setPageContent(page.id, newPageHtml, page.sections);
+      setFieldEdits(prev => { const n = { ...prev }; delete n[sec.id]; return n; });
+      addGenLog(`✅ ${sec.name} updated`, "success");
+    } finally {
+      setApplying(null);
+    }
   }
 
-  async function applyImg(secId: string, secType: string, url: string) {
-    if (!url.trim() || !page) return;
-    const key = secId + "-img"; setApplying(key);
+  /** Regenerate a section using the AI — uses /api/regenerate-section. */
+  async function regenerateSection(sec: { id: string; type: string; name: string }, instruction?: string) {
+    if (!page || !project.blueprint) return;
+    if (!project.brief) { addGenLog("❌ Project brief required for AI rewrite", "error"); return; }
+    setApplying(`ai-${sec.id}`);
     try {
-      const res = await fetch("/api/assist", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instruction: `Replace the main image in "${secType}" with: ${url}. Return the complete updated page HTML.`, context: { projectName: project.name, blueprint: project.blueprint, pageName: page.name, pageHtml: page.html } }) });
+      const secHtml = extractSectionHtml(page.html, sec.id);
+      if (!secHtml) throw new Error("Section not found in page HTML");
+
+      const idx       = liveSections.findIndex(s => s.id === sec.id);
+      const prevSec   = idx > 0 ? liveSections[idx - 1] : null;
+      const nextSec   = idx < liveSections.length - 1 ? liveSections[idx + 1] : null;
+      const bpPage    = project.blueprint.pages?.find(
+        p => p.name.toLowerCase() === page.name.toLowerCase()
+      ) ?? project.blueprint.pages?.[0];
+
+      const res = await fetch("/api/regenerate-section", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blueprint: project.blueprint,
+          brief:     project.brief,
+          page:      { name: page.name, purpose: bpPage?.purpose ?? page.name },
+          section:   {
+            id:                  sec.id,
+            type:                sec.type,
+            name:                sec.name,
+            html:                secHtml,
+            previousSectionName: prevSec?.name ?? null,
+            nextSectionName:     nextSec?.name ?? null,
+          },
+          instruction: instruction?.trim() || undefined,
+        }),
+      });
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
         throw createAppError({
           code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
-          devMessage: `Image replacement failed for ${secType} (${res.status}): ${data.error ?? "unknown error"}`,
+          devMessage: `Regenerate section failed (${res.status}): ${data.error ?? ""}`,
           userMessage: data.error,
           severity: res.status >= 500 ? "error" : "warn",
-          metadata: { pageId: page.id, pageName: page.name, sectionId: secId, sectionType: secType, requestId: data.requestId ?? null, status: res.status },
+          metadata: { pageId: page.id, sectionId: sec.id, sectionType: sec.type, requestId: data.requestId ?? null, status: res.status },
         });
       }
-      const r = res.body?.getReader(); const d = new TextDecoder(); if (!r) {
-        throw createAppError({
-          code: API_RESPONSE_001,
-          devMessage: `Image replacement response for ${secType} had no readable stream`,
-          severity: "error",
-          metadata: { pageId: page.id, pageName: page.name, sectionId: secId, sectionType: secType },
-        });
-      }
-      let buf = "", full = "";
-      while (true) { const { done, value } = await r.read(); if (done) break; buf += d.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? ""; for (const l of ls) { if (!l.startsWith("data: ")) continue; try { const x = JSON.parse(l.slice(6)); if (x.type === "chunk") full += x.chunk; } catch {} } }
-      if (full.includes("<") && full.length > 100) setPageContent(page.id, full, page.sections);
+
+      const data = await res.json() as { html?: string };
+      if (!data.html) throw new Error("No HTML returned from regenerate-section");
+
+      const newPageHtml = replaceSectionById(page.html, sec.id, data.html);
+      if (!newPageHtml) throw new Error("Failed to splice regenerated section into page");
+
+      setPageContent(page.id, newPageHtml, page.sections);
+      setAiInstructions(prev => { const n = { ...prev }; delete n[sec.id]; return n; });
+      addGenLog(`✅ ${sec.name} regenerated`, "success");
     } catch (error) {
       const { appErr, apiError } = buildClientApiError(error, API_UNKNOWN_001, {
-        pageId: page.id,
-        pageName: page.name,
-        sectionId: secId,
-        sectionType: secType,
+        pageId: page.id, pageName: page.name, sectionId: sec.id, sectionType: sec.type,
       });
       logAppError(appErr);
       setApiError(apiError);
       addGenLog(`❌ ${appErr.userMessage}`, "error");
+    } finally {
+      setApplying(null);
     }
-    finally { setApplying(null); }
   }
 
   if (!page) return (
-    <div className="flex items-center justify-center h-full text-[11px] text-white/18 px-4 text-center">
+    <div className="flex h-full items-center justify-center px-4 text-center text-[11px] text-white/18">
       Select a page to edit sections.
     </div>
   );
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      <div className="px-4 py-3 border-b border-white/[0.05] flex-shrink-0 bg-white/[0.02]">
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex-shrink-0 border-b border-white/[0.04] px-3.5 py-2.5">
         <p className="text-[11px] font-medium text-white/40">{page.name}</p>
-        <p className="text-[10px] text-white/18 mt-0.5">{page.sections.length} sections</p>
+        <p className="mt-0.5 text-[9.5px] text-white/18">{liveSections.length} section{liveSections.length !== 1 ? "s" : ""}</p>
       </div>
-      <div className="editor-scroll p-3 space-y-2">
-        {page.sections.map((sec) => (
-          <div key={sec.id} className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
-            <button onClick={() => setOpen(open === sec.id ? null : sec.id)}
-              className="w-full flex items-center gap-2 px-3.5 py-3 text-left hover:bg-white/[0.04] transition-colors">
-              <span className="text-[11px] text-white/50 font-medium flex-1 truncate">{sec.name || sec.type}</span>
-              {open === sec.id ? <ChevronUp size={11} className="text-white/18 flex-shrink-0"/> : <ChevronDown size={11} className="text-white/18 flex-shrink-0"/>}
-            </button>
-            {open === sec.id && (
-              <div className="border-t border-white/[0.04] p-3 space-y-3">
-                <div>
-                  <label className="flex items-center gap-1.5 text-[9px] font-bold text-white/16 uppercase tracking-widest mb-1.5">
-                    <Wand2 size={9}/> AI Edit
-                  </label>
-                  <div className="flex gap-1.5">
-                    <input value={texts[sec.id]??""} onChange={(e)=>setTexts((u)=>({...u,[sec.id]:e.target.value}))}
-                      onKeyDown={(e)=>{if(e.key==="Enter")applyEdit(sec.id,sec.type||sec.name,texts[sec.id]??"");}}
-                      placeholder={`e.g. "make headline bolder"`}
-                      className="flex-1 bg-black/18 border border-white/[0.07] rounded-lg px-2.5 py-1.5 text-[11px] text-white/70 placeholder-white/14 focus:outline-none focus:border-accent-500/25 min-w-0"/>
-                    <button onClick={()=>applyEdit(sec.id,sec.type||sec.name,texts[sec.id]??"")}
-                      disabled={!texts[sec.id]?.trim()||applying===sec.id}
-                      className="px-3 py-1.5 bg-accent-600 hover:bg-accent-500 disabled:opacity-25 text-white text-[11px] font-medium rounded-lg transition-colors whitespace-nowrap">
-                      {applying===sec.id?<Loader2 size={10} className="animate-spin inline"/>:"Apply"}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-[9px] font-bold text-white/16 uppercase tracking-widest mb-1.5">
-                    <ImageIcon size={9}/> Image
-                  </label>
-                  <div className="flex gap-1.5">
-                    <div className="flex-1 flex items-center gap-1.5 bg-black/18 border border-white/[0.07] rounded-lg px-2.5 py-1.5 min-w-0">
-                      <Link size={9} className="text-white/18 flex-shrink-0"/>
-                      <input value={imgs[sec.id]??""} onChange={(e)=>setImgs((u)=>({...u,[sec.id]:e.target.value}))}
-                        placeholder="Paste image URL…"
-                        className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/70 placeholder-white/14 focus:outline-none min-w-0"/>
-                    </div>
-                    <button onClick={()=>applyImg(sec.id,sec.type,imgs[sec.id]??"")}
-                      disabled={!imgs[sec.id]?.trim()||applying===sec.id+"-img"}
-                      className="px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.07] text-white/45 hover:text-white text-[11px] rounded-lg disabled:opacity-25 transition-colors whitespace-nowrap">
-                      {applying===sec.id+"-img"?<Loader2 size={10} className="animate-spin inline"/>:"Apply"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+
+      {/* Canvas selection context banner */}
+      {selectedNode && (
+        <div className="flex-shrink-0 flex items-center gap-2 border-b border-[#5B8CFF]/10 bg-[#5B8CFF]/[0.04] px-3.5 py-2">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#5B8CFF]" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[10px] font-medium text-[#5B8CFF]/80">{selectedNode.label}</p>
+            {selectedNode.sectionName && (
+              <p className="truncate text-[9px] text-white/30">in {selectedNode.sectionName}</p>
             )}
           </div>
-        ))}
+        </div>
+      )}
+
+      {/* Section list */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+        {liveSections.length === 0 && (
+          <div className="py-8 text-center text-[11px] text-white/20">No sections found.</div>
+        )}
+        {liveSections.map((sec) => {
+          const isOpen     = expandedId === sec.id;
+          const tab        = activeTab[sec.id] ?? "fields";
+          const pending    = fieldEdits[sec.id] ?? {};
+          const hasPending = Object.keys(pending).length > 0;
+          const fields     = sectionFields[sec.id] ?? [];
+          const isApplying    = applying === sec.id;
+          const isAiApplying  = applying === `ai-${sec.id}`;
+          const isAnyApplying = isApplying || isAiApplying;
+
+          return (
+            <div key={sec.id}
+              ref={(el) => { sectionRefs.current[sec.id] = el; }}
+              className={`overflow-hidden rounded-xl bg-white/[0.02] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-shadow ${
+                selectedSectionId === sec.id ? "shadow-[inset_0_0_0_1px_rgba(91,140,255,0.25)]" : ""
+              }`}
+            >
+              {/* Row header */}
+              <button
+                onClick={() => setExpandedId(isOpen ? null : sec.id)}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
+              >
+                <span className={`flex-shrink-0 ${selectedSectionId === sec.id ? "text-[#5B8CFF]/60" : "text-white/25"}`}>
+                  {getSectionIcon(sec.type)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-[10.5px] font-medium ${selectedSectionId === sec.id ? "text-[#5B8CFF]/80" : "text-white/55"}`}>
+                    {sec.name}
+                  </span>
+                  <span className="mt-0.5 block text-[9px] uppercase tracking-[0.1em] text-white/22">{sec.type}</span>
+                </span>
+                {hasPending && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#5B8CFF]" />}
+                {isOpen
+                  ? <ChevronUp size={10} className="flex-shrink-0 text-white/16"/>
+                  : <ChevronDown size={10} className="flex-shrink-0 text-white/16"/>}
+              </button>
+
+              {/* Expanded body */}
+              {isOpen && (
+                <div className="border-t border-white/[0.04]">
+                  {/* Tab bar */}
+                  <div className="flex border-b border-white/[0.04]">
+                    {(["fields", "ai"] as const).map((t) => (
+                      <button key={t}
+                        onClick={() => setActiveTab(p => ({ ...p, [sec.id]: t }))}
+                        className={`flex-1 py-2 text-[9.5px] font-medium uppercase tracking-[0.08em] transition-colors ${
+                          tab === t
+                            ? "text-[#5B8CFF] border-b border-[#5B8CFF]"
+                            : "text-white/22 hover:text-white/40"
+                        }`}
+                      >
+                        {t === "fields" ? "Edit Fields" : "AI Rewrite"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="p-2.5 space-y-2">
+                    {/* ── Edit Fields tab ── */}
+                    {tab === "fields" && (
+                      <>
+                        {fields.length === 0 ? (
+                          <p className="py-3 text-center text-[10px] text-white/22">
+                            {sectionFields[sec.id] ? "No editable fields detected." : "Loading fields…"}
+                          </p>
+                        ) : (
+                          <>
+                            {fields.map((field) => (
+                              <SectionFieldInput
+                                key={field.key}
+                                field={field}
+                                value={pending[field.key] ?? field.value}
+                                isDirty={pending[field.key] !== undefined && pending[field.key] !== field.value}
+                                onChange={(val) =>
+                                  setFieldEdits(prev => ({
+                                    ...prev,
+                                    [sec.id]: { ...(prev[sec.id] ?? {}), [field.key]: val },
+                                  }))
+                                }
+                              />
+                            ))}
+                            <button
+                              onClick={() => applyFields(sec)}
+                              disabled={!hasPending || isAnyApplying}
+                              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#5B8CFF]/[0.12] py-2 text-[10.5px] font-medium text-[#5B8CFF] transition-colors hover:bg-[#5B8CFF]/[0.2] disabled:opacity-25"
+                            >
+                              {isApplying
+                                ? <><Loader2 size={10} className="animate-spin"/>Applying…</>
+                                : "Apply Changes"}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── AI Rewrite tab ── */}
+                    {tab === "ai" && (
+                      <div className="space-y-2">
+                        <textarea
+                          value={aiInstructions[sec.id] ?? ""}
+                          onChange={(e) => setAiInstructions(p => ({ ...p, [sec.id]: e.target.value }))}
+                          placeholder={`e.g. "make the headline more compelling", "add urgency to the CTA"`}
+                          rows={3}
+                          disabled={isAnyApplying}
+                          className="w-full resize-none rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.1] disabled:opacity-40"
+                        />
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => regenerateSection(sec, aiInstructions[sec.id])}
+                            disabled={!aiInstructions[sec.id]?.trim() || isAnyApplying}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#5B8CFF]/[0.12] py-2 text-[10.5px] font-medium text-[#5B8CFF] transition-colors hover:bg-[#5B8CFF]/[0.2] disabled:opacity-25"
+                          >
+                            {isAiApplying && applying === `ai-${sec.id}`
+                              ? <><Loader2 size={10} className="animate-spin"/>Rewriting…</>
+                              : <><Wand2 size={10}/>Rewrite</>}
+                          </button>
+                          <button
+                            onClick={() => regenerateSection(sec)}
+                            disabled={isAnyApplying}
+                            title="Regenerate from scratch"
+                            className="flex items-center gap-1 rounded-lg px-2.5 py-2 text-[10px] text-white/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-colors hover:bg-white/[0.05] hover:text-white/55 disabled:opacity-25"
+                          >
+                            <RefreshCw size={10}/> Regen
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// ── Section field input ───────────────────────────────────────────────────────
+function SectionFieldInput({
+  field, value, isDirty, onChange,
+}: {
+  field: ExtractedField;
+  value: string;
+  isDirty: boolean;
+  onChange: (val: string) => void;
+}) {
+  const isLong = value.length > 64 || field.kind === "text" && field.label.toLowerCase().includes("body");
+  const isUrl  = field.kind === "src" || field.kind === "href";
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <label className="flex items-center gap-1 text-[8.5px] font-medium uppercase tracking-[0.12em] text-white/25">
+          {isUrl ? <Link size={7}/> : <Type size={7}/>}
+          {field.label}
+        </label>
+        {isDirty && <span className="text-[8px] text-[#5B8CFF]/70">edited</span>}
+      </div>
+      {isLong ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          className={`w-full resize-none rounded-lg border ${isDirty ? "border-[#5B8CFF]/30" : "border-white/[0.06]"} bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.12]`}
+        />
+      ) : (
+        <input
+          type={isUrl ? "url" : "text"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full rounded-lg border ${isDirty ? "border-[#5B8CFF]/30" : "border-white/[0.06]"} bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.12]`}
+        />
+      )}
     </div>
   );
 }
@@ -502,19 +1150,18 @@ function BlocksPanel({ project }: Props) {
   const dropLineRef    = useRef<HTMLDivElement | null>(null);
   const dropHintRef    = useRef<HTMLDivElement | null>(null);
   const categoryTabs = useMemo(() => EDITOR_INSERTION_CATEGORIES, []);
-  const primaryCategoryOrder = useMemo(() => ["all", "sections", "layout", "basic", "media"] as const, []);
-  const secondaryCategoryOrder = useMemo(() => ["navigation", "typography", "interactive", "forms", "advanced", "icons"] as const, []);
-  const primaryCategoryTabs = useMemo(
-    () => primaryCategoryOrder
-      .map((key) => categoryTabs.find((tab) => tab.key === key))
-      .filter((tab): tab is InsertionCategory => !!tab),
-    [categoryTabs, primaryCategoryOrder]
-  );
-  const secondaryCategoryTabs = useMemo(
-    () => secondaryCategoryOrder
-      .map((key) => categoryTabs.find((tab) => tab.key === key))
-      .filter((tab): tab is InsertionCategory => !!tab),
-    [categoryTabs, secondaryCategoryOrder]
+  const categoryRows = useMemo(
+    () =>
+      [
+        ["all", "sections", "layout", "basic"],
+        ["media", "navigation", "typography", "interactive"],
+        ["forms", "advanced", "icons"],
+      ].map((row) =>
+        row
+          .map((key) => categoryTabs.find((tab) => tab.key === key))
+          .filter((tab): tab is InsertionCategory => !!tab)
+      ),
+    [categoryTabs]
   );
 
   function blockScore(block: BlockElementDefinition) {
@@ -550,6 +1197,60 @@ function BlocksPanel({ project }: Props) {
     return score;
   }
 
+  function blockPriority(block: BlockElementDefinition) {
+    let priority = priorityRank(DEFAULT_BLOCK_PRIORITY, block.id);
+
+    if (!selectedNode && !selectedSectionId) {
+      if (priority === Number.MAX_SAFE_INTEGER) {
+        priority =
+          block.placement === "section"
+            ? 400
+            : block.placement === "top" || block.placement === "bottom"
+            ? 520
+            : 640;
+      }
+      return priority;
+    }
+
+    if (selectedSectionId) {
+      priority = Math.min(priority, priorityRank(INLINE_BLOCK_PRIORITY, block.id));
+      if (priority === Number.MAX_SAFE_INTEGER) {
+        priority =
+          block.placement === "inline"
+            ? 260
+            : block.placement === "section"
+            ? 360
+            : 560;
+      }
+      return priority;
+    }
+
+    if (selectedNode?.isInput || selectedNode?.tag === "form") {
+      priority = Math.min(priority, priorityRank(FORM_BLOCK_PRIORITY, block.id));
+    }
+
+    if (selectedNode?.isImg || selectedNode?.isVideo || selectedNode?.isIframe) {
+      priority = Math.min(priority, priorityRank(MEDIA_BLOCK_PRIORITY, block.id));
+    }
+
+    if (selectedNode?.isText || selectedNode?.isBtn) {
+      priority = Math.min(priority, priorityRank(TEXT_BLOCK_PRIORITY, block.id));
+    }
+
+    if (priority === Number.MAX_SAFE_INTEGER) {
+      priority =
+        block.placement === "inline"
+          ? 280
+          : block.category === "media"
+          ? 340
+          : block.category === "forms"
+          ? 360
+          : 460;
+    }
+
+    return priority;
+  }
+
   function placementText(block: BlockElementDefinition) {
     if (block.placement === "top") return "Top of page";
     if (block.placement === "bottom") return "Bottom of page";
@@ -561,7 +1262,7 @@ function BlocksPanel({ project }: Props) {
   }
 
   const filtered = useMemo(() => {
-    return BLOCK_DEFINITIONS
+    return BLOCK_PICKER_DEFINITIONS
       .filter((block) => cat === "all" || block.category === cat)
       .filter((block) => {
         if (!searchQuery) return true;
@@ -572,33 +1273,17 @@ function BlocksPanel({ project }: Props) {
           block.keywords.some((keyword) => keyword.includes(searchQuery))
         );
       })
-      .map((block) => ({ block, score: blockScore(block) }))
+      .map((block) => ({
+        block,
+        score: blockScore(block),
+        priority: blockPriority(block),
+      }))
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        const categoryDelta = compareElementCategories(a.block.category, b.block.category);
-        if (categoryDelta !== 0) return categoryDelta;
+        if (a.priority !== b.priority) return a.priority - b.priority;
         return a.block.label.localeCompare(b.block.label);
       });
   }, [cat, searchQuery, selectedNode, selectedSectionId, selectedSection?.name]);
-
-  const groupedFiltered = useMemo(() => {
-    if (filtered.length === 0) return [];
-
-    const groups = new Map<ElementCategoryKey, typeof filtered>();
-    filtered.forEach((entry) => {
-      const existing = groups.get(entry.block.category) ?? [];
-      existing.push(entry);
-      groups.set(entry.block.category, existing);
-    });
-
-    return Array.from(groups.entries())
-      .sort(([a], [b]) => compareElementCategories(a, b))
-      .map(([key, items]) => ({
-        key,
-        meta: getElementCategoryDefinition(key),
-        items,
-      }));
-  }, [filtered]);
 
   function canReplaceSelectedTextWithIcon() {
     if (!selectedNode || !selectedNode.hasEditableText || selectedNode.isInput) return false;
@@ -997,64 +1682,61 @@ function BlocksPanel({ project }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex-shrink-0 px-0 pb-3 pt-2">
-        <div className="sz-editor-dock-switcher flex items-center gap-3 rounded-[18px] px-3 py-2.5">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[14px] border border-transparent px-1 transition-colors focus-within:border-white/[0.08]">
+      <div className="flex-shrink-0 px-0 pb-2.5 pt-1">
+        <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.03] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={cat === "icons" ? "Search elements and icons…" : "Search elements…"}
-              className="w-full appearance-none border-0 bg-transparent text-[11px] text-white/65 placeholder-white/16 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:shadow-none"
+              className="w-full appearance-none border-0 bg-transparent text-[11px] text-white/55 placeholder-white/16 outline-none ring-0 shadow-none"
             />
             {search && (
-              <button onClick={() => setSearch("")} className="text-white/20 hover:text-white/55 transition-colors">
-                <X size={12} />
+              <button onClick={() => setSearch("")} className="text-white/18 hover:text-white/50 transition-colors">
+                <X size={11} />
               </button>
             )}
           </div>
 
-          <div className="h-8 w-px bg-white/[0.06]" />
+          <div className="h-6 w-px bg-white/[0.06]" />
 
-          <div className="flex shrink-0 items-center gap-2">
-            <p className="text-[10px] font-medium text-white/62">{useAI ? "AI" : "Direct"}</p>
-            <EditorSwitch checked={useAI} onChange={() => setUseAI(!useAI)} title={useAI ? "AI insert on" : "AI insert off"} className="scale-[0.9]" />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <p className="text-[9.5px] font-medium text-white/40">{useAI ? "AI" : "Direct"}</p>
+            <EditorSwitch checked={useAI} onChange={() => setUseAI(!useAI)} title={useAI ? "AI insert on" : "AI insert off"} className="scale-[0.85]" />
           </div>
         </div>
       </div>
-      <div className="sz-editor-dock-header bg-white/[0.012] px-3.5 py-2.5 flex-shrink-0">
-        <div className="flex flex-wrap gap-1.5">
-          {primaryCategoryTabs.map((c) => (
-            <button key={c.key} onClick={() => setCat(c.key)}
-              className={`rounded-full px-3 py-1.5 text-[9.5px] font-medium transition-all border text-center ${
-                cat===c.key
-                  ? "bg-accent-500/16 text-accent-300 border-accent-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                  : "bg-white/[0.015] text-white/34 border-white/[0.05] hover:text-white/60 hover:border-white/[0.1] hover:bg-white/[0.03]"
-              }`}>
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {secondaryCategoryTabs.map((c) => (
-            <button key={c.key} onClick={() => setCat(c.key)}
-              className={`rounded-full px-3 py-1.5 text-[9.5px] font-medium transition-all border text-center ${
-                cat===c.key
-                  ? "bg-accent-500/16 text-accent-300 border-accent-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                  : "bg-white/[0.015] text-white/34 border-white/[0.05] hover:text-white/60 hover:border-white/[0.1] hover:bg-white/[0.03]"
-              }`}>
-              {c.label}
-            </button>
+      <div className="px-0 pb-2 flex-shrink-0">
+        <div className="space-y-1">
+          {categoryRows.map((row, index) => (
+            <div
+              key={`category-row-${index}`}
+              className={`grid gap-1 ${row.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}
+            >
+              {row.map((c) => (
+                <button
+                  key={c.key}
+                  onClick={() => setCat(c.key)}
+                  className={`rounded-lg px-2 py-1.5 text-[9px] font-medium transition-all duration-150 text-center ${
+                    cat === c.key
+                      ? "bg-[#5B8CFF]/12 text-[#5B8CFF]/80 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.18)]"
+                      : "text-white/28 hover:text-white/50 hover:bg-white/[0.03]"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       </div>
-      {/* AI status banner */}
       {aiStatus && (
-        <div className={`mx-2.5 mt-2 mb-0 px-3 py-2 rounded-lg flex items-center gap-2 text-[11px] font-medium border flex-shrink-0 ${
-          aiStatus.type === "loading" ? "bg-accent-500/10 border-accent-500/25 text-accent-300" :
-          aiStatus.type === "success" ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300" :
-          "bg-red-500/10 border-red-500/25 text-red-300"
+        <div className={`mx-1 mt-1.5 mb-0 px-3 py-2 rounded-lg flex items-center gap-2 text-[10.5px] font-medium flex-shrink-0 ${
+          aiStatus.type === "loading" ? "bg-[#5B8CFF]/8 text-[#5B8CFF]/80 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.15)]" :
+          aiStatus.type === "success" ? "bg-emerald-500/8 text-emerald-400/80 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.15)]" :
+          "bg-red-500/8 text-red-400/80 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.15)]"
         }`}>
-          {aiStatus.type === "loading" && <Loader2 size={11} className="animate-spin flex-shrink-0" />}
+          {aiStatus.type === "loading" && <Loader2 size={10} className="animate-spin flex-shrink-0" />}
           {aiStatus.type === "success" && <span className="flex-shrink-0">✓</span>}
           {aiStatus.type === "error"   && <span className="flex-shrink-0">✕</span>}
           <span className="truncate">{aiStatus.msg}</span>
@@ -1063,7 +1745,7 @@ function BlocksPanel({ project }: Props) {
       {/* ── Icon picker ──────────────────────────────────────────────────────── */}
       {cat === "icons" && (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex-1 overflow-auto p-2 grid grid-cols-5 gap-1 content-start">
+          <div className="flex-1 overflow-auto p-1.5 grid grid-cols-5 gap-1 content-start">
             {ICON_DEFINITIONS
               .filter((icon) =>
                 !searchQuery ||
@@ -1083,12 +1765,12 @@ function BlocksPanel({ project }: Props) {
                 }}
                 onDragEnd={() => hideDropOverlay()}
                 onClick={() => addIcon(icon)}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-white/[0.04] bg-white/[0.02] hover:bg-accent-500/[0.07] hover:border-accent-500/20 transition-all group cursor-grab active:cursor-grabbing"
+                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/[0.015] hover:bg-[#5B8CFF]/8 transition-all duration-150 group cursor-grab active:cursor-grabbing"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
-                  className="w-5 h-5 text-white/35 group-hover:text-accent-400 transition-colors flex-shrink-0"
+                  className="w-5 h-5 text-white/25 group-hover:text-[#5B8CFF]/70 transition-colors flex-shrink-0"
                   dangerouslySetInnerHTML={{ __html: icon.paths }}></svg>
-                <span className="text-[8.5px] text-white/22 group-hover:text-white/45 transition-colors text-center leading-tight truncate w-full">{icon.label}</span>
+                <span className="text-[8px] text-white/18 group-hover:text-white/40 transition-colors text-center leading-tight truncate w-full">{icon.label}</span>
               </button>
             ))}
           </div>
@@ -1097,83 +1779,73 @@ function BlocksPanel({ project }: Props) {
 
       {/* ── Blocks list ──────────────────────────────────────────────────────── */}
       {cat !== "icons" && (
-      <div className="flex-1 overflow-auto px-3 py-3">
+      <div className="flex-1 overflow-auto px-1 py-2">
         {filtered.length === 0 && (
-          <div className="rounded-[22px] border border-dashed border-white/[0.06] bg-white/[0.02] px-4 py-7 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/[0.08] bg-white/[0.04] text-white/32">
-              <LayoutGrid size={16} />
+          <div className="rounded-xl px-4 py-7 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-white/25">
+              <LayoutGrid size={15} />
             </div>
-            <p className="mt-4 text-[12px] font-semibold text-white/56">No matching elements</p>
-            <p className="mt-1 text-[10px] leading-5 text-white/22">
-              {search ? "Try a broader search or switch categories." : "This category does not have any available elements right now."}
+            <p className="mt-3 text-[11.5px] font-medium text-white/45">No matching elements</p>
+            <p className="mt-1 text-[10px] leading-5 text-white/20">
+              {search ? "Try a broader search or switch categories." : "This category has no available elements."}
             </p>
           </div>
         )}
 
-        <div className="space-y-4">
-          {groupedFiltered.map((group) => (
-            <div key={group.key} className="space-y-2.5">
-              <div className="grid grid-cols-1 gap-2.5 content-start">
-                {group.items.map(({ block: b, score }) => {
-                  const categoryMeta = getElementCategoryDefinition(b.category);
-                  return (
-                    <div
-                      key={b.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "copy";
-                        e.dataTransfer.setData("text/plain", b.id);
-                        setTimeout(() => {
-                          if (b.placement === "top" || b.placement === "bottom") {
-                            showSimpleOverlay(() => add({ ...b }));
-                          } else if (b.placement === "inline") {
-                            showInlineOverlay((sectionId) => add({ ...b }, sectionId));
-                          } else {
-                            showSectionOverlay((afterId) => add({ ...b }, afterId));
-                          }
-                        }, 0);
-                      }}
-                      onDragEnd={() => {
-                        hideDropOverlay();
-                      }}
-                      onClick={() => add(b)}
-                      className={`p-3.5 rounded-2xl border bg-white/[0.02] text-left hover:border-accent-500/22 hover:bg-accent-500/[0.04] transition-all group cursor-grab active:cursor-grabbing select-none shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
-                        score >= 4 ? "border-accent-500/18" : "border-white/[0.05]"
-                      } ${adding===b.id?"opacity-35":""}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2.5 min-w-0">
-                          <span className="text-[15px] leading-none text-white/18 group-hover:text-accent-400 transition-colors mt-0.5">{b.icon}</span>
-                          <div className="min-w-0">
-                            <p className="text-[11px] text-white/60 font-semibold group-hover:text-white/80 transition-colors">{b.label}</p>
-                            <p className="text-[10px] text-white/22 mt-0.5 line-clamp-2">{b.preview}</p>
-                          </div>
-                        </div>
-                        {score >= 4 && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-[0.14em] text-accent-300 bg-accent-500/12 border border-accent-500/18 flex-shrink-0">
-                            Smart
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2.5 flex items-center justify-between gap-2">
-                        <span className="text-[9px] text-white/24 truncate">
-                          {categoryMeta?.label ? `${categoryMeta.label} · ` : ""}
-                          {placementText(b)}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded-md text-[8px] font-medium uppercase tracking-[0.12em] text-white/28 bg-white/[0.04] border border-white/[0.05] flex-shrink-0">
-                          {b.placement}
-                        </span>
-                      </div>
-                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-white/[0.05] pt-2.5 text-[9px] text-white/18">
-                        <span>Click to insert</span>
-                        <span>Drag to place</span>
-                      </div>
+        <div className="grid grid-cols-1 gap-1.5 content-start">
+          {filtered.map(({ block: b, score }) => {
+            const categoryMeta = getElementCategoryDefinition(b.category);
+            return (
+              <div
+                key={b.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "copy";
+                  e.dataTransfer.setData("text/plain", b.id);
+                  setTimeout(() => {
+                    if (b.placement === "top" || b.placement === "bottom") {
+                      showSimpleOverlay(() => add({ ...b }));
+                    } else if (b.placement === "inline") {
+                      showInlineOverlay((sectionId) => add({ ...b }, sectionId));
+                    } else {
+                      showSectionOverlay((afterId) => add({ ...b }, afterId));
+                    }
+                  }, 0);
+                }}
+                onDragEnd={() => {
+                  hideDropOverlay();
+                }}
+                onClick={() => add(b)}
+                className={`px-3 py-2.5 rounded-xl bg-white/[0.015] text-left hover:bg-[#5B8CFF]/6 transition-all duration-150 group cursor-grab active:cursor-grabbing select-none ${
+                  score >= 4 ? "shadow-[inset_0_0_0_1px_rgba(91,140,255,0.12)]" : "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]"
+                } ${adding===b.id?"opacity-30":""}`}
+              >
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span className="text-[14px] leading-none text-white/16 group-hover:text-[#5B8CFF]/60 transition-colors mt-0.5">{b.icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-[10.5px] text-white/55 font-semibold group-hover:text-white/80 transition-colors">{b.label}</p>
+                      <p className="text-[9.5px] text-white/20 mt-0.5 line-clamp-1">{b.preview}</p>
                     </div>
-                  );
-                })}
+                  </div>
+                  {score >= 4 && (
+                    <span className="px-1.5 py-0.5 rounded-md text-[7.5px] font-semibold uppercase tracking-[0.1em] text-[#5B8CFF]/70 bg-[#5B8CFF]/10 flex-shrink-0">
+                      Smart
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-[8.5px] text-white/16">
+                  <span className="truncate">
+                    {categoryMeta?.label ? `${categoryMeta.label} · ` : ""}
+                    {placementText(b)}
+                  </span>
+                  <span className="font-medium uppercase tracking-[0.08em] text-white/20 flex-shrink-0">
+                    {b.placement}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       )}

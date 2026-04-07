@@ -76,6 +76,14 @@ export interface ProjectPage {
   error?: string;
 }
 
+export interface ProjectSeoSettings {
+  siteTitle: string;
+  siteDescription: string;
+  ogImageUrl: string;
+  canonicalUrl: string;
+  noindex: boolean;
+}
+
 export interface VirtualFile {
   id: string;
   name: string;
@@ -100,6 +108,206 @@ export interface ProjectMediaAsset {
   width: number | null;
   height: number | null;
   createdAt: string;
+}
+
+export type BetaRole = "customer" | "customer_service" | "admin";
+export type BetaAccessStatus = "invited" | "active" | "revoked";
+export type BetaAccessSource = "open" | "bootstrap-admin" | "bootstrap-allowlist" | "beta-access" | "none";
+
+export interface BetaAccessRecord {
+  id: string;
+  email: string;
+  role: BetaRole;
+  status: BetaAccessStatus;
+  note: string | null;
+  invitedBy: string | null;
+  userId: string | null;
+  acceptedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMemberBillingSnapshot {
+  planName: string;
+  tokenUsage: number;
+  tokenLimit: number;
+  remainingCredits: number;
+}
+
+export interface AdminMemberRecord extends BetaAccessRecord {
+  billing: AdminMemberBillingSnapshot | null;
+}
+
+export interface CurrentBetaAccess {
+  allowed: boolean;
+  email: string;
+  inviteOnlyBeta: boolean;
+  role: BetaRole | null;
+  status: BetaAccessStatus | null;
+  source: BetaAccessSource;
+}
+
+export type BetaInterestSource = "signup" | "oauth" | "login" | "app";
+
+export interface BetaInterestRequest {
+  id: string;
+  userId: string;
+  email: string;
+  userName: string | null;
+  note: string | null;
+  source: BetaInterestSource;
+  persisted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SupportRequestKind = "bug" | "feature" | "support";
+export type SupportRequestStatus = "pending" | "open" | "closed";
+export type SupportReplyAuthorRole = "customer" | "customer_service" | "admin" | "system";
+export type SupportReplyEmailDeliveryStatus = "sent" | "failed" | "not_requested";
+
+export interface SupportRequestMetadata {
+  route: string | null;
+  browser: string | null;
+}
+
+export interface SupportRequestReply {
+  id: string;
+  requestId: string;
+  authorRole: SupportReplyAuthorRole;
+  authorName?: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  emailedAt?: string | null;
+  emailDeliveryStatus?: SupportReplyEmailDeliveryStatus | null;
+  emailError?: string | null;
+}
+
+export interface SupportRequest {
+  id: string;
+  ticketNumber: number | null;
+  kind: SupportRequestKind;
+  subject: string;
+  message: string;
+  status: SupportRequestStatus;
+  metadata: SupportRequestMetadata;
+  replies: SupportRequestReply[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerServiceSupportRequest extends SupportRequest {
+  userEmail: string;
+  userName: string | null;
+}
+
+export type WorkspaceTheme = "dark" | "light" | "system";
+export type EditorDensityPreference = "compact" | "comfortable";
+export type FontPreference = "default" | "system" | "geometric";
+export type AIDesignStyle = "minimal" | "luxury" | "playful" | "brutalist" | "editorial" | "futuristic";
+export type AIStructurePreference = "clean" | "grid-heavy" | "asymmetric";
+export type AIContentDensity = "short" | "balanced" | "detailed";
+export type ProjectTypographyStyle = "modern-sans" | "editorial-serif" | "product-sans";
+export type ProjectSpacingStyle = "compact" | "balanced" | "airy";
+export type ProjectNavigationStyle = "minimal" | "full" | "floating";
+export type ExportFormatPreference = "sitezy-zip" | "html-package" | "full-package";
+
+export interface UserAccountProfile {
+  id: string;
+  email: string;
+  name: string;
+  profileImageUrl: string | null;
+  profileImageStorageBucket: string | null;
+  profileImageStoragePath: string | null;
+  emailConfirmedAt: string | null;
+  phoneNumber: string | null;
+  phoneCountryCode: string | null;
+  phoneOtpStatus: PhoneOtpStatus | null;
+}
+
+export interface WorkspacePreferences {
+  theme: WorkspaceTheme;
+  editorDensity: EditorDensityPreference;
+  animationsEnabled: boolean;
+  uiScale: number;
+  fontPreference: FontPreference;
+}
+
+export interface AIGenerationPreferences {
+  designStyle: AIDesignStyle;
+  creativityLevel: number;
+  structurePreference: AIStructurePreference;
+  contentDensity: AIContentDensity;
+}
+
+export interface ProjectDefaultPreferences {
+  defaultPages: string[];
+  defaultColorPalette: string[];
+  typographyStyle: ProjectTypographyStyle;
+  layoutSpacing: ProjectSpacingStyle;
+  navigationStyle: ProjectNavigationStyle;
+}
+
+export interface ExportDeploymentPreferences {
+  exportFormat: ExportFormatPreference;
+  includeAssets: boolean;
+  includeSeoFiles: boolean;
+}
+
+export interface IntegrationPreferences {
+  analyticsId: string;
+  notificationEmail: string;
+  formsProvider: "email" | "none";
+  primaryDomain: string;
+}
+
+export interface BillingPreferences {
+  planName: string;
+  tokenUsage: number;
+  tokenLimit: number;
+  paymentMethodLabel: string | null;
+  billingHistory: Array<{
+    id: string;
+    label: string;
+    date: string;
+    amount: string;
+    status: "paid" | "pending";
+  }>;
+}
+
+export interface ExperimentalPreferences {
+  aiAutoEditSuggestions: boolean;
+  smartLayoutRegeneration: boolean;
+  advancedEditor: boolean;
+  chatBasedEditing: boolean;
+}
+
+export type PhoneOtpStatus = "not_provided" | "pending_setup" | "enabled" | "disabled";
+
+export type SecurityPreferences = Record<string, never>;
+
+export interface CreativeModePreferences {
+  surpriseMe: boolean;
+  boldness: number;
+  breakDesignRules: boolean;
+}
+
+export interface UserSettings {
+  workspace: WorkspacePreferences;
+  ai: AIGenerationPreferences;
+  projectDefaults: ProjectDefaultPreferences;
+  exportDeployment: ExportDeploymentPreferences;
+  integrations: IntegrationPreferences;
+  billing: BillingPreferences;
+  experimental: ExperimentalPreferences;
+  security: SecurityPreferences;
+  creativeMode: CreativeModePreferences;
+}
+
+export interface UserSettingsPayload {
+  account: UserAccountProfile;
+  settings: UserSettings;
 }
 
 export type SiteType =
@@ -164,6 +372,105 @@ export interface SiteBrief {
   // ── Enriched context ───────────────────────────────────────────────────────
   hasLogo?: boolean;   // logo image was uploaded — AI should use __LOGO__ placeholder in navbar
   currency?: string;   // detected currency, e.g. "AED (د.إ)", "GBP (£)"
+  generationDesignStyle?: AIDesignStyle;
+  generationCreativityLevel?: number;
+  generationStructurePreference?: AIStructurePreference;
+  generationContentDensity?: AIContentDensity;
+  defaultTypographyStyle?: ProjectTypographyStyle;
+  defaultLayoutSpacing?: ProjectSpacingStyle;
+  defaultNavigationStyle?: ProjectNavigationStyle;
+  creativeMode?: CreativeModePreferences;
+}
+
+export type ProjectPublishStatus = "unpublished" | "publishing" | "published" | "failed";
+export type ProjectDeploymentStatus = "publishing" | "published" | "failed";
+export type ProjectDomainStatus = "pending" | "verifying" | "active" | "failed";
+
+export interface ProjectDomain {
+  id: string;
+  publishedSiteId: string;
+  projectId: string;
+  hostname: string;
+  status: ProjectDomainStatus;
+  isPrimary: boolean;
+  verificationToken: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDeployment {
+  id: string;
+  publishedSiteId: string;
+  projectId: string;
+  versionNumber: number;
+  status: ProjectDeploymentStatus;
+  publishedUrl: string;
+  pageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+}
+
+export interface PublishedSite {
+  id: string;
+  projectId: string;
+  subdomain: string;
+  status: ProjectPublishStatus;
+  siteUrl: string;
+  internalUrl: string;
+  liveUrl: string;
+  primaryDomain: string | null;
+  activeDeploymentId: string | null;
+  deploymentCount: number;
+  lastPublishedAt: string | null;
+  currentDeployment: ProjectDeployment | null;
+  domains: ProjectDomain[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CmsCollectionPreset = "custom" | "blog_posts" | "case_studies" | "team_members" | "faq_items";
+export type CmsFieldType = "text" | "textarea" | "rich_text" | "image" | "url" | "date";
+export type CmsEntryStatus = "draft" | "published";
+
+export interface CmsField {
+  id: string;
+  collectionId: string;
+  projectId: string;
+  key: string;
+  label: string;
+  type: CmsFieldType;
+  required: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsEntry {
+  id: string;
+  collectionId: string;
+  projectId: string;
+  title: string;
+  slug: string;
+  status: CmsEntryStatus;
+  values: Record<string, string>;
+  sortOrder: number;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CmsCollection {
+  id: string;
+  projectId: string;
+  name: string;
+  slug: string;
+  preset: CmsCollectionPreset;
+  fields: CmsField[];
+  entries: CmsEntry[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Project {
@@ -171,12 +478,15 @@ export interface Project {
   name: string;
   brief: SiteBrief;
   blueprint: SiteBlueprint | null;
+  seo?: ProjectSeoSettings;
   pages: ProjectPage[];
   files: Record<string, VirtualFile>;
   media: ProjectMediaAsset[];
   createdAt: string;
   updatedAt: string;
   status: "draft" | "generating" | "ready" | "error";
+  generationJob?: ProjectGenerationJob | null;
+  publishedSite?: PublishedSite | null;
 }
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -188,6 +498,31 @@ export interface ProjectSnapshot {
 }
 
 // ─── Generation Types ─────────────────────────────────────────────────────────
+
+export type ProjectGenerationJobKind = "full_site";
+export type ProjectGenerationJobStatus = "queued" | "running" | "completed" | "failed" | "canceled";
+
+export interface ProjectGenerationJob {
+  id: string;
+  projectId: string;
+  userId: string;
+  kind: ProjectGenerationJobKind;
+  status: ProjectGenerationJobStatus;
+  progressMessage: string | null;
+  currentPageId: string | null;
+  currentPageName: string | null;
+  totalPages: number;
+  completedPages: number;
+  lockedBy: string | null;
+  lockedAt: string | null;
+  heartbeatAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type GenerationStatus =
   | "idle"
@@ -207,7 +542,7 @@ export interface GenerationLogEntry {
 // ─── Editor Types ─────────────────────────────────────────────────────────────
 
 export type LeftPanelTab = "pages" | "navigator" | "add" | "files";
-export type RightPanelTab = "ai" | "properties" | "blocks" | "style";
+export type RightPanelTab = "ai" | "properties" | "blocks" | "style" | "theme";
 export type PreviewMode = "preview" | "code" | "split";
 export type DevicePreview = "desktop" | "tablet" | "mobile";
 
@@ -227,6 +562,10 @@ export interface EditorState {
   leftPanelWidth: number;
   rightPanelWidth: number;
   visualEditMode: boolean;
+  canvasZoom: number;
+  canvasPanX: number;
+  canvasPanY: number;
+  canvasGridVisible: boolean;
 }
 
 export interface CanvasCollectionField {
@@ -269,6 +608,10 @@ export interface CanvasNodeInfo {
   collectionKind: string | null;
   collectionLabel: string | null;
   collectionFixed: boolean;
+  collectionDataSource: "manual" | "cms";
+  collectionCmsCollectionId: string | null;
+  collectionCmsCollectionName: string | null;
+  collectionCmsLimit: number | null;
   collectionFields: CanvasCollectionField[];
   collectionItems: CanvasCollectionItem[];
   linkTargetNodeId: string | null;

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import {
@@ -28,9 +29,10 @@ const STEP_ICONS = [
 interface Props {
   projectName: string;
   pageCount: number;
+  errorActions?: ReactNode;
 }
 
-export function GeneratingScreen({ projectName, pageCount }: Props) {
+export function GeneratingScreen({ projectName, pageCount, errorActions = null }: Props) {
   const genStatus = useAppStore((s) => s.generationStatus);
   const genProgress = useAppStore((s) => s.generationProgress);
   const genLog = useAppStore((s) => s.generationLog);
@@ -75,19 +77,28 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
   const isTimeoutError = apiError?.code === "API_TIMEOUT_001";
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-[linear-gradient(180deg,#06070b_0%,#090b10_100%)]">
-      <div className="absolute left-[12%] top-[8%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(107,119,255,0.18),transparent_68%)] blur-3xl" />
-      <div className="absolute bottom-[6%] right-[10%] h-[300px] w-[300px] rounded-full bg-[radial-gradient(circle,rgba(48,198,160,0.12),transparent_68%)] blur-3xl" />
+    <div className="fixed inset-0 z-50 overflow-hidden" style={{
+      background: "radial-gradient(ellipse 70% 40% at 20% 10%, rgba(91,140,255,0.22), transparent 60%), radial-gradient(ellipse 60% 50% at 80% 90%, rgba(122,92,255,0.14), transparent 60%), linear-gradient(180deg, #05060a 0%, #08090f 100%)"
+    }}>
+      {/* Animated atmosphere orbs */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute left-[8%] top-[4%] h-[500px] w-[500px] rounded-full opacity-70"
+          style={{ background: "radial-gradient(circle, rgba(91,140,255,0.2), transparent 68%)", filter: "blur(40px)", animation: "orb-pulse 8s ease-in-out infinite" }} />
+        <div className="absolute bottom-[4%] right-[8%] h-[380px] w-[380px] rounded-full opacity-60"
+          style={{ background: "radial-gradient(circle, rgba(122,92,255,0.18), transparent 68%)", filter: "blur(40px)", animation: "orb-pulse 10s ease-in-out infinite 2s" }} />
+        <div className="absolute bottom-[30%] left-[40%] h-[260px] w-[260px] rounded-full opacity-40"
+          style={{ background: "radial-gradient(circle, rgba(48,198,160,0.12), transparent 68%)", filter: "blur(30px)", animation: "orb-pulse 12s ease-in-out infinite 4s" }} />
+      </div>
 
       <div className="relative flex min-h-screen flex-col">
         <header className="sz-topbar flex h-20 items-center justify-between px-8">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(129,140,255,0.24),rgba(107,119,255,0.1))] shadow-[0_14px_30px_rgba(65,78,255,0.22)]">
-              <span className="text-[16px] font-semibold tracking-[-0.04em]">S</span>
+            <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[rgba(91,140,255,0.3)] bg-[linear-gradient(135deg,rgba(91,140,255,0.22),rgba(122,92,255,0.14))] shadow-[0_0_0_1px_rgba(91,140,255,0.12),0_12px_28px_rgba(65,78,255,0.24)]">
+              <span className="sz-wordmark text-[16px]">S</span>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-white/24">Generation</p>
-              <p className="text-[16px] font-semibold tracking-[-0.03em]">{projectName}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-white/22">Generating</p>
+              <p className="text-[16px] font-bold tracking-[-0.04em]">{projectName}</p>
             </div>
           </div>
 
@@ -108,30 +119,55 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
 
         <div className="grid flex-1 gap-8 px-8 pb-8 pt-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="flex min-h-0 flex-col gap-6">
-            <div className="max-w-[780px] space-y-5">
-              <SitezyBadge>{isDone ? "Complete" : "In progress"}</SitezyBadge>
-              <h1 className="text-[44px] font-semibold leading-[0.98] tracking-[-0.05em] md:text-[64px]">
-                {isDone ? "Your website is ready." : "Your site is taking shape."}
-              </h1>
-              <p className="max-w-[620px] text-[16px] leading-8 text-[var(--text-secondary)]">
+            <div className="max-w-[780px] space-y-6">
+              <SitezyBadge className={isDone ? "sz-status-success" : "sz-status-info"}>
+                {isDone ? <CheckCircle2 size={11} /> : <Loader2 size={11} className="spin" />}
+                {isDone ? "Complete" : "In progress"}
+              </SitezyBadge>
+              <h1 className="text-[clamp(2.8rem,6vw,5.5rem)] font-bold leading-[0.92] tracking-[-0.06em]">
                 {isDone
-                  ? "The generated project is ready to open in the visual editor."
+                  ? <>Your website<br /><span className="bg-gradient-to-r from-[#e2f1ff] via-[#b4ceff] to-[#9aabff] bg-clip-text text-transparent">is ready.</span></>
+                  : <>Your site is<br /><span className="bg-gradient-to-r from-white via-[#c4d3ff] to-[#a0aaff] bg-clip-text text-transparent">taking shape.</span></>}
+              </h1>
+              <p className="max-w-[560px] text-[16px] leading-[1.8] text-white/52 tracking-[-0.01em]">
+                {isDone
+                  ? "The generated project is ready to open in the editor."
                   : genProgress || "Structure, pages, and sections are being assembled into a full editable project."}
               </p>
+              {isError && errorActions ? (
+                <div className="flex flex-wrap gap-3">
+                  {errorActions}
+                </div>
+              ) : null}
+              {!isDone && !isError ? (
+                <div className="inline-flex max-w-[620px] items-start gap-2 rounded-[18px] border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-4 py-3 text-[13px] leading-6 text-[var(--text-secondary)]">
+                  <span className="mt-1 inline-block h-2 w-2 flex-shrink-0 rounded-full bg-amber-400" />
+                  <span>
+                    Background generation is active. You can refresh, leave, or sign out while it keeps running.
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-3 text-[12px] uppercase tracking-[0.18em] text-white/24">
+                <div className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/22">
+                  <div className={`h-1.5 w-1.5 rounded-full ${!isDone && !isError ? "animate-pulse bg-[#8faeff]" : isDone ? "bg-emerald-400" : "bg-[#ff7b7b]"}`} />
                   <span>Live preview</span>
                 </div>
                 {!isError ? (
                   <div className="flex items-center gap-3">
-                    <span className="text-[12px] text-[var(--text-tertiary)]">{pct}%</span>
-                    <div className="h-2 w-40 overflow-hidden rounded-full bg-white/[0.08]">
+                    <span className="text-[13px] font-bold tabular-nums text-white/48">{pct}%</span>
+                    <div className="relative h-2.5 w-48 overflow-hidden rounded-full bg-white/[0.07]">
                       <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#7a85ff,#5a66ff)] transition-all duration-500"
-                        style={{ width: `${pct}%` }}
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${pct}%`,
+                          background: isDone
+                            ? "linear-gradient(90deg, #37E6B5, #22c5a0)"
+                            : "linear-gradient(90deg, #6e9bff, #7a5cff)",
+                          boxShadow: isDone ? "0 0 10px rgba(55,230,181,0.5)" : "0 0 10px rgba(110,155,255,0.4)",
+                        }}
                       />
                     </div>
                   </div>
@@ -220,20 +256,20 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
           </div>
 
           <div className="flex min-h-0 flex-col gap-6">
-            <SitezyCard className="p-6">
-              <div className="space-y-5">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Progress</p>
-                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <SitezyCard className="p-5">
+              <div className="space-y-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/20">Progress</p>
+                <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
                   <Metric title="Completed" value={`${successCount}`} detail={`of ${totalSteps} stages`} />
-                  <Metric title="Pages" value={`${pageCount}`} detail="targeted for generation" />
-                  <Metric title="Status" value={isDone ? "Ready" : isError ? "Error" : "Building"} detail={isDone ? "open in editor next" : "live assembly"} />
+                  <Metric title="Pages" value={`${pageCount}`} detail="targeted" />
+                  <Metric title="Status" value={isDone ? "Ready" : isError ? "Error" : "Active"} detail={isDone ? "open in editor" : "live assembly"} />
                 </div>
               </div>
             </SitezyCard>
 
-            <SitezyCard className="p-6">
-              <div className="space-y-5">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Pipeline</p>
+            <SitezyCard className="p-5">
+              <div className="space-y-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/20">Pipeline</p>
                 <div className="space-y-2">
                   <StepRow label="Site blueprint" done={successCount >= 1} active={!isError && successCount === 0} icon={STEP_ICONS[0]} />
                   {pages.map((page, index) => (
@@ -278,26 +314,27 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
             ) : null}
 
             <SitezyCard className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-              <div className="border-b border-white/[0.06] px-5 py-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/24">Activity</p>
+              <div className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/20">Activity</p>
+                {!isDone && !isError && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-[#8faeff] animate-pulse" />}
               </div>
-              <div className="flex-1 overflow-auto px-5 py-4">
-                <div className="space-y-2 font-mono text-[11px]">
+              <div className="flex-1 overflow-auto px-4 py-3">
+                <div className="space-y-1.5 font-mono text-[11px]">
                   {[...genLog].reverse().slice(0, 18).map((entry) => (
                     <div
                       key={entry.id}
-                      className={`rounded-[16px] border px-3 py-2 ${
+                      className={`rounded-[12px] border px-3 py-2 leading-[1.6] ${
                         entry.type === "error"
-                          ? "border-[rgba(240,106,116,0.12)] bg-[rgba(240,106,116,0.05)] text-[#ffced3]/85"
+                          ? "border-[rgba(240,106,116,0.1)] bg-[rgba(240,106,116,0.04)] text-[#ffced3]/75"
                           : entry.type === "success"
-                          ? "border-[rgba(49,196,141,0.12)] bg-[rgba(49,196,141,0.05)] text-[#b7f1d3]/82"
-                          : "border-white/[0.05] bg-white/[0.03] text-white/44"
+                          ? "border-[rgba(49,196,141,0.1)] bg-[rgba(49,196,141,0.04)] text-[#b7f1d3]/70"
+                          : "border-white/[0.04] bg-white/[0.02] text-white/36"
                       }`}
                     >
                       {entry.msg}
                     </div>
                   ))}
-                  {genLog.length === 0 ? <div className="text-white/20">Starting...</div> : null}
+                  {genLog.length === 0 ? <div className="px-1 text-white/18 italic">Starting…</div> : null}
                 </div>
               </div>
             </SitezyCard>
@@ -310,10 +347,11 @@ export function GeneratingScreen({ projectName, pageCount }: Props) {
 
 function Metric({ title, value, detail }: { title: string; value: string; detail: string }) {
   return (
-    <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-white/24">{title}</p>
-      <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em]">{value}</p>
-      <p className="mt-2 text-[12px] text-[var(--text-tertiary)]">{detail}</p>
+    <div className="rounded-[22px] border border-white/[0.07] px-4 py-4"
+      style={{ background: "linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)" }}>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/24">{title}</p>
+      <p className="mt-2.5 text-[32px] font-bold tracking-[-0.05em] leading-none">{value}</p>
+      <p className="mt-2 text-[11px] font-medium text-white/32 tracking-[-0.005em]">{detail}</p>
     </div>
   );
 }
@@ -332,26 +370,39 @@ function StepRow({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-4 rounded-[18px] border border-white/[0.05] bg-white/[0.03] px-4 py-3">
+    <div className={`flex items-center gap-3.5 rounded-[16px] border px-3.5 py-3 transition-all duration-300 ${
+      done
+        ? "border-[rgba(49,196,141,0.14)] bg-[rgba(49,196,141,0.05)]"
+        : error
+        ? "border-[rgba(240,106,116,0.14)] bg-[rgba(240,106,116,0.05)]"
+        : active
+        ? "border-[rgba(91,140,255,0.2)] bg-[rgba(91,140,255,0.06)]"
+        : "border-white/[0.05] bg-white/[0.02]"
+    }`}>
       <div
-        className={`flex h-10 w-10 items-center justify-center rounded-[14px] border ${
+        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] border ${
           done
-            ? "border-[rgba(49,196,141,0.22)] bg-[rgba(49,196,141,0.12)] text-[#9fe5c6]"
+            ? "border-[rgba(49,196,141,0.25)] bg-[rgba(49,196,141,0.14)] text-[#9fe5c6]"
             : error
-            ? "border-[rgba(240,106,116,0.22)] bg-[rgba(240,106,116,0.12)] text-[#ffb7c0]"
+            ? "border-[rgba(240,106,116,0.25)] bg-[rgba(240,106,116,0.14)] text-[#ffb7c0]"
             : active
-            ? "border-accent-400/24 bg-accent-500/14 text-[var(--text-accent)]"
-            : "border-white/[0.07] bg-white/[0.02] text-white/26"
+            ? "border-[rgba(91,140,255,0.28)] bg-[rgba(91,140,255,0.18)] text-[#aab4ff]"
+            : "border-white/[0.07] bg-white/[0.025] text-white/24"
         }`}
       >
-        {done ? <CheckCircle2 size={14} /> : error ? <XCircle size={14} /> : active ? <Loader2 size={14} className="spin" /> : icon}
+        {done ? <CheckCircle2 size={13} /> : error ? <XCircle size={13} /> : active ? <Loader2 size={13} className="spin" /> : icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[14px] font-medium text-[var(--text-primary)]">{label}</p>
-        <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
-          {done ? "Done" : error ? "Failed" : active ? "Working" : "Queued"}
-        </p>
+        <p className={`truncate text-[13px] font-semibold tracking-[-0.01em] ${done ? "text-white/80" : active ? "text-white/90" : "text-white/48"}`}>{label}</p>
       </div>
+      <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] ${
+        done ? "bg-[rgba(49,196,141,0.14)] text-[#9fe5c6]"
+        : error ? "bg-[rgba(240,106,116,0.14)] text-[#ffb7c0]"
+        : active ? "bg-[rgba(91,140,255,0.16)] text-[#aab4ff]"
+        : "bg-white/[0.04] text-white/20"
+      }`}>
+        {done ? "Done" : error ? "Error" : active ? "Active" : "Queue"}
+      </span>
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   Code2,
 } from "lucide-react";
 import { SitezyButton } from "@/components/ui/sitezy";
+import { UserAvatarMenu } from "@/components/ui/UserAvatarMenu";
+import type { UserAccountProfile } from "@/types";
 
 /* ─────────────────────────────────────────────
    Utility: useInView – fires once when element enters viewport
@@ -102,12 +104,12 @@ const marqueeItems = [
 function Marquee() {
   const items = [...marqueeItems, ...marqueeItems];
   return (
-    <div className="relative overflow-x-clip py-5 border-y border-white/[0.06]"
-      style={{ maskImage: "linear-gradient(90deg, transparent, black 10%, black 90%, transparent)" }}>
-      <div className="flex w-max animate-marquee gap-14">
+    <div className="relative overflow-x-clip py-[18px] border-y border-white/[0.05]"
+      style={{ maskImage: "linear-gradient(90deg, transparent, black 8%, black 92%, transparent)" }}>
+      <div className="flex w-max animate-marquee gap-12">
         {items.map((item, i) => (
-          <span key={i} className="flex items-center gap-3 whitespace-nowrap text-[12px] font-medium uppercase tracking-[0.18em] text-white/28">
-            <span className="h-1 w-1 rounded-full bg-[var(--accent-default)]" />
+          <span key={i} className="flex items-center gap-3 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.2em] text-white/24">
+            <span className="h-[3px] w-[3px] rounded-full bg-[var(--accent-default)] opacity-70" />
             {item}
           </span>
         ))}
@@ -125,18 +127,19 @@ function StatCard({ value, suffix, label, delay, started }: {
   const count = useCountUp(value, 1400, started);
   return (
     <div
-      className="group relative overflow-hidden rounded-[24px] border border-white/[0.07] bg-white/[0.03] p-7 transition-all duration-500 hover:border-white/[0.14] hover:bg-white/[0.05]"
+      className="group relative overflow-hidden rounded-[26px] border border-white/[0.07] bg-[linear-gradient(160deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-7 transition-all duration-500 hover:border-white/[0.13] hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.06),rgba(255,255,255,0.025))]"
       style={{
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
         opacity: started ? 1 : 0,
         transform: started ? "none" : "translateY(20px)",
-        transition: `opacity 0.55s ${delay}ms, transform 0.55s cubic-bezier(0.16,1,0.3,1) ${delay}ms`,
+        transition: `opacity 0.6s ${delay}ms, transform 0.6s cubic-bezier(0.16,1,0.3,1) ${delay}ms`,
       }}
     >
-      <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-[radial-gradient(circle,rgba(107,119,255,0.1),transparent_70%)] transition-all duration-500 group-hover:scale-150" />
-      <p className="relative text-[48px] font-semibold leading-none tracking-[-0.06em] text-white">
-        {count}<span className="text-[var(--accent-default)]">{suffix}</span>
+      <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[radial-gradient(circle,rgba(91,140,255,0.12),transparent_65%)] transition-all duration-700 group-hover:scale-[1.6]" />
+      <p className="relative text-[52px] font-bold leading-none tracking-[-0.065em] text-white">
+        {count}<span className="text-[#8faeff]">{suffix}</span>
       </p>
-      <p className="mt-3 text-[13px] text-white/40">{label}</p>
+      <p className="mt-3.5 text-[13px] font-medium text-white/44 tracking-[-0.01em]">{label}</p>
     </div>
   );
 }
@@ -146,7 +149,7 @@ function StatCard({ value, suffix, label, delay, started }: {
 ───────────────────────────────────────────── */
 function FeaturePill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.04] px-4 py-2 text-[12px] font-medium text-white/55 transition-all duration-300 hover:border-white/[0.18] hover:text-white/85">
+    <div className="flex items-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.04] px-4 py-2 text-[12px] font-medium text-white/65 transition-all duration-300 hover:border-white/[0.18] hover:text-white/90">
       <Icon size={12} className="text-[var(--accent-default)]" />
       {label}
     </div>
@@ -208,12 +211,13 @@ function BentoCard({
   title: string; body: string; className?: string; children?: React.ReactNode; accent?: string;
 }) {
   return (
-    <div className={`group relative overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(20,26,40,0.9),rgba(12,16,24,0.96))] p-8 transition-all duration-500 hover:border-white/[0.14] ${className}`}>
+    <div className={`group relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-[linear-gradient(160deg,rgba(20,26,42,0.92),rgba(11,15,23,0.97))] p-8 transition-all duration-500 hover:border-white/[0.13] ${className}`}
+      style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
       {accent && <div className="absolute inset-x-0 top-0 h-[1px]" style={{ background: accent }} />}
       <div className="relative z-10 flex h-full flex-col gap-6">
         <div className="space-y-3">
-          <h3 className="text-[20px] font-semibold leading-[1.18] tracking-[-0.04em]">{title}</h3>
-          <p className="text-[14px] leading-7 text-white/46">{body}</p>
+          <h3 className="text-[20px] font-bold leading-[1.15] tracking-[-0.045em]">{title}</h3>
+          <p className="text-[14px] leading-[1.8] text-white/52 tracking-[-0.005em]">{body}</p>
         </div>
         {children}
       </div>
@@ -224,26 +228,35 @@ function BentoCard({
 /* ─────────────────────────────────────────────
    Main export
 ───────────────────────────────────────────── */
-export function LandingPage() {
+export function LandingPage({
+  initialAccount = null,
+  inviteOnlyBeta = false,
+  supportEmail = "support@sitezy.app",
+}: {
+  initialAccount?: UserAccountProfile | null;
+  inviteOnlyBeta?: boolean;
+  supportEmail?: string;
+}) {
   const { ref: storyRef, activeStep } = useStoryStep(storySteps.length);
+  const isLoggedIn = Boolean(initialAccount);
 
   return (
-    <div className="min-h-screen text-[var(--text-primary)]">
+    <div className="sitezy-marketing-shell min-h-screen text-[var(--text-primary)]">
       {/* Dot grid background */}
       <div
         className="pointer-events-none fixed inset-0 z-0"
         style={{
-          backgroundImage: "radial-gradient(rgba(255,255,255,0.042) 1px, transparent 1px)",
-          backgroundSize: "32px 32px",
-          maskImage: "radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 100%)",
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.038) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+          maskImage: "radial-gradient(ellipse 100% 65% at 50% 0%, black 20%, transparent 100%)",
         }}
       />
 
-      <TopNav />
+      <TopNav initialAccount={initialAccount} inviteOnlyBeta={inviteOnlyBeta} />
 
       <main className="relative z-10">
         {/* ① Hero */}
-        <HeroScene />
+        <HeroScene isLoggedIn={isLoggedIn} inviteOnlyBeta={inviteOnlyBeta} />
 
         {/* ② Marquee */}
         <Marquee />
@@ -288,11 +301,11 @@ export function LandingPage() {
                       {index < storySteps.length - 1 && (
                         <div className="absolute left-[9px] top-7 h-full w-px bg-gradient-to-b from-white/10 to-transparent" />
                       )}
-                      <div className="space-y-2 transition-all duration-500"
-                        style={{ opacity: active ? 1 : 0.25, transform: active ? "none" : "translateX(6px)" }}>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/26">{step.index}</p>
-                        <h3 className="text-[clamp(1.6rem,3.5vw,2.8rem)] font-semibold leading-[1.04] tracking-[-0.05em]">{step.title}</h3>
-                        <p className="max-w-[400px] text-[15px] leading-8 text-white/48">{step.body}</p>
+                      <div className="space-y-2.5 transition-all duration-500"
+                        style={{ opacity: active ? 1 : 0.22, transform: active ? "none" : "translateX(8px)" }}>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/22">{step.index}</p>
+                        <h3 className="text-[clamp(1.7rem,3.5vw,3rem)] font-bold leading-[1.02] tracking-[-0.055em]">{step.title}</h3>
+                        <p className="max-w-[420px] text-[15px] leading-[1.85] text-white/50 tracking-[-0.01em]">{step.body}</p>
                       </div>
                     </div>
                   );
@@ -331,7 +344,8 @@ export function LandingPage() {
         <OutcomeScene />
 
         {/* ⑫ Final CTA */}
-        <FinalScene />
+        <FinalScene isLoggedIn={isLoggedIn} />
+        <SiteFooter inviteOnlyBeta={inviteOnlyBeta} supportEmail={supportEmail} />
       </main>
     </div>
   );
@@ -340,7 +354,13 @@ export function LandingPage() {
 /* ─────────────────────────────────────────────
    Top nav
 ───────────────────────────────────────────── */
-function TopNav() {
+function TopNav({
+  initialAccount,
+  inviteOnlyBeta,
+}: {
+  initialAccount?: UserAccountProfile | null;
+  inviteOnlyBeta?: boolean;
+}) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 40);
@@ -360,11 +380,28 @@ function TopNav() {
     >
       <div className="sz-grid-shell flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center">
-          <span className="text-[15px] font-semibold tracking-[-0.03em]">Sitezy</span>
+          <span className="sz-wordmark">Sitezy</span>
         </Link>
         <div className="flex items-center gap-2">
-          <Link href="/login"><SitezyButton variant="ghost" size="sm">Log in</SitezyButton></Link>
-          <Link href="/signup"><SitezyButton variant="primary" size="sm">Start free <ArrowRight size={12} /></SitezyButton></Link>
+          {initialAccount ? (
+            <>
+              <Link href="/app">
+                <SitezyButton variant="secondary" size="sm">
+                  Open workspace
+                </SitezyButton>
+              </Link>
+              <UserAvatarMenu initialAccount={initialAccount} showStudioShortcut={false} />
+            </>
+          ) : (
+            <>
+              <Link href="/login"><SitezyButton variant="ghost" size="sm">Log in</SitezyButton></Link>
+              <Link href="/signup">
+                <SitezyButton variant="primary" size="sm">
+                  {inviteOnlyBeta ? "Join beta" : "Start free"} <ArrowRight size={12} />
+                </SitezyButton>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>
@@ -374,55 +411,78 @@ function TopNav() {
 /* ─────────────────────────────────────────────
    Hero
 ───────────────────────────────────────────── */
-function HeroScene() {
+function HeroScene({ isLoggedIn, inviteOnlyBeta }: { isLoggedIn: boolean; inviteOnlyBeta?: boolean }) {
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden pt-16">
+    <section className="relative flex min-h-[90vh] items-center justify-center overflow-hidden pt-20">
       {/* Orbs */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(107,119,255,0.15),transparent_60%)]"
-          style={{ animation: "orb-pulse 7s ease-in-out infinite" }} />
-        <div className="absolute left-[15%] top-[35%] h-[360px] w-[360px] rounded-full bg-[radial-gradient(circle,rgba(55,208,166,0.07),transparent_60%)]"
-          style={{ animation: "orb-pulse 9s ease-in-out infinite 2s" }} />
-        <div className="absolute right-[10%] top-[20%] h-[280px] w-[280px] rounded-full bg-[radial-gradient(circle,rgba(200,107,255,0.07),transparent_60%)]"
-          style={{ animation: "orb-pulse 8s ease-in-out infinite 1s" }} />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute left-1/2 top-0 h-[700px] w-[700px] -translate-x-1/2 -translate-y-[40%] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(91,140,255,0.18), transparent 65%)",
+            animation: "orb-pulse 8s ease-in-out infinite",
+          }} />
+        <div className="absolute left-[12%] top-[30%] h-[400px] w-[400px] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(122,92,255,0.1), transparent 60%)",
+            animation: "orb-pulse 11s ease-in-out infinite 3s",
+          }} />
+        <div className="absolute right-[8%] top-[15%] h-[320px] w-[320px] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(55,208,166,0.07), transparent 60%)",
+            animation: "orb-pulse 9s ease-in-out infinite 1.5s",
+          }} />
+        {/* Subtle horizontal light bar */}
+        <div className="absolute left-0 right-0 top-[20%] h-px opacity-30"
+          style={{ background: "linear-gradient(90deg, transparent 0%, rgba(91,140,255,0.5) 30%, rgba(122,92,255,0.5) 70%, transparent 100%)" }} />
       </div>
 
-      <div className="sz-grid-shell relative z-10 py-24 text-center">
+      <div className="sz-grid-shell relative z-10 py-16 text-center">
         <Reveal>
-          <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-[rgba(107,119,255,0.3)] bg-[rgba(107,119,255,0.08)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--text-accent)]">
-            <Zap size={10} className="fill-current" />
-            AI-powered web builder
+          <div className="sz-hero-badge mx-auto mb-7">
+            <Zap size={11} className="fill-current opacity-90" />
+            {inviteOnlyBeta ? "Invite-only beta" : "AI-powered web builder"}
           </div>
         </Reveal>
 
         <Reveal delay={80}>
-          <h1 className="mx-auto max-w-[820px] text-[clamp(3rem,8vw,6.5rem)] font-semibold leading-[0.92] tracking-[-0.07em]">
+          <h1 className="mx-auto max-w-[860px] text-[clamp(3rem,8vw,7rem)] font-bold leading-[0.9] tracking-[-0.07em]">
             Build the site you<br />
-            <span className="bg-gradient-to-r from-white via-[#aab4ff] to-[var(--accent-default)] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#e8eeff] via-[#b4c6ff] to-[#8b7fff] bg-clip-text text-transparent">
               actually imagined.
             </span>
           </h1>
         </Reveal>
 
         <Reveal delay={160}>
-          <p className="mx-auto mt-7 max-w-[520px] text-[clamp(1rem,2vw,1.15rem)] leading-8 text-white/46">
+          <p className="mx-auto mt-8 max-w-[500px] text-[clamp(1rem,2vw,1.125rem)] leading-[1.85] text-white/55 tracking-[-0.01em]">
             From one clear idea to a fully editable website — prompt to polished canvas in one continuous flow.
           </p>
         </Reveal>
 
         <Reveal delay={240}>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/signup">
-              <SitezyButton variant="primary" size="lg">
-                Start building free <ArrowRight size={14} />
-              </SitezyButton>
-            </Link>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            {isLoggedIn ? (
+              <Link href="/app">
+                <SitezyButton variant="primary" size="lg">
+                  Open workspace <ArrowRight size={14} />
+                </SitezyButton>
+              </Link>
+            ) : (
+              <Link href="/signup">
+                <SitezyButton variant="primary" size="lg">
+                  {inviteOnlyBeta ? "Join private beta" : "Start building free"} <ArrowRight size={14} />
+                </SitezyButton>
+              </Link>
+            )}
             <a href="#how-it-works">
               <SitezyButton variant="secondary" size="lg">
                 See how it works <ChevronDown size={14} />
               </SitezyButton>
             </a>
           </div>
+          <p className="mt-4 text-center text-[12px] text-white/28 tracking-[0.01em]">
+            No credit card required · Export your site anytime
+          </p>
         </Reveal>
 
         <Reveal delay={320}>
@@ -447,6 +507,32 @@ function HeroScene() {
         </Reveal>
       </div>
     </section>
+  );
+}
+
+function SiteFooter({
+  inviteOnlyBeta,
+  supportEmail,
+}: {
+  inviteOnlyBeta?: boolean;
+  supportEmail: string;
+}) {
+  return (
+    <footer className="border-t border-white/[0.05]">
+      <div className="sz-grid-shell flex flex-col gap-5 py-10 text-[13px] text-white/38 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="sz-wordmark text-white/80">Sitezy</p>
+          <p className="mt-1.5 text-[12px] font-medium tracking-[-0.005em]">
+            {inviteOnlyBeta ? `Private beta · Access managed through ${supportEmail}.` : "AI website builder. Generate, edit, and export."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-5 text-[12px] font-medium text-white/46">
+          <Link href="/privacy" className="transition-colors duration-200 hover:text-white/80">Privacy</Link>
+          <Link href="/terms" className="transition-colors duration-200 hover:text-white/80">Terms</Link>
+          <Link href="/support" className="transition-colors duration-200 hover:text-white/80">Support</Link>
+        </div>
+      </div>
+    </footer>
   );
 }
 
@@ -564,8 +650,8 @@ function StatementSection({ text }: { text: string }) {
         }}
       >
         <p
-          className="text-[clamp(3rem,9vw,8.5rem)] font-semibold leading-[0.9] tracking-[-0.08em]"
-          style={{ background: "linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.32) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          className="text-[clamp(3rem,9vw,9rem)] font-bold leading-[0.88] tracking-[-0.08em]"
+          style={{ background: "linear-gradient(160deg, #ffffff 0%, rgba(180,198,255,0.7) 50%, rgba(255,255,255,0.12) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}
         >
           {text}
         </p>
@@ -581,12 +667,15 @@ function BentoGrid() {
   return (
     <section className="pb-16">
       <div className="sz-grid-shell space-y-6">
-        <Reveal className="mx-auto max-w-[640px] text-center space-y-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/28">Core product</p>
-          <h2 className="text-[clamp(1.8rem,4vw,3.2rem)] font-semibold leading-[1.06] tracking-[-0.05em]">
+        <Reveal className="mx-auto max-w-[640px] text-center space-y-5">
+          <div className="sz-hero-badge mx-auto">
+            <Sparkles size={11} className="opacity-80" />
+            Core product
+          </div>
+          <h2 className="text-[clamp(2rem,4.5vw,3.4rem)] font-bold leading-[1.04] tracking-[-0.055em]">
             One connected environment.
           </h2>
-          <p className="text-[15px] leading-8 text-white/40">
+          <p className="text-[15px] leading-[1.85] text-white/38 tracking-[-0.01em]">
             Generation, editing, and structure stay in the same system — no switching between disconnected tools.
           </p>
         </Reveal>
@@ -665,23 +754,25 @@ function EditorShowcase() {
       <div className="sz-grid-shell grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <Reveal direction="left" className="flex flex-col justify-between gap-8 rounded-[24px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(20,26,40,0.9),rgba(12,16,24,0.96))] p-8">
           <div className="space-y-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/28">Creative control</p>
-            <h3 className="text-[clamp(1.6rem,3vw,2.4rem)] font-semibold leading-[1.08] tracking-[-0.05em]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-white/24">Creative control</p>
+            <h3 className="text-[clamp(1.7rem,3vw,2.5rem)] font-bold leading-[1.06] tracking-[-0.055em]">
               Canvas, sections, styles — one editing rhythm.
             </h3>
-            <p className="text-[14px] leading-8 text-white/40">
+            <p className="text-[14px] leading-[1.85] text-white/38 tracking-[-0.005em]">
               The product feels like one composition environment. No separate app modes.
             </p>
           </div>
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {[
               { icon: Sparkles, text: "Section regeneration with prompt control" },
               { icon: Layers3, text: "Visual editing + layered structure" },
               { icon: MonitorSmartphone, text: "Responsive overrides without losing desktop" },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3 rounded-[14px] border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-                <Icon size={13} className="shrink-0 text-[var(--accent-default)]" />
-                <span className="text-[13px] text-white/46">{text}</span>
+              <div key={text} className="flex items-center gap-3 rounded-[14px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5">
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[10px] bg-[rgba(91,140,255,0.14)]">
+                  <Icon size={12} className="text-[#aab4ff]" />
+                </div>
+                <span className="text-[13px] font-medium text-white/50 tracking-[-0.01em]">{text}</span>
               </div>
             ))}
           </div>
@@ -741,12 +832,12 @@ function OutcomeScene() {
   return (
     <section className="pb-20">
       <div className="sz-grid-shell">
-        <Reveal className="mb-10 space-y-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/28">Outcome</p>
-          <h2 className="text-[clamp(2rem,5vw,4.5rem)] font-semibold leading-[1.04] tracking-[-0.06em]">
-            One system. Distinct results.
+        <Reveal className="mb-10 space-y-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-white/26">Outcome</p>
+          <h2 className="text-[clamp(2rem,5vw,4.5rem)] font-bold leading-[1.02] tracking-[-0.065em]">
+            One system.<br />Distinct results.
           </h2>
-          <p className="max-w-[460px] text-[15px] leading-8 text-white/40">
+          <p className="max-w-[440px] text-[15px] leading-[1.85] text-white/38 tracking-[-0.01em]">
             Sitezy gives you a stronger starting point and leaves room for genuinely different outcomes.
           </p>
         </Reveal>
@@ -783,38 +874,66 @@ function OutcomeScene() {
 /* ─────────────────────────────────────────────
    Final CTA
 ───────────────────────────────────────────── */
-function FinalScene() {
+function FinalScene({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <section className="pb-20 pt-4">
       <div className="sz-grid-shell">
         <Reveal>
-          <div className="relative overflow-hidden rounded-[36px]">
-            <div className="absolute -inset-px rounded-[36px] bg-gradient-to-br from-white/8 via-[rgba(107,119,255,0.28)] to-transparent" />
-            <div className="relative overflow-hidden rounded-[36px] bg-[linear-gradient(180deg,rgba(18,22,36,0.98),rgba(10,13,20,0.99))] px-8 py-18 md:px-14 md:py-22">
+          <div className="relative overflow-hidden rounded-[40px]">
+            {/* Outer border glow */}
+            <div className="absolute -inset-px rounded-[40px] bg-gradient-to-br from-[rgba(91,140,255,0.35)] via-[rgba(122,92,255,0.2)] to-transparent" />
+            <div className="relative overflow-hidden rounded-[40px] bg-[linear-gradient(160deg,rgba(12,15,26,0.99),rgba(7,9,16,0.99))]">
+              {/* Atmospheric depth */}
               <div className="pointer-events-none absolute inset-0">
-                <div className="absolute left-1/4 top-0 h-[450px] w-[450px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(107,119,255,0.12),transparent_60%)]" />
-                <div className="absolute right-1/4 bottom-0 h-[350px] w-[350px] translate-x-1/2 translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(55,208,166,0.07),transparent_60%)]" />
+                <div className="absolute left-1/3 top-0 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/3 rounded-full"
+                  style={{ background: "radial-gradient(circle, rgba(91,140,255,0.16), transparent 60%)", filter: "blur(40px)" }} />
+                <div className="absolute right-1/4 bottom-0 h-[400px] w-[400px] translate-x-1/2 translate-y-1/3 rounded-full"
+                  style={{ background: "radial-gradient(circle, rgba(122,92,255,0.12), transparent 60%)", filter: "blur(40px)" }} />
+                {/* Grid pattern overlay */}
+                <div className="absolute inset-0 opacity-[0.025]"
+                  style={{
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
+                    backgroundSize: "48px 48px",
+                  }} />
               </div>
-              <div className="relative mx-auto max-w-[760px] py-12 text-center">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/28">Get started</p>
-                <h2 className="mt-6 text-[clamp(2.4rem,6vw,5.5rem)] font-semibold leading-[0.94] tracking-[-0.07em]">
-                  Build the site you<br />
-                  <span className="bg-gradient-to-r from-white via-[#aab4ff] to-[var(--accent-default)] bg-clip-text text-transparent">
-                    actually imagined.
+              <div className="relative mx-auto max-w-[800px] px-8 py-16 text-center md:px-14 md:py-24">
+                <div className="sz-hero-badge mx-auto mb-8">
+                  <Zap size={11} className="fill-current opacity-90" />
+                  Get started
+                </div>
+                <h2 className="text-[clamp(2.6rem,7vw,6rem)] font-bold leading-[0.9] tracking-[-0.07em]">
+                  Build the site<br />
+                  <span className="bg-gradient-to-r from-[#e8eeff] via-[#b4c6ff] to-[#9a8fff] bg-clip-text text-transparent">
+                    you imagined.
                   </span>
                 </h2>
-                <p className="mx-auto mt-6 max-w-[480px] text-[16px] leading-8 text-white/38">
-                  Move from idea to polished, editable website in one connected system.
+                <p className="mx-auto mt-7 max-w-[440px] text-[16px] leading-[1.8] text-white/40 tracking-[-0.01em]">
+                  From one clear idea to a fully editable website in one connected system.
                 </p>
-                <div className="mt-9 flex flex-wrap justify-center gap-4">
-                  <Link href="/signup">
-                    <SitezyButton variant="primary" size="lg">Start free <ArrowRight size={15} /></SitezyButton>
-                  </Link>
-                  <Link href="/login">
-                    <SitezyButton variant="secondary" size="lg">Log in</SitezyButton>
-                  </Link>
+                <div className="mt-10 flex flex-wrap justify-center gap-3">
+                  {isLoggedIn ? (
+                    <>
+                      <Link href="/app">
+                        <SitezyButton variant="primary" size="lg">
+                          Open workspace <ArrowRight size={15} />
+                        </SitezyButton>
+                      </Link>
+                      <Link href="/settings">
+                        <SitezyButton variant="secondary" size="lg">Settings</SitezyButton>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link href="/signup">
+                        <SitezyButton variant="primary" size="lg">Start building free <ArrowRight size={15} /></SitezyButton>
+                      </Link>
+                      <Link href="/login">
+                        <SitezyButton variant="secondary" size="lg">Log in</SitezyButton>
+                      </Link>
+                    </>
+                  )}
                 </div>
-                <p className="mt-5 text-[12px] text-white/22">No credit card required</p>
+                <p className="mt-5 text-[12px] font-medium text-white/20 tracking-[0.02em]">No credit card required · Export anytime</p>
               </div>
             </div>
           </div>

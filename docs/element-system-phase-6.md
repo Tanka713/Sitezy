@@ -4,7 +4,7 @@ This phase focused on the inspector state flow instead of adding new elements. T
 
 ### What changed
 
-- Reworked the inspector sync boundary in [EditPanel.tsx](/Users/hashem/Desktop/sitezyV2%20copy/src/components/editor/EditPanel.tsx).
+- Reworked the inspector sync boundary in [EditPanel.tsx](/Users/hashem/Desktop/sitezyV2/src/components/editor/EditPanel.tsx).
 - Replaced the old `lastSyncedNodeId` approach with a broader selection sync key that tracks the active node plus its text, media, widget, collection, animation, link, and list targets.
 - Stopped the main sync effect from depending directly on `activeField`, so blurring a field no longer triggers a stale full-panel rehydrate before the iframe posts the updated node back.
 - Moved focus locking to a ref-based check, so the inspector can still guard in-progress edits without using focus changes as a sync trigger.
