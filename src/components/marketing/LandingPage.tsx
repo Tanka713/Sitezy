@@ -925,7 +925,7 @@ function FinalScene({ isLoggedIn }: { isLoggedIn: boolean }) {
                   ) : (
                     <>
                       <Link href="/signup">
-                        <SitezyButton variant="primary" size="lg">Start building free <ArrowRight size={15} /></SitezyButton>
+                        <SitezyButton variant="primary" size="lg">Join private beta<ArrowRight size={15} /></SitezyButton>
                       </Link>
                       <Link href="/login">
                         <SitezyButton variant="secondary" size="lg">Log in</SitezyButton>
