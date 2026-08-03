@@ -469,8 +469,8 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="sz-topbar sticky top-0 z-40">
+    <div className="sz-page-shell">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/" className="flex items-center">
@@ -495,7 +495,8 @@ export function AdminDashboard({
         </div>
       </header>
 
-      <main className="sz-grid-shell py-6 md:py-8">
+      <main className="sz-page-scroll">
+        <div className="sz-grid-shell py-6 md:py-8">
         <div className="space-y-6">
           <SitezyCard className="p-5 md:p-6">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -917,6 +918,38 @@ export function AdminDashboard({
               )}
             </div>
           </SitezyCard>
+        </div>
+
+        {/* Knowledge Base */}
+        <div className="mt-10">
+          <SitezyCard>
+            <div className="flex flex-col gap-2 border-b border-[var(--border-soft)] px-5 pb-5 pt-1 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">AI Knowledge Base</h2>
+                <p className="text-[13px] leading-6 text-[var(--text-secondary)]">
+                  Accepted site generations indexed for RAG retrieval. Export as JSONL for fine-tuning.
+                </p>
+              </div>
+              <a
+                href="/api/admin/training-data?format=jsonl&minQuality=0.70"
+                download
+                className="mt-1 inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-2)]"
+              >
+                Export JSONL
+              </a>
+            </div>
+            <div className="px-5 py-4 text-[13px] text-[var(--text-secondary)]">
+              <p>
+                Export includes anonymised brief + generation plan pairs for sites with quality ≥ 0.70 and structural retention ≥ 0.65.
+                Use{" "}
+                <code className="rounded bg-[var(--surface-3)] px-1.5 py-0.5 font-mono text-[12px]">
+                  /api/admin/training-data?format=stats
+                </code>{" "}
+                for a JSON breakdown by industry.
+              </p>
+            </div>
+          </SitezyCard>
+        </div>
         </div>
       </main>
     </div>

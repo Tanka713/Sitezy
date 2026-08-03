@@ -1,25 +1,7 @@
-import { API_RATE_LIMIT_001, createAppError } from "@/lib/errors";
+import { API_BILLING_001, createAppError } from "@/lib/errors";
+import { getAIUsageCost, getRemainingCredits, type AIUsageAction } from "@/lib/ai-usage";
 import { readUserSettings, upsertUserSettings } from "@/lib/server/user-settings";
 import { getSupportEmail } from "@/lib/server/launch";
-
-export type AIUsageAction =
-  | "blueprint"
-  | "generate-page"
-  | "add-page"
-  | "regenerate-section"
-  | "insert-block"
-  | "assist"
-  | "intelligence";
-
-const ACTION_COSTS: Record<AIUsageAction, number> = {
-  blueprint: 20,
-  "generate-page": 80,
-  "add-page": 45,
-  "regenerate-section": 24,
-  "insert-block": 16,
-  assist: 8,
-  intelligence: 6,
-};
 
 export async function consumeAIUsageCredits(
   userId: string,
@@ -27,12 +9,12 @@ export async function consumeAIUsageCredits(
   options?: { admin?: boolean }
 ) {
   const current = await readUserSettings(userId, options);
-  const cost = ACTION_COSTS[action];
+  const cost = getAIUsageCost(action);
   const nextUsage = current.billing.tokenUsage + cost;
 
   if (nextUsage > current.billing.tokenLimit) {
     throw createAppError({
-      code: API_RATE_LIMIT_001,
+      code: API_BILLING_001,
       devMessage: `AI usage limit reached for user ${userId} on action ${action}`,
       userMessage: `This beta account has reached its AI usage allowance. Contact ${getSupportEmail()} if you need more room.`,
       severity: "warn",
@@ -57,6 +39,6 @@ export async function consumeAIUsageCredits(
     cost,
     usage: next.billing.tokenUsage,
     limit: next.billing.tokenLimit,
-    remaining: Math.max(0, next.billing.tokenLimit - next.billing.tokenUsage),
+    remaining: getRemainingCredits(next.billing.tokenUsage, next.billing.tokenLimit),
   };
 }

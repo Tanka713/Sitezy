@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, LogOut, MonitorSmartphone, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { resetSignedOutUserSettings } from "@/lib/settings";
-import { isValidPhoneDigits, normalizePhoneForMfa, normalizePhoneForStorage, phoneCountryCodes, splitStoredPhoneNumber } from "@/lib/phone";
+import {
+  isValidPhoneDigits,
+  normalizePhoneForMfa,
+  normalizePhoneForStorage,
+  phoneCountryCodes,
+  splitStoredPhoneNumber,
+} from "@/lib/phone";
 import { useAppStore } from "@/lib/store";
 import type { PhoneOtpStatus, UserAccountProfile } from "@/types";
 import {
@@ -12,7 +17,6 @@ import {
   AUTH_MFA_002,
   AUTH_MFA_003,
   AUTH_MFA_004,
-  AUTH_REQUIRED_001,
   createAppError,
   logAppError,
   normalizeError,
@@ -27,7 +31,6 @@ import {
   SettingsRow,
   SettingsSecondaryAction,
   SettingsSelect,
-  SettingsStack,
   SettingsStatus,
 } from "../ui";
 
@@ -43,20 +46,18 @@ type MfaState = {
   nextLevel: AssuranceLevel;
 };
 
-function browserLabel() {
-  if (typeof navigator === "undefined") return "Current browser session";
-  const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes("chrome")) return "Chrome session";
-  if (ua.includes("safari") && !ua.includes("chrome")) return "Safari session";
-  if (ua.includes("firefox")) return "Firefox session";
-  if (ua.includes("edg")) return "Edge session";
-  return "Current browser session";
-}
-
-function mapMfaError(error: unknown, fallbackCode: typeof AUTH_MFA_001 | typeof AUTH_MFA_002 | typeof AUTH_MFA_003 | typeof AUTH_MFA_004, action: string) {
+function mapMfaError(
+  error: unknown,
+  fallbackCode: typeof AUTH_MFA_001 | typeof AUTH_MFA_002 | typeof AUTH_MFA_003 | typeof AUTH_MFA_004,
+  action: string
+) {
   const maybe = (error ?? {}) as { code?: string; message?: string };
 
-  if (maybe.code === "mfa_phone_enroll_not_enabled" || maybe.code === "mfa_phone_verify_not_enabled" || maybe.code === "phone_provider_disabled") {
+  if (
+    maybe.code === "mfa_phone_enroll_not_enabled" ||
+    maybe.code === "mfa_phone_verify_not_enabled" ||
+    maybe.code === "phone_provider_disabled"
+  ) {
     return createAppError({
       code: fallbackCode,
       devMessage: `Phone MFA is not enabled in Supabase during ${action}: ${maybe.message ?? "unknown error"}`,
@@ -78,7 +79,11 @@ function mapMfaError(error: unknown, fallbackCode: typeof AUTH_MFA_001 | typeof 
     });
   }
 
-  if (maybe.code === "mfa_verification_failed" || maybe.code === "mfa_verification_rejected" || maybe.code === "otp_expired") {
+  if (
+    maybe.code === "mfa_verification_failed" ||
+    maybe.code === "mfa_verification_rejected" ||
+    maybe.code === "otp_expired"
+  ) {
     return createAppError({
       code: AUTH_MFA_003,
       devMessage: `Phone MFA verification failed during ${action}: ${maybe.message ?? "unknown error"}`,
@@ -103,7 +108,7 @@ function mapMfaError(error: unknown, fallbackCode: typeof AUTH_MFA_001 | typeof 
   return normalizeError(error, fallbackCode, { action });
 }
 
-export function SecuritySection({
+export function AccountTwoFactorSection({
   account,
   onAccountChange,
 }: {
@@ -111,7 +116,6 @@ export function SecuritySection({
   onAccountChange: (next: UserAccountProfile) => void;
 }) {
   const setApiError = useAppStore((state) => state.setApiError);
-  const [signingOutAll, setSigningOutAll] = useState(false);
   const [workingAction, setWorkingAction] = useState<null | "refresh" | "send" | "verify" | "disable">(null);
   const [status, setStatus] = useState<{ tone: "success" | "error" | "muted"; message: string } | null>(null);
   const [otpCode, setOtpCode] = useState("");
@@ -119,7 +123,6 @@ export function SecuritySection({
   const [pendingChallengeId, setPendingChallengeId] = useState<string | null>(null);
   const [pendingIntent, setPendingIntent] = useState<PendingIntent | null>(null);
   const [pendingPhoneLabel, setPendingPhoneLabel] = useState<string | null>(null);
-
   const initialPhone = useMemo(() => splitStoredPhoneNumber(account.phoneNumber), [account.phoneNumber]);
   const [phoneCountryCode, setPhoneCountryCode] = useState(account.phoneCountryCode ?? initialPhone.countryCode);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone.localNumber);
@@ -131,7 +134,6 @@ export function SecuritySection({
     currentLevel: null,
     nextLevel: null,
   });
-  const sessionName = useMemo(() => browserLabel(), []);
   const storedPhone = normalizePhoneForStorage(phoneCountryCode, phoneNumber);
 
   useEffect(() => {
@@ -148,13 +150,8 @@ export function SecuritySection({
     setWorkingAction((current) => current ?? "refresh");
     try {
       const supabase = getSupabaseBrowserClient();
-      const [
-        { data: factorsData, error: factorsError },
-        { data: assuranceData, error: assuranceError },
-      ] = await Promise.all([
-        supabase.auth.mfa.listFactors(),
-        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-      ]);
+      const [{ data: factorsData, error: factorsError }, { data: assuranceData, error: assuranceError }] =
+        await Promise.all([supabase.auth.mfa.listFactors(), supabase.auth.mfa.getAuthenticatorAssuranceLevel()]);
 
       if (factorsError) throw factorsError;
       if (assuranceError) throw assuranceError;
@@ -215,7 +212,12 @@ export function SecuritySection({
     });
   }
 
-  async function createChallengeForFactor(factorId: string, intent: PendingIntent, phoneLabel: string, successMessage: string) {
+  async function createChallengeForFactor(
+    factorId: string,
+    intent: PendingIntent,
+    phoneLabel: string,
+    successMessage: string
+  ) {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase.auth.mfa.challenge({
       factorId,
@@ -223,11 +225,14 @@ export function SecuritySection({
     });
 
     if (error || !data?.id) {
-      throw error ?? createAppError({
-        code: AUTH_MFA_002,
-        devMessage: `Missing challenge response for factor ${factorId}`,
-        severity: "error",
-      });
+      throw (
+        error ??
+        createAppError({
+          code: AUTH_MFA_002,
+          devMessage: `Missing challenge response for factor ${factorId}`,
+          severity: "error",
+        })
+      );
     }
 
     setPendingFactorId(factorId);
@@ -271,11 +276,14 @@ export function SecuritySection({
       });
 
       if (error || !data?.id) {
-        throw error ?? createAppError({
-          code: AUTH_MFA_001,
-          devMessage: `Missing phone MFA enroll response for ${mfaPhone}`,
-          severity: "error",
-        });
+        throw (
+          error ??
+          createAppError({
+            code: AUTH_MFA_001,
+            devMessage: `Missing phone MFA enroll response for ${mfaPhone}`,
+            severity: "error",
+          })
+        );
       }
 
       await syncPhoneMetadata("pending_setup");
@@ -409,59 +417,12 @@ export function SecuritySection({
     }
   }
 
-  async function handleSignOutAll() {
-    setSigningOutAll(true);
-    setStatus(null);
-    try {
-      const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.auth.signOut({ scope: "global" });
-      if (error) throw error;
-      resetSignedOutUserSettings();
-      window.location.assign("/login");
-    } catch (error) {
-      const appErr = normalizeError(error, AUTH_REQUIRED_001, { action: "signOutAllSessions" });
-      logAppError(appErr);
-      setApiError({ message: appErr.userMessage, requestId: null, code: appErr.code });
-      setStatus({
-        tone: "error",
-        message: appErr.userMessage,
-      });
-      setSigningOutAll(false);
-    }
-  }
-
   const hasPendingCode = Boolean(pendingFactorId && pendingChallengeId);
   const sessionNeedsStepUp = mfaState.enabled && mfaState.currentLevel !== "aal2";
 
   return (
-    <SettingsStack>
+    <div data-settings-anchor="mobile-2fa">
       {status ? <SettingsStatus tone={status.tone}>{status.message}</SettingsStatus> : null}
-
-      <SettingsGroup title="Active sessions" body="Keep control of your current browser session and sign every device out when needed.">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--border-soft)] bg-[var(--surface-4)] text-[var(--fg-soft)]">
-                <MonitorSmartphone size={16} />
-              </div>
-              <div>
-                <p className="text-[14px] font-semibold text-[var(--text-primary)]">{sessionName}</p>
-                <p className="mt-1 text-[13px] text-[var(--text-secondary)]">{account.email}</p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[rgba(49,196,141,0.2)] bg-[rgba(49,196,141,0.1)] px-3 py-1.5 text-[12px] font-medium text-[var(--success-fg)]">
-              Current session
-            </span>
-          </div>
-
-          <SettingsActionRow>
-            <SettingsSecondaryAction type="button" onClick={() => void handleSignOutAll()} disabled={signingOutAll}>
-              {signingOutAll ? <Loader2 size={14} className="spin" /> : <LogOut size={14} />}
-              Logout from all devices
-            </SettingsSecondaryAction>
-          </SettingsActionRow>
-        </div>
-      </SettingsGroup>
 
       <SettingsGroup title="Mobile 2FA" body="Use a verification code sent to your phone as the second step for sensitive account access.">
         <div className="space-y-4">
@@ -470,7 +431,7 @@ export function SecuritySection({
             body={
               mfaState.enabled
                 ? sessionNeedsStepUp
-                  ? "Two-factor authentication is enabled. Verify this session with a mobile code before making security changes."
+                  ? "Two-factor authentication is enabled. Verify this session with a mobile code before making 2FA changes."
                   : "This account is protected with a verified mobile factor."
                 : "Add a mobile number and confirm the code from Supabase SMS to enable 2FA."
             }
@@ -492,7 +453,7 @@ export function SecuritySection({
                   <div className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--border-soft)] bg-[var(--surface-5)] text-[var(--fg-soft)]">
                     <ShieldCheck size={16} />
                   </div>
-                <div className="space-y-1">
+                  <div className="space-y-1">
                     <p className="text-[14px] font-semibold text-[var(--text-primary)]">
                       {account.phoneNumber ?? pendingPhoneLabel ?? "Phone factor verified"}
                     </p>
@@ -506,7 +467,11 @@ export function SecuritySection({
 
                 <SettingsActionRow>
                   {sessionNeedsStepUp ? (
-                    <SettingsPrimaryAction type="button" onClick={() => void handleVerifySession()} disabled={workingAction !== null}>
+                    <SettingsPrimaryAction
+                      type="button"
+                      onClick={() => void handleVerifySession()}
+                      disabled={workingAction !== null}
+                    >
                       {workingAction === "send" ? <Loader2 size={14} className="spin" /> : <Smartphone size={14} />}
                       Verify this session
                     </SettingsPrimaryAction>
@@ -552,7 +517,11 @@ export function SecuritySection({
                 </SettingsGrid>
 
                 <SettingsActionRow>
-                  <SettingsPrimaryAction type="button" onClick={() => void handleStartSetup()} disabled={workingAction !== null}>
+                  <SettingsPrimaryAction
+                    type="button"
+                    onClick={() => void handleStartSetup()}
+                    disabled={workingAction !== null}
+                  >
                     {workingAction === "send" ? <Loader2 size={14} className="spin" /> : <Smartphone size={14} />}
                     Send verification code
                   </SettingsPrimaryAction>
@@ -582,7 +551,11 @@ export function SecuritySection({
                 </SettingsField>
 
                 <SettingsActionRow>
-                  <SettingsPrimaryAction type="button" onClick={() => void handleVerifyCode()} disabled={workingAction !== null}>
+                  <SettingsPrimaryAction
+                    type="button"
+                    onClick={() => void handleVerifyCode()}
+                    disabled={workingAction !== null}
+                  >
                     {workingAction === "verify" ? <Loader2 size={14} className="spin" /> : <ShieldCheck size={14} />}
                     Verify code
                   </SettingsPrimaryAction>
@@ -600,6 +573,6 @@ export function SecuritySection({
           ) : null}
         </div>
       </SettingsGroup>
-    </SettingsStack>
+    </div>
   );
 }

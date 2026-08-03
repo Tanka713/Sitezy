@@ -5,6 +5,7 @@ create table if not exists public.projects (
   brief_json jsonb not null,
   blueprint_json jsonb null,
   seo_json jsonb not null default '{}'::jsonb,
+  integration_settings_json jsonb not null default '{}'::jsonb,
   status text not null,
   editor_state_json jsonb null,
   ai_chats_json jsonb null,
@@ -43,6 +44,92 @@ create table if not exists public.files (
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   settings_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ai_learning_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  profile_json jsonb not null default '{}'::jsonb,
+  sample_count integer not null default 0,
+  confidence numeric not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ai_generation_runs (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  project_id uuid null references public.projects(id) on delete cascade,
+  kind text not null default 'blueprint',
+  brief_fingerprint text not null,
+  model text not null,
+  adaptive_enabled boolean not null default true,
+  preference_snapshot_json jsonb null,
+  applied_overrides_json jsonb not null default '{}'::jsonb,
+  profile_snapshot_json jsonb null,
+  summary_json jsonb not null default '{}'::jsonb,
+  quality_score numeric null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint ai_generation_runs_kind_check check (kind in ('blueprint', 'page', 'section'))
+);
+
+create table if not exists public.ai_learning_events (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  project_id uuid null references public.projects(id) on delete cascade,
+  generation_run_id uuid null references public.ai_generation_runs(id) on delete set null,
+  event_type text not null,
+  preference_snapshot_json jsonb null,
+  metadata_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint ai_learning_events_type_check check (
+    event_type in (
+      'project_published',
+      'site_regenerated',
+      'section_regenerated',
+      'explicit_positive',
+      'explicit_negative',
+      'section_edited',
+      'section_deleted',
+      'section_reordered'
+    )
+  )
+);
+
+create table if not exists public.project_lead_submissions (
+  id uuid primary key,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null,
+  page_path text not null default '/',
+  form_id text null,
+  name text null,
+  email text null,
+  message text null,
+  fields_json jsonb not null default '{}'::jsonb,
+  notification_email text null,
+  notification_delivery_status text not null default 'not_requested',
+  notification_error text null,
+  notified_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint project_lead_submissions_kind_check check (kind in ('contact', 'newsletter')),
+  constraint project_lead_submissions_notification_delivery_status_check check (
+    notification_delivery_status in ('sent', 'failed', 'not_requested')
+  )
+);
+
+create table if not exists public.project_newsletter_subscribers (
+  id uuid primary key,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  email text not null,
+  name text null,
+  source_submission_id uuid null references public.project_lead_submissions(id) on delete set null,
+  subscribed_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -230,6 +317,19 @@ create table if not exists public.cms_entries (
 create index if not exists idx_pages_project_id on public.pages(project_id, sort_order);
 create index if not exists idx_files_project_id on public.files(project_id, sort_order);
 create index if not exists idx_user_settings_updated_at on public.user_settings(updated_at desc);
+create index if not exists idx_ai_generation_runs_user_id on public.ai_generation_runs(user_id, created_at desc);
+create index if not exists idx_ai_generation_runs_project_id on public.ai_generation_runs(project_id, created_at desc);
+create index if not exists idx_ai_learning_events_user_id on public.ai_learning_events(user_id, created_at desc);
+create index if not exists idx_ai_learning_events_project_id on public.ai_learning_events(project_id, created_at desc);
+create index if not exists idx_ai_learning_events_run_type_created on public.ai_learning_events(generation_run_id, event_type, created_at desc);
+create index if not exists idx_ai_learning_profiles_confidence on public.ai_learning_profiles(confidence desc, updated_at desc);
+create index if not exists idx_project_lead_submissions_project_id on public.project_lead_submissions(project_id, created_at desc);
+create index if not exists idx_project_lead_submissions_user_id on public.project_lead_submissions(user_id, created_at desc);
+create index if not exists idx_project_lead_submissions_kind on public.project_lead_submissions(project_id, kind, created_at desc);
+create index if not exists idx_project_newsletter_subscribers_project_id on public.project_newsletter_subscribers(project_id, subscribed_at desc);
+create index if not exists idx_project_newsletter_subscribers_user_id on public.project_newsletter_subscribers(user_id, subscribed_at desc);
+create unique index if not exists idx_project_newsletter_subscribers_project_email_lower
+  on public.project_newsletter_subscribers(project_id, lower(email));
 create index if not exists idx_support_requests_user_id on public.support_requests(user_id, created_at desc);
 create unique index if not exists idx_support_requests_ticket_number on public.support_requests(ticket_number);
 create index if not exists idx_support_request_replies_request_id on public.support_request_replies(request_id, created_at asc);
@@ -301,6 +401,7 @@ begin
     brief_json,
     blueprint_json,
     seo_json,
+    integration_settings_json,
     status,
     editor_state_json,
     ai_chats_json,
@@ -314,6 +415,7 @@ begin
     coalesce(p_project->'brief_json', '{}'::jsonb),
     p_project->'blueprint_json',
     coalesce(p_project->'seo_json', '{}'::jsonb),
+    coalesce(p_project->'integration_settings_json', '{}'::jsonb),
     coalesce(nullif(p_project->>'status', ''), 'draft'),
     coalesce(p_editor_state, '{}'::jsonb),
     coalesce(p_ai_chats, '[]'::jsonb),
@@ -326,6 +428,7 @@ begin
     brief_json = excluded.brief_json,
     blueprint_json = excluded.blueprint_json,
     seo_json = excluded.seo_json,
+    integration_settings_json = excluded.integration_settings_json,
     status = excluded.status,
     editor_state_json = excluded.editor_state_json,
     ai_chats_json = excluded.ai_chats_json,
@@ -437,6 +540,11 @@ alter table public.projects enable row level security;
 alter table public.pages enable row level security;
 alter table public.files enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.ai_learning_profiles enable row level security;
+alter table public.ai_generation_runs enable row level security;
+alter table public.ai_learning_events enable row level security;
+alter table public.project_lead_submissions enable row level security;
+alter table public.project_newsletter_subscribers enable row level security;
 alter table public.support_requests enable row level security;
 alter table public.support_request_replies enable row level security;
 alter table public.beta_access enable row level security;
@@ -453,6 +561,18 @@ drop policy if exists "projects_select_own" on public.projects;
 drop policy if exists "projects_insert_own" on public.projects;
 drop policy if exists "projects_update_own" on public.projects;
 drop policy if exists "projects_delete_own" on public.projects;
+drop policy if exists "ai_learning_profiles_select_own" on public.ai_learning_profiles;
+drop policy if exists "ai_learning_profiles_insert_own" on public.ai_learning_profiles;
+drop policy if exists "ai_learning_profiles_update_own" on public.ai_learning_profiles;
+drop policy if exists "ai_learning_profiles_delete_own" on public.ai_learning_profiles;
+drop policy if exists "ai_generation_runs_select_own" on public.ai_generation_runs;
+drop policy if exists "ai_generation_runs_insert_own" on public.ai_generation_runs;
+drop policy if exists "ai_generation_runs_update_own" on public.ai_generation_runs;
+drop policy if exists "ai_generation_runs_delete_own" on public.ai_generation_runs;
+drop policy if exists "ai_learning_events_select_own" on public.ai_learning_events;
+drop policy if exists "ai_learning_events_insert_own" on public.ai_learning_events;
+drop policy if exists "ai_learning_events_update_own" on public.ai_learning_events;
+drop policy if exists "ai_learning_events_delete_own" on public.ai_learning_events;
 
 create policy "projects_select_own" on public.projects
   for select to authenticated
@@ -468,6 +588,57 @@ create policy "projects_update_own" on public.projects
   with check (user_id = auth.uid());
 
 create policy "projects_delete_own" on public.projects
+  for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_learning_profiles_select_own" on public.ai_learning_profiles
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_learning_profiles_insert_own" on public.ai_learning_profiles
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "ai_learning_profiles_update_own" on public.ai_learning_profiles
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "ai_learning_profiles_delete_own" on public.ai_learning_profiles
+  for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_generation_runs_select_own" on public.ai_generation_runs
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_generation_runs_insert_own" on public.ai_generation_runs
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "ai_generation_runs_update_own" on public.ai_generation_runs
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "ai_generation_runs_delete_own" on public.ai_generation_runs
+  for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_learning_events_select_own" on public.ai_learning_events
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "ai_learning_events_insert_own" on public.ai_learning_events
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "ai_learning_events_update_own" on public.ai_learning_events
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "ai_learning_events_delete_own" on public.ai_learning_events
   for delete to authenticated
   using (user_id = auth.uid());
 
@@ -536,6 +707,14 @@ drop policy if exists "user_settings_select_own" on public.user_settings;
 drop policy if exists "user_settings_insert_own" on public.user_settings;
 drop policy if exists "user_settings_update_own" on public.user_settings;
 drop policy if exists "user_settings_delete_own" on public.user_settings;
+drop policy if exists "project_lead_submissions_select_own" on public.project_lead_submissions;
+drop policy if exists "project_lead_submissions_insert_own" on public.project_lead_submissions;
+drop policy if exists "project_lead_submissions_update_own" on public.project_lead_submissions;
+drop policy if exists "project_lead_submissions_delete_own" on public.project_lead_submissions;
+drop policy if exists "project_newsletter_subscribers_select_own" on public.project_newsletter_subscribers;
+drop policy if exists "project_newsletter_subscribers_insert_own" on public.project_newsletter_subscribers;
+drop policy if exists "project_newsletter_subscribers_update_own" on public.project_newsletter_subscribers;
+drop policy if exists "project_newsletter_subscribers_delete_own" on public.project_newsletter_subscribers;
 drop policy if exists "support_requests_select_own" on public.support_requests;
 drop policy if exists "support_requests_insert_own" on public.support_requests;
 drop policy if exists "support_requests_update_own" on public.support_requests;
@@ -626,6 +805,40 @@ create policy "files_delete_own" on public.files
         and projects.user_id = auth.uid()
     )
   );
+
+create policy "project_lead_submissions_select_own" on public.project_lead_submissions
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "project_lead_submissions_insert_own" on public.project_lead_submissions
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "project_lead_submissions_update_own" on public.project_lead_submissions
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "project_lead_submissions_delete_own" on public.project_lead_submissions
+  for delete to authenticated
+  using (user_id = auth.uid());
+
+create policy "project_newsletter_subscribers_select_own" on public.project_newsletter_subscribers
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "project_newsletter_subscribers_insert_own" on public.project_newsletter_subscribers
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "project_newsletter_subscribers_update_own" on public.project_newsletter_subscribers
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "project_newsletter_subscribers_delete_own" on public.project_newsletter_subscribers
+  for delete to authenticated
+  using (user_id = auth.uid());
 
 create policy "user_settings_select_own" on public.user_settings
   for select to authenticated
@@ -807,3 +1020,104 @@ create policy "cms_entries_update_own" on public.cms_entries
 create policy "cms_entries_delete_own" on public.cms_entries
   for delete to authenticated
   using (user_id = auth.uid());
+
+-- ============================================================
+-- Self-Learning Agent: knowledge base and pattern tables
+-- ============================================================
+
+create table if not exists public.ai_section_edits (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete cascade,
+  generation_run_id uuid null references public.ai_generation_runs(id) on delete set null,
+  section_id text not null,
+  section_type text not null,
+  edit_type text not null check (edit_type in ('style', 'content', 'structure', 'delete', 'reorder')),
+  edit_distance integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ai_section_edits_user on public.ai_section_edits(user_id, created_at desc);
+create index if not exists idx_ai_section_edits_project on public.ai_section_edits(project_id);
+
+alter table public.ai_section_edits enable row level security;
+
+create policy "ai_section_edits_select_own" on public.ai_section_edits
+  for select to authenticated using (user_id = auth.uid());
+
+create policy "ai_section_edits_insert_own" on public.ai_section_edits
+  for insert to authenticated with check (user_id = auth.uid());
+
+-- Successful generation examples for RAG retrieval
+create table if not exists public.site_generation_examples (
+  id uuid primary key default gen_random_uuid(),
+  generation_run_id uuid null references public.ai_generation_runs(id) on delete set null,
+  industry text not null,
+  business_type text not null,
+  goals_text text not null,
+  tone text not null,
+  quality_score numeric not null,
+  structural_retention numeric not null,
+  generation_plan_json jsonb not null,
+  section_types_accepted text[] not null default '{}',
+  design_style text null,
+  color_approach text null,
+  layout_density text null,
+  created_at timestamptz not null default now(),
+  search_vector tsvector generated always as (
+    to_tsvector('english', coalesce(industry, '') || ' ' || coalesce(business_type, '') || ' ' || coalesce(goals_text, '') || ' ' || coalesce(tone, ''))
+  ) stored
+);
+
+create index if not exists idx_site_generation_examples_search on public.site_generation_examples using gin(search_vector);
+create index if not exists idx_site_generation_examples_quality on public.site_generation_examples(quality_score desc);
+create index if not exists idx_site_generation_examples_industry on public.site_generation_examples(industry, quality_score desc);
+
+-- No user-level RLS — examples are anonymized and globally shared (admin-only write via service role)
+alter table public.site_generation_examples enable row level security;
+
+create policy "site_generation_examples_select_all" on public.site_generation_examples
+  for select to authenticated using (true);
+
+-- Extracted industry-level patterns
+create table if not exists public.ai_industry_patterns (
+  id uuid primary key default gen_random_uuid(),
+  industry text not null unique,
+  pattern_json jsonb not null,
+  sample_count integer not null default 0,
+  confidence_score numeric not null default 0,
+  extracted_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_ai_industry_patterns_confidence on public.ai_industry_patterns(confidence_score desc);
+
+alter table public.ai_industry_patterns enable row level security;
+
+create policy "ai_industry_patterns_select_all" on public.ai_industry_patterns
+  for select to authenticated using (true);
+
+-- Migration guards for existing databases
+do $$ begin
+  alter table public.ai_generation_runs add column if not exists quality_score numeric null;
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table public.ai_learning_events drop constraint if exists ai_learning_events_type_check;
+exception when undefined_object then null;
+end $$;
+
+alter table public.ai_learning_events
+  add constraint ai_learning_events_type_check check (
+    event_type in (
+      'project_published',
+      'site_regenerated',
+      'section_regenerated',
+      'explicit_positive',
+      'explicit_negative',
+      'section_edited',
+      'section_deleted',
+      'section_reordered'
+    )
+  );

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronRight, LogOut, Settings2, Sparkles } from "lucide-react";
+import { buildSettingsHref, buildStudioWorkspaceHref } from "@/lib/app-navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { resetSignedOutUserSettings } from "@/lib/settings";
 import type { UserAccountProfile } from "@/types";
@@ -79,16 +80,36 @@ export function UserAvatarMenu({
   className,
   compact = false,
   showStudioShortcut = true,
+  settingsReturnHref = null,
 }: {
   initialAccount?: UserAccountProfile | null;
   className?: string;
   compact?: boolean;
   showStudioShortcut?: boolean;
+  settingsReturnHref?: string | null;
 }) {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [account, setAccount] = useState<UserAccountProfile | null>(initialAccount);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const settingsHref = useMemo(() => {
+    const currentQuery = searchParams.toString();
+    const inferredReturnHref =
+      pathname && pathname !== "/settings"
+        ? `${pathname}${currentQuery ? `?${currentQuery}` : ""}`
+        : null;
+    return buildSettingsHref(settingsReturnHref ?? inferredReturnHref);
+  }, [pathname, searchParams, settingsReturnHref]);
+  const workspaceHref = useMemo(() => buildStudioWorkspaceHref(), []);
+
+  useEffect(() => {
+    router.prefetch(settingsHref);
+    if (showStudioShortcut) {
+      router.prefetch(workspaceHref);
+    }
+  }, [router, settingsHref, showStudioShortcut, workspaceHref]);
 
   useEffect(() => {
     setAccount(initialAccount);
@@ -176,7 +197,6 @@ export function UserAvatarMenu({
             <p className="truncate text-[12px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">
               {displayName}
             </p>
-            <p className="truncate text-[11px] uppercase tracking-[0.16em] text-[var(--fg-faint)]">Account</p>
           </div>
         ) : null}
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-subtle)] text-[var(--fg-faint)] transition-all group-hover:text-[var(--fg-soft)]">
@@ -190,13 +210,20 @@ export function UserAvatarMenu({
       {open ? (
         <div className="absolute right-0 top-[calc(100%+10px)] z-[220] w-[316px] overflow-hidden rounded-[28px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]">
           <div className="m-3 rounded-[22px] border border-[var(--border-soft)] bg-[var(--bg-soft)] px-4 py-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-1 shrink-0 rounded-full bg-[var(--accent-default)]" />
-              <div className="min-w-0 flex-1 py-0.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--fg-faint)]">
-                  Account
-                </p>
-                <p className="mt-1 truncate text-[18px] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+            <div className="flex items-center gap-3">
+              {account.profileImageUrl ? (
+                <img
+                  src={account.profileImageUrl}
+                  alt={displayName}
+                  className="h-12 w-12 rounded-full border border-[var(--border-soft)] object-cover"
+                />
+              ) : (
+                <span className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--accent-default)] bg-[var(--accent-default)] text-[14px] font-semibold text-[var(--text-inverse)]">
+                  {initials}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[18px] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
                   {displayName}
                 </p>
               </div>
@@ -211,7 +238,7 @@ export function UserAvatarMenu({
                 hint="Return to your projects and editor"
                 onClick={() => {
                   setOpen(false);
-                  router.push("/app");
+                  router.push(workspaceHref);
                 }}
               />
             ) : null}
@@ -222,7 +249,7 @@ export function UserAvatarMenu({
               hint="Profile, theme, and account preferences"
               onClick={() => {
                 setOpen(false);
-                router.push("/settings");
+                router.push(settingsHref);
               }}
             />
 

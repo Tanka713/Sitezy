@@ -11,7 +11,6 @@ export function useSettingsSectionAutosave<K extends keyof UserSettings>({
   onSave,
   onPreview,
   errorMessage,
-  savingMessage = "Saving changes automatically...",
   debounceMs = 700,
 }: {
   sectionKey: K;
@@ -19,7 +18,6 @@ export function useSettingsSectionAutosave<K extends keyof UserSettings>({
   onSave: (patch: Partial<UserSettings>) => Promise<void>;
   onPreview?: (patch: Partial<UserSettings>) => void;
   errorMessage: string;
-  savingMessage?: string;
   debounceMs?: number;
 }) {
   const [draft, setDraft] = useState(value);
@@ -75,7 +73,6 @@ export function useSettingsSectionAutosave<K extends keyof UserSettings>({
       return;
     }
 
-    setStatus({ tone: "muted", message: savingMessage });
     const saveVersion = ++saveVersionRef.current;
     const timer = window.setTimeout(async () => {
       const nextDraft = latestDraftRef.current;
@@ -121,7 +118,7 @@ export function useSettingsSectionAutosave<K extends keyof UserSettings>({
     }, debounceMs);
 
     return () => window.clearTimeout(timer);
-  }, [debounceMs, draftSerialized, errorMessage, onSave, savingMessage, sectionKey]);
+  }, [debounceMs, draftSerialized, errorMessage, onSave, sectionKey]);
 
   useEffect(() => {
     const flushPendingSave = () => {

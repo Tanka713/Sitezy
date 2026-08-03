@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, LifeBuoy, MessageSquareMore, Search, Sparkles, Ticket } from "lucide-react";
 import { UserAvatarMenu } from "@/components/ui/UserAvatarMenu";
 import { SitezyBadge, SitezyButton, SitezyCard, SitezyInput } from "@/components/ui/sitezy";
+import { buildSettingsHref } from "@/lib/app-navigation";
 import { formatShortDateTime, formatSupportTicketNumber } from "@/lib/utils";
 import type { SupportRequest, SupportRequestKind, SupportRequestStatus } from "@/types";
 
@@ -31,6 +32,7 @@ function replyAuthorLabel(reply: SupportRequest["replies"][number]) {
 export function SupportInboxPage({ initialRequests }: { initialRequests: SupportRequest[] }) {
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const settingsHref = buildSettingsHref("/support/inbox");
 
   const summary = useMemo(
     () => ({
@@ -65,15 +67,15 @@ export function SupportInboxPage({ initialRequests }: { initialRequests: Support
   }, [filter, initialRequests, searchQuery]);
 
   return (
-    <div className="min-h-screen">
-      <header className="sz-topbar sticky top-0 z-40">
+    <div className="sz-page-shell">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-5">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/" className="flex items-center">
               <span className="text-[15px] font-semibold tracking-[-0.03em]">Sitezy</span>
             </Link>
             <div className="hidden h-6 w-px bg-[var(--border-soft)] md:block" />
-            <Link href="/settings" className="inline-flex">
+            <Link href={settingsHref} className="inline-flex">
               <SitezyButton variant="secondary" size="sm">
                 <ArrowLeft size={14} />
                 Settings
@@ -84,18 +86,19 @@ export function SupportInboxPage({ initialRequests }: { initialRequests: Support
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/settings">
+            <Link href={settingsHref}>
               <SitezyButton variant="secondary" size="sm">
                 <MessageSquareMore size={14} />
                 New request
               </SitezyButton>
             </Link>
-            <UserAvatarMenu />
+            <UserAvatarMenu settingsReturnHref="/support/inbox" />
           </div>
         </div>
       </header>
 
-      <main className="sz-grid-shell py-8">
+      <main className="sz-page-scroll">
+        <div className="sz-grid-shell py-8">
         <div className="space-y-6">
           <SitezyCard className="p-6 md:p-7">
             <div className="space-y-5">
@@ -245,6 +248,7 @@ export function SupportInboxPage({ initialRequests }: { initialRequests: Support
               )}
             </div>
           </SitezyCard>
+        </div>
         </div>
       </main>
     </div>

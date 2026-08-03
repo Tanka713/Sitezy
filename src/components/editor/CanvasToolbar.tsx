@@ -116,15 +116,15 @@ export function CanvasToolbar({
           zIndex:     99992,
           display:    "flex",
           alignItems: "center",
-          gap:        4,
-          padding:    "4px 5px",
-          background: "linear-gradient(180deg, rgba(11,18,26,0.96), rgba(7,12,18,0.96))",
-          border:     "1px solid rgba(170,198,222,.12)",
-          borderRadius: 14,
-          boxShadow:  "0 18px 36px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.03)",
-          fontFamily: "system-ui,-apple-system,sans-serif",
-        }}
-      >
+        gap:        4,
+        padding:    "4px 5px",
+        background: "var(--surface-overlay)",
+        border:     "1px solid var(--border-softer)",
+        borderRadius: 14,
+        boxShadow:  "var(--shadow-xl), inset 0 1px 0 rgba(255,255,255,.06)",
+        fontFamily: "system-ui,-apple-system,sans-serif",
+      }}
+    >
         {node.parentNodeId && (
           <Tb onClick={() => send("select-parent")} title="Select parent  Tab">
             <CornerUpLeft size={11} />
@@ -175,9 +175,9 @@ function Tb({
   danger?: boolean; armed?: boolean; lit?: boolean; litColor?: string;
 }) {
   const [h, setH] = useState(false);
-  const bg  = armed ? "rgba(239,68,68,.16)" : lit ? `${litColor}20` : h ? (danger ? "rgba(239,68,68,.1)" : "rgba(255,255,255,.08)") : "transparent";
-  const col = armed ? "#fecaca" : lit ? litColor : h ? (danger ? "#fecaca" : "#fff") : danger ? "rgba(254,202,202,.7)" : "rgba(255,255,255,.54)";
-  const bdr = (armed || h || lit) ? (danger ? "rgba(239,68,68,.22)" : "rgba(255,255,255,.1)") : "transparent";
+  const bg  = armed ? "rgba(240,106,116,.12)" : lit ? `${litColor}20` : h ? (danger ? "rgba(240,106,116,.08)" : "var(--surface-4)") : "transparent";
+  const col = armed ? "var(--danger-fg)" : lit ? litColor : h ? (danger ? "var(--danger-fg)" : "var(--text-primary)") : danger ? "var(--danger-fg)" : "var(--text-secondary)";
+  const bdr = armed || h || lit ? (danger ? "rgba(240,106,116,.22)" : "var(--border-soft)") : "transparent";
 
   return (
     <button
@@ -202,5 +202,5 @@ function Tb({
 }
 
 function Div() {
-  return <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.08)", margin: "0 1px", flexShrink: 0 }} />;
+  return <div style={{ width: 1, height: 16, background: "var(--border-soft)", margin: "0 1px", flexShrink: 0 }} />;
 }

@@ -1032,7 +1032,10 @@ function groupsFromNode(node: CanvasNodeInfo): Set<InspectorGroupKey> {
 
   if (node.logoCollectionNodeId) groups.add("content");
   if (node.collectionNodeId) groups.add("content");
-  if ((node.editableText || hasEditableText || node.isBtn || node.tag === "a") && !node.isInput) groups.add("content");
+  // Containers (nav bars, wrappers, etc.) should NOT get a text editor — only their child elements should.
+  // editableText on a container is scraped from the first text child's innerText, which concatenates all
+  // descendant text and causes the "JFD JUKEBOX JUNCTION HOME RESERVE NOW" merge bug when applied.
+  if ((node.editableText || hasEditableText || node.isBtn || node.tag === "a") && !node.isInput && !node.isContainer) groups.add("content");
   if (hasEditableText && !node.logoCollectionNodeId) groups.add("typography");
   if (node.isImg) groups.add("image");
   if (node.isSvg) groups.add("icon");

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     await consumeAIUsageCredits(user.id, "blueprint");
 
-    const blueprint = await generateBlueprint(brief).catch((err) => {
+    const blueprint = await generateBlueprint(brief, { userId: user.id }).catch((err) => {
       throw createAppError({
         code: API_GENERATE_001,
         devMessage: `generateBlueprint failed: ${err instanceof Error ? err.message : String(err)}`,

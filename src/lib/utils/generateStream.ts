@@ -3,10 +3,13 @@ import {
   API_GENERATE_002,
   API_RESPONSE_001,
   API_TIMEOUT_001,
+  NETWORK_003,
   createAppError,
   type ErrorCode,
 } from "@/lib/errors";
 import type { PageSection } from "@/types";
+
+export const PAGE_GENERATION_TIMEOUT_MS = 300_000;
 
 interface JsonErrorPayload {
   error?: string;
@@ -31,10 +34,23 @@ function resolveCode(status: number, code?: string): ErrorCode {
 export async function streamGeneratePage(
   body: Record<string, unknown>,
   onChars: (count: number) => void,
-  timeoutMs = 180_000
+  timeoutMs = PAGE_GENERATION_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<{ html: string; sections: PageSection[] }> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const handleExternalAbort = () => controller.abort(signal?.reason);
+
+  if (signal?.aborted) {
+    controller.abort(signal.reason);
+  } else if (signal) {
+    signal.addEventListener("abort", handleExternalAbort, { once: true });
+  }
+
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const res = await fetch("/api/generate", {
@@ -106,6 +122,15 @@ export async function streamGeneratePage(
     return result;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (signal?.aborted && !timedOut) {
+        throw createAppError({
+          code: NETWORK_003,
+          devMessage: "Generate request was cancelled by the user",
+          severity: "warn",
+          cause: error,
+        });
+      }
+
       throw createAppError({
         code: API_TIMEOUT_001,
         devMessage: `Generate timed out after ${timeoutMs}ms`,
@@ -117,5 +142,8 @@ export async function streamGeneratePage(
     throw error;
   } finally {
     window.clearTimeout(timer);
+    if (signal) {
+      signal.removeEventListener("abort", handleExternalAbort);
+    }
   }
 }

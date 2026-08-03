@@ -15,7 +15,7 @@ import {
 import type { SiteBlueprint, BlueprintPage, SiteBrief } from "@/types";
 
 export const runtime   = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       page?: BlueprintPage;
       brief?: SiteBrief;
       navbarHtml?: string | null;
+      footerHtml?: string | null;
       instruction?: string | null;
     }>(req);
 
@@ -78,7 +79,10 @@ export async function POST(req: NextRequest) {
               }
             },
             body.navbarHtml ?? null,
-            body.instruction?.trim() || null
+            body.footerHtml ?? null,
+            body.instruction?.trim() || null,
+            undefined,
+            { userId: user.id }
           ).catch((err) => {
             throw createAppError({
               code: API_GENERATE_001,

@@ -25,6 +25,6 @@ export async function GET(
   }
 
   const pathname = params.slug?.length ? `/${params.slug.join("/")}` : "/";
-  const result = buildPublishedProjectHtml(resolved, pathname);
+  const result = await buildPublishedProjectHtml(resolved, pathname);
   return htmlResponse(result.html, result.status);
 }

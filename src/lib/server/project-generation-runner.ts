@@ -9,14 +9,22 @@ import type {
   VirtualFile,
 } from "@/types";
 import {
+  API_BILLING_001,
   API_GENERATE_001,
   AUTH_PERMISSION_001,
   DB_READ_002,
+  STATE_INIT_001,
   createAppError,
   normalizeError,
+  type ErrorCode,
 } from "@/lib/errors";
+import { parseApiError } from "@/lib/ai/parseApiError";
 import { generateBlueprint, generatePage } from "@/lib/ai/service";
+import { resolveLogoUrlFromSiteBrief } from "@/lib/ai/adapters/wizardAdapter";
+import { upgradeGeneratedLeadCaptureMarkup } from "@/lib/lead-capture";
+import { normalizeProjectPageMeta } from "@/lib/project-pages";
 import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
+import { readUserSettings } from "@/lib/server/user-settings";
 import {
   completeGenerationJob,
   failGenerationJob,
@@ -25,11 +33,43 @@ import {
   updateGenerationJob,
 } from "@/lib/server/project-generation-jobs";
 import { getProjectSnapshot, saveProjectSnapshot } from "@/lib/server/project-db";
-import { extractNavbarHtml } from "@/lib/utils";
+import { extractNavbarHtml, extractFooterHtml } from "@/lib/utils";
 
 export interface ProjectGenerationStepResult {
   job: ProjectGenerationJob;
   shouldContinue: boolean;
+}
+
+// ─── Per-page retry tracking ──────────────────────────────────────────────────
+// A transient failure (rate limit, timeout, network blip) on one page must not
+// kill the whole job. Failures are counted per job+page in memory (the daemon
+// runs in-process; a process restart simply resets the budget) — a page gets
+// MAX_PAGE_ATTEMPTS tries, then is marked errored and generation CONTINUES
+// with the remaining pages. Only genuinely fatal errors fail the job outright.
+const PAGE_FAILURE_COUNTS = new Map<string, number>();
+const MAX_PAGE_ATTEMPTS = 3;
+const JOB_SCOPE_KEY = "__job__";
+const FATAL_JOB_ERROR_CODES = new Set<string>([API_BILLING_001, STATE_INIT_001, AUTH_PERMISSION_001]);
+
+function failureKey(jobId: string, scope: string): string {
+  return `${jobId}:${scope}`;
+}
+
+function recordFailure(jobId: string, scope: string): number {
+  const key = failureKey(jobId, scope);
+  const next = (PAGE_FAILURE_COUNTS.get(key) ?? 0) + 1;
+  PAGE_FAILURE_COUNTS.set(key, next);
+  return next;
+}
+
+function clearJobFailures(jobId: string) {
+  for (const key of PAGE_FAILURE_COUNTS.keys()) {
+    if (key.startsWith(`${jobId}:`)) PAGE_FAILURE_COUNTS.delete(key);
+  }
+}
+
+function retrySleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildGenerationStylesheet(blueprint: SiteBlueprint): string {
@@ -75,6 +115,13 @@ function buildPendingPages(blueprint: SiteBlueprint): ProjectPage[] {
     sections: [],
     html: "",
     status: "pending",
+    revision: 1,
+    meta: normalizeProjectPageMeta(undefined, {
+      id: page.id,
+      name: page.name,
+      slug: page.slug,
+      purpose: page.purpose,
+    }),
   }));
 }
 
@@ -95,7 +142,7 @@ function resolveBlueprintPage(project: Project, page: ProjectPage): BlueprintPag
 }
 
 function replaceLogoPlaceholders(html: string, brief: SiteBrief): string {
-  const logoUrl = brief.smartBrief?.logoUrl?.trim();
+  const logoUrl = resolveLogoUrlFromSiteBrief(brief).trim();
   if (!logoUrl || !html.includes("__LOGO__")) {
     return html;
   }
@@ -104,7 +151,7 @@ function replaceLogoPlaceholders(html: string, brief: SiteBrief): string {
 
 function normalizeGeneratedHtml(html: string, brief: SiteBrief): string {
   const fixedHrefHtml = html.replace(/href="\/\/([^"]*?)"/g, (_match, path) => `href="/${path}"`);
-  return replaceLogoPlaceholders(fixedHrefHtml, brief);
+  return upgradeGeneratedLeadCaptureMarkup(replaceLogoPlaceholders(fixedHrefHtml, brief));
 }
 
 async function saveSnapshotForJob(snapshot: ProjectSnapshot, userId: string): Promise<ProjectSnapshot> {
@@ -119,10 +166,27 @@ function cloneSnapshotWithProject(snapshot: ProjectSnapshot, project: Project): 
   };
 }
 
-async function buildBlueprintStep(snapshot: ProjectSnapshot, job: ProjectGenerationJob, workerId: string) {
+async function buildBlueprintStep(
+  snapshot: ProjectSnapshot,
+  job: ProjectGenerationJob,
+  workerId: string,
+  settings?: Awaited<ReturnType<typeof readUserSettings>> | null
+) {
   await consumeAIUsageCredits(job.userId, "blueprint", { admin: true });
 
-  const blueprint = await generateBlueprint(snapshot.project.brief);
+  // Surface the research phase so the user knows the AI is studying real-world sites
+  await updateGenerationJob(
+    job.id,
+    { progressMessage: "Researching similar sites for inspiration..." },
+    { admin: true }
+  );
+
+  const blueprint = await generateBlueprint(snapshot.project.brief, {
+    userId: job.userId,
+    projectId: job.projectId,
+    admin: true,
+    settings: settings ?? null,
+  });
   const pendingPages = buildPendingPages(blueprint);
   const now = new Date().toISOString();
   const nextProject: Project = {
@@ -210,9 +274,11 @@ export async function runProjectGenerationJobStep(
     };
   }
 
+  const userSettings = await readUserSettings(runningJob.userId, { admin: true }).catch(() => null);
+
   try {
     if (!snapshot.project.blueprint) {
-      return await buildBlueprintStep(snapshot, runningJob, workerId);
+      return await buildBlueprintStep(snapshot, runningJob, workerId, userSettings);
     }
 
     const pendingOrGenerating = snapshot.project.pages.find((page) => page.status === "pending" || page.status === "generating") ?? null;
@@ -277,14 +343,62 @@ export async function runProjectGenerationJobStep(
       currentIndex > 0
         ? extractNavbarHtml(persistedSnapshot.project.pages[0]?.html || "")
         : null;
+    const sharedFooterHtml =
+      currentIndex > 0
+        ? extractFooterHtml(persistedSnapshot.project.pages[0]?.html || "")
+        : null;
 
+    let lastSectionSaveAt = 0;
+    const SECTION_SAVE_THROTTLE_MS = 800;
     const result = await generatePage(
       persistedSnapshot.project.blueprint,
       blueprintPage,
       persistedSnapshot.project.brief,
       undefined,
       sharedNavbarHtml,
-      null
+      sharedFooterHtml,
+      null,
+      async (event) => {
+        // Save partial HTML so client polling sees sections appear progressively
+        const now = Date.now();
+        if (now - lastSectionSaveAt < SECTION_SAVE_THROTTLE_MS && event.sectionIndex < event.totalSections - 1) {
+          return; // throttle intermediate saves, always save final
+        }
+        lastSectionSaveAt = now;
+
+        try {
+          const partialHtml = normalizeGeneratedHtml(event.cumulativeHtml, persistedSnapshot.project.brief);
+          const partialPages = persistedSnapshot.project.pages.map((page) =>
+            page.id === pendingOrGenerating.id
+              ? { ...page, html: partialHtml, status: "generating" as const }
+              : page
+          );
+          const partialProject: Project = {
+            ...persistedSnapshot.project,
+            pages: partialPages,
+            status: "generating",
+            updatedAt: new Date().toISOString(),
+          };
+          void saveSnapshotForJob(cloneSnapshotWithProject(persistedSnapshot, partialProject), runningJob.userId);
+
+          void updateGenerationJob(
+            runningJob.id,
+            {
+              progressMessage: `Rendering ${event.sectionName} (${event.sectionIndex + 1}/${event.totalSections} sections)...`,
+              heartbeatAt: new Date().toISOString(),
+            },
+            { admin: true }
+          );
+        } catch {
+          // Don't fail the generation if a partial save fails
+        }
+      },
+      {
+        userId: runningJob.userId,
+        projectId: runningJob.projectId,
+        admin: true,
+        settings: userSettings,
+      }
     );
 
     const finalHtml = normalizeGeneratedHtml(result.html, persistedSnapshot.project.brief);
@@ -311,7 +425,12 @@ export async function runProjectGenerationJobStep(
     await saveSnapshotForJob(cloneSnapshotWithProject(persistedSnapshot, completedProject), runningJob.userId);
 
     if (!nextPending) {
-      const completedJob = await completeGenerationJob(runningJob.id, "Your website is ready!", { admin: true });
+      clearJobFailures(runningJob.id);
+      const erroredCount = completedPages.filter((page) => page.status === "error").length;
+      const completionMessage = erroredCount
+        ? `Your website is ready — ${doneCount} of ${completedPages.length} pages generated. Regenerate the failed ${erroredCount === 1 ? "page" : "pages"} from the editor.`
+        : "Your website is ready!";
+      const completedJob = await completeGenerationJob(runningJob.id, completionMessage, { admin: true });
       return {
         job: completedJob,
         shouldContinue: false,
@@ -337,16 +456,130 @@ export async function runProjectGenerationJobStep(
       shouldContinue: true,
     };
   } catch (error) {
-    const appError = normalizeError(error, API_GENERATE_001, {
-      jobId: runningJob.id,
-      projectId: runningJob.projectId,
-      workerId,
-    });
+    const parsedApiError = parseApiError(error);
+    const appError =
+      parsedApiError.code !== "API_UNKNOWN_001"
+        ? createAppError({
+            code: parsedApiError.code as ErrorCode,
+            devMessage: parsedApiError.message,
+            severity: parsedApiError.status === 429 ? "warn" : "error",
+            metadata: {
+              jobId: runningJob.id,
+              projectId: runningJob.projectId,
+              workerId,
+              requestId: parsedApiError.requestId,
+              status: parsedApiError.status,
+            },
+            cause: error,
+          })
+        : normalizeError(error, API_GENERATE_001, {
+            jobId: runningJob.id,
+            projectId: runningJob.projectId,
+            workerId,
+          });
 
+    const isRateLimited = parsedApiError.status === 429;
+    const fatalForJob = FATAL_JOB_ERROR_CODES.has(appError.code);
+    const failureScope = runningJob.currentPageId || JOB_SCOPE_KEY;
+    const attempts = recordFailure(runningJob.id, failureScope);
+
+    // Transient failure with retry budget left: put the page back to pending,
+    // wait out the burst (longer for rate limits), and try again next step.
+    if (!fatalForJob && attempts < MAX_PAGE_ATTEMPTS) {
+      try {
+        const latestSnapshot = await getProjectSnapshot(runningJob.projectId, runningJob.userId, { admin: true });
+        if (latestSnapshot && runningJob.currentPageId) {
+          const retryPages = latestSnapshot.project.pages.map((page) =>
+            page.id === runningJob.currentPageId && page.status === "generating"
+              ? { ...page, status: "pending" as const, error: undefined }
+              : page
+          );
+          await saveSnapshotForJob(
+            cloneSnapshotWithProject(latestSnapshot, {
+              ...latestSnapshot.project,
+              pages: retryPages,
+              updatedAt: new Date().toISOString(),
+            }),
+            runningJob.userId
+          );
+        }
+      } catch {}
+
+      await retrySleep(isRateLimited ? 20_000 : 4_000 * attempts);
+
+      const retryingJob = await updateGenerationJob(
+        runningJob.id,
+        {
+          progressMessage: isRateLimited
+            ? `Hit the AI rate limit — retrying ${runningJob.currentPageName || "this step"} (attempt ${attempts + 1}/${MAX_PAGE_ATTEMPTS})...`
+            : `Retrying ${runningJob.currentPageName || "this step"} (attempt ${attempts + 1}/${MAX_PAGE_ATTEMPTS})...`,
+          heartbeatAt: new Date().toISOString(),
+          lastError: appError.userMessage,
+          lastErrorCode: appError.code,
+        },
+        { admin: true }
+      );
+      return { job: retryingJob, shouldContinue: true };
+    }
+
+    // Retry budget exhausted for ONE page and the error isn't job-fatal:
+    // mark just that page errored and continue with the remaining pages.
+    if (!fatalForJob && runningJob.currentPageId) {
+      try {
+        const latestSnapshot = await getProjectSnapshot(runningJob.projectId, runningJob.userId, { admin: true });
+        if (latestSnapshot) {
+          const nextPages = latestSnapshot.project.pages.map((page) =>
+            page.id === runningJob.currentPageId
+              ? { ...page, status: "error" as const, error: appError.userMessage }
+              : page
+          );
+          const remaining = nextPages.filter((page) => page.status === "pending" || page.status === "generating");
+          const doneCount = nextPages.filter((page) => page.status === "done").length;
+          const skipProject: Project = {
+            ...latestSnapshot.project,
+            pages: nextPages,
+            status: remaining.length ? "generating" : doneCount ? "ready" : "error",
+            updatedAt: new Date().toISOString(),
+          };
+          await saveSnapshotForJob(cloneSnapshotWithProject(latestSnapshot, skipProject), runningJob.userId);
+
+          if (remaining.length) {
+            const skippedJob = await updateGenerationJob(
+              runningJob.id,
+              {
+                progressMessage: `Could not generate ${runningJob.currentPageName || "a page"} — continuing with the remaining pages...`,
+                currentPageId: null,
+                currentPageName: null,
+                completedPages: doneCount,
+                heartbeatAt: new Date().toISOString(),
+                lastError: appError.userMessage,
+                lastErrorCode: appError.code,
+              },
+              { admin: true }
+            );
+            return { job: skippedJob, shouldContinue: true };
+          }
+
+          if (doneCount > 0) {
+            clearJobFailures(runningJob.id);
+            const partialJob = await completeGenerationJob(
+              runningJob.id,
+              `Your website is ready — ${doneCount} of ${nextPages.length} pages generated. Regenerate the failed page from the editor.`,
+              { admin: true }
+            );
+            return { job: partialJob, shouldContinue: false };
+          }
+        }
+      } catch {}
+    }
+
+    // Fatal error (credits, configuration, auth) or nothing salvageable: fail
+    // the job and mark unfinished pages so the UI reflects what happened.
     try {
       const latestSnapshot = await getProjectSnapshot(runningJob.projectId, runningJob.userId, { admin: true });
       if (latestSnapshot) {
         const currentPageId = runningJob.currentPageId;
+        const downstreamFailureMessage = "Generation stopped before this page could be created.";
         const nextPages = latestSnapshot.project.pages.map((page) =>
           currentPageId && page.id === currentPageId
             ? {
@@ -354,13 +587,20 @@ export async function runProjectGenerationJobStep(
                 status: "error" as const,
                 error: appError.userMessage,
               }
-            : page
+            : page.status === "pending" || page.status === "generating"
+              ? {
+                  ...page,
+                  status: "error" as const,
+                  error: page.error ?? downstreamFailureMessage,
+                }
+              : page
         );
 
+        const hasGeneratedPages = nextPages.some((page) => page.status === "done" || Boolean(page.html?.trim()));
         const failedProject: Project = {
           ...latestSnapshot.project,
           pages: nextPages,
-          status: "error",
+          status: hasGeneratedPages ? "ready" : "error",
           updatedAt: new Date().toISOString(),
         };
 
@@ -368,6 +608,7 @@ export async function runProjectGenerationJobStep(
       }
     } catch {}
 
+    clearJobFailures(runningJob.id);
     const failedJob = await failGenerationJob(runningJob.id, appError.userMessage, appError.code, {
       admin: true,
     });

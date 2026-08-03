@@ -11,6 +11,14 @@ export function normalizeLaunchEmail(email?: string | null) {
   return String(email ?? "").trim().toLowerCase();
 }
 
+export function getLaunchMode(): "invite-only" | "public" {
+  return String(process.env.SITEZY_BETA_MODE ?? "")
+    .trim()
+    .toLowerCase() === "invite-only"
+    ? "invite-only"
+    : "public";
+}
+
 function parseEmailList(raw?: string | null) {
   return new Set(
     String(raw ?? "")
@@ -21,9 +29,7 @@ function parseEmailList(raw?: string | null) {
 }
 
 export function isInviteOnlyBetaEnabled() {
-  return String(process.env.SITEZY_BETA_MODE ?? "")
-    .trim()
-    .toLowerCase() === "invite-only";
+  return getLaunchMode() === "invite-only";
 }
 
 export function getSupportEmail() {
@@ -141,6 +147,7 @@ export function assertLaunchAccess(email?: string | null, record?: BetaAccessRec
 
 export function getPublicLaunchConfig() {
   return {
+    mode: getLaunchMode(),
     inviteOnlyBeta: isInviteOnlyBetaEnabled(),
     supportEmail: getSupportEmail(),
     betaDeniedMessage: getBetaDeniedMessage(),

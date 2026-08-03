@@ -215,7 +215,7 @@ export async function readUserBillingSnapshots(
       planName: settings.billing.planName,
       tokenUsage: settings.billing.tokenUsage,
       tokenLimit: settings.billing.tokenLimit,
-      remainingCredits: Math.max(0, settings.billing.tokenLimit - settings.billing.tokenUsage),
+      remainingCredits: settings.billing.remainingCredits,
     });
   }
 
@@ -225,7 +225,7 @@ export async function readUserBillingSnapshots(
         planName: defaultUserSettings.billing.planName,
         tokenUsage: defaultUserSettings.billing.tokenUsage,
         tokenLimit: defaultUserSettings.billing.tokenLimit,
-        remainingCredits: defaultUserSettings.billing.tokenLimit - defaultUserSettings.billing.tokenUsage,
+        remainingCredits: defaultUserSettings.billing.remainingCredits,
       });
     }
   }

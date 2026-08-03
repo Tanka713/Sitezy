@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, ExternalLink, Globe2, Loader2, Rocket, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, ExternalLink, Globe2, Loader2, Rocket, RotateCcw, Trash2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import type { Project, ProjectDeployment, ProjectDomain, UserSettings } from "@/types";
 import { buildDefaultProjectSeo, buildSeoBaseUrl, normalizeProjectSeo } from "@/lib/seo";
@@ -76,6 +76,7 @@ export function ExportDeploymentSection({
   const [publishing, setPublishing] = useState(false);
   const [deployments, setDeployments] = useState<ProjectDeployment[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
+  const [deploymentActionId, setDeploymentActionId] = useState<string | null>(null);
   const [domainDraft, setDomainDraft] = useState("");
   const [domainSubmitting, setDomainSubmitting] = useState(false);
   const [domainActionId, setDomainActionId] = useState<string | null>(null);
@@ -209,6 +210,9 @@ export function ExportDeploymentSection({
 
   async function refreshProjectState(projectId: string, options?: { reloadDeployments?: boolean }) {
     await hydrateProjects();
+    if (currentProjectId === projectId) {
+      await syncProjectFromServer(projectId, { preserveEditor: false, preserveHistory: true });
+    }
     if (options?.reloadDeployments) {
       await loadDeployments(projectId);
     }
@@ -372,6 +376,58 @@ export function ExportDeploymentSection({
     window.open(resolvePublishedHref(publishedSite.subdomain), "_blank", "noopener");
   }
 
+  async function handleRestoreDeployment(
+    deploymentId: string,
+    mode: "draft" | "republish",
+    versionNumber: number
+  ) {
+    if (!selectedProjectId || deploymentActionId) return;
+    const actionId = `${deploymentId}:${mode}`;
+    setDeploymentActionId(actionId);
+    setStatus(null);
+
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/deployments/${deploymentId}/restore`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      if (!res.ok) {
+        throw createAppError({
+          code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
+          devMessage: `Failed to ${mode} deployment ${deploymentId} (${res.status})`,
+          userMessage:
+            data.error ??
+            (mode === "draft"
+              ? "We couldn't restore that deployment into the current draft."
+              : "We couldn't republish that deployment right now."),
+          severity: "error",
+          metadata: { projectId: selectedProjectId, deploymentId, mode, status: res.status, code: data.code ?? null },
+        });
+      }
+
+      await refreshProjectState(selectedProjectId, { reloadDeployments: true });
+      setStatus({
+        tone: "success",
+        message:
+          mode === "draft"
+            ? `Restored version ${versionNumber} into the current draft.`
+            : `Republished version ${versionNumber} as a new live deployment.`,
+      });
+    } catch (error) {
+      const appErr = normalizeError(error, API_UNKNOWN_001, {
+        action: mode === "draft" ? "restoreDeploymentToDraft" : "republishDeployment",
+        projectId: selectedProjectId,
+        deploymentId,
+      });
+      setStatus({ tone: "error", message: `${appErr.userMessage} REF ${appErr.code}` });
+    } finally {
+      setDeploymentActionId(null);
+    }
+  }
+
   return (
     <SettingsStack>
       {status ? <SettingsStatus tone={status.tone}>{status.message}</SettingsStatus> : null}
@@ -446,6 +502,10 @@ export function ExportDeploymentSection({
               {selectedProjectName ? `Ready to export ${selectedProjectName}.` : "Select a project to export."}
             </span>
           </SettingsActionRow>
+
+          <div className="rounded-[20px] border border-amber-300/35 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-100">
+            Lead capture stays static in ZIP exports. Contact forms and newsletter signup only store data and send notifications when the project is published on Sitezy.
+          </div>
         </div>
       </SettingsGroup>
 
@@ -685,21 +745,43 @@ export function ExportDeploymentSection({
             {deployments.map((deployment) => (
               <div
                 key={deployment.id}
-                className="flex flex-col gap-3 rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-4 md:flex-row md:items-center md:justify-between"
+                className="flex flex-col gap-4 rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-4"
               >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">Version {deployment.versionNumber}</p>
-                    <SettingsStatus tone={deploymentTone(deployment.status)}>
-                      {deployment.status === "published" ? "Published" : deployment.status === "failed" ? "Failed" : "Publishing"}
-                    </SettingsStatus>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">Version {deployment.versionNumber}</p>
+                      <SettingsStatus tone={deploymentTone(deployment.status)}>
+                        {deployment.status === "published" ? "Published" : deployment.status === "failed" ? "Failed" : "Publishing"}
+                      </SettingsStatus>
+                      {deployment.sourceDeploymentId ? <SettingsStatus tone="muted">Republished snapshot</SettingsStatus> : null}
+                    </div>
+                    <p className="mt-2 text-[13px] leading-6 text-[var(--text-secondary)]">
+                      {deployment.pageCount} pages · {formatTimestamp(deployment.publishedAt || deployment.createdAt)}
+                    </p>
                   </div>
-                  <p className="mt-2 text-[13px] leading-6 text-[var(--text-secondary)]">
-                    {deployment.pageCount} pages · {formatTimestamp(deployment.publishedAt || deployment.createdAt)}
-                  </p>
+                  <div className="flex items-center gap-2 text-[12px] text-[var(--fg-muted)]">
+                    <span className="truncate">{deployment.publishedUrl}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-[12px] text-[var(--fg-muted)]">
-                  <span className="truncate">{deployment.publishedUrl}</span>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <SettingsSecondaryAction
+                    type="button"
+                    onClick={() => void handleRestoreDeployment(deployment.id, "draft", deployment.versionNumber)}
+                    disabled={Boolean(deploymentActionId) || deployment.status !== "published"}
+                  >
+                    {deploymentActionId === `${deployment.id}:draft` ? <Loader2 size={14} className="spin" /> : <RotateCcw size={14} />}
+                    Restore to draft
+                  </SettingsSecondaryAction>
+                  <SettingsSecondaryAction
+                    type="button"
+                    onClick={() => void handleRestoreDeployment(deployment.id, "republish", deployment.versionNumber)}
+                    disabled={Boolean(deploymentActionId) || deployment.status !== "published"}
+                  >
+                    {deploymentActionId === `${deployment.id}:republish` ? <Loader2 size={14} className="spin" /> : <Rocket size={14} />}
+                    Republish version
+                  </SettingsSecondaryAction>
                 </div>
               </div>
             ))}

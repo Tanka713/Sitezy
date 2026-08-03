@@ -6,7 +6,11 @@ import {
   mergeMediaAssets,
   normalizeMediaAssets,
 } from "@/lib/media/library";
+import { normalizeProjectIntegrationSettings } from "@/lib/lead-capture";
+import { normalizeProjectPageMeta } from "@/lib/project-pages";
 import { normalizeProjectSeo } from "@/lib/seo";
+import { projectHasActiveGeneration } from "@/lib/project-generation";
+import type { LocalGenerationTimingKind } from "@/lib/generation-eta";
 import {
   API_RESPONSE_001,
   API_UNKNOWN_001,
@@ -22,6 +26,7 @@ import {
 } from "@/lib/errors";
 import type {
   AIChatMessage,
+  BlueprintPage,
   EditorState,
   GenerationLogEntry,
   GenerationStatus,
@@ -29,6 +34,7 @@ import type {
   Project,
   ProjectMediaAsset,
   ProjectPage,
+  ProjectPageMeta,
   ProjectSnapshot,
   SaveState,
   SiteBlueprint,
@@ -160,6 +166,7 @@ function normalizeProject(project: Partial<Project>): Project {
     brief: project.brief ?? { siteName: "", description: "", siteType: "", tone: "Professional", pages: [], features: "" },
     blueprint: project.blueprint ?? null,
     seo: normalizeProjectSeo(project.seo, project),
+    integrationSettings: normalizeProjectIntegrationSettings(project.integrationSettings),
     pages: Array.isArray(project.pages) ? project.pages.map(normalizePage) : [],
     files: extracted.files,
     media: normalizeMediaAssets(project.media ?? extracted.media),
@@ -184,6 +191,8 @@ function normalizePage(pg: Partial<ProjectPage>): ProjectPage {
       ? pg.status
       : undefined) ?? "pending",
     error: pg.error,
+    revision: typeof pg.revision === "number" && Number.isFinite(pg.revision) ? Math.max(1, Math.trunc(pg.revision)) : 1,
+    meta: normalizeProjectPageMeta(pg.meta, pg),
   };
 }
 
@@ -265,6 +274,55 @@ function canonicalizeProjectPages(projectId: string, pages: ProjectPage[]): Proj
   });
 }
 
+function matchBlueprintPage(pages: BlueprintPage[], page: ProjectPage): BlueprintPage | undefined {
+  const normalizedName = page.name.trim().toLowerCase();
+  return pages.find(
+    (candidate) =>
+      candidate.id === page.id ||
+      candidate.slug === page.slug ||
+      candidate.name.trim().toLowerCase() === normalizedName
+  );
+}
+
+function deriveBlueprintSectionsFromProjectPage(
+  page: ProjectPage,
+  fallbackSections: string[] = []
+): string[] {
+  const derivedSections = page.sections
+    .map((section) => slugifyToken(section.type || section.name, "section"))
+    .filter(Boolean);
+
+  if (derivedSections.length > 0) return derivedSections;
+  if (fallbackSections.length > 0) return fallbackSections;
+  return ["hero", "content", "cta"];
+}
+
+function syncBlueprintPagesWithProjectPages(
+  blueprint: SiteBlueprint | null | undefined,
+  pages: ProjectPage[]
+): SiteBlueprint | null {
+  if (!blueprint) return null;
+
+  return {
+    ...blueprint,
+    pages: pages.map((page, index) => {
+      const existing = matchBlueprintPage(blueprint.pages, page);
+      const fallback = `page-${index + 1}`;
+      const name = page.name.trim() || existing?.name || `Page ${index + 1}`;
+      const slug = page.slug || existing?.slug || slugifyToken(name, fallback);
+
+      return {
+        id: page.id || existing?.id || slug,
+        name,
+        slug,
+        purpose: page.purpose || existing?.purpose || name,
+        sections: deriveBlueprintSectionsFromProjectPage(page, existing?.sections ?? []),
+        priority: existing?.priority,
+      };
+    }),
+  };
+}
+
 function canonicalizeProjectFiles(project: Project, pages: ProjectPage[]): Record<string, VirtualFile> {
   const originalPageIds = new Set(project.pages.map((page) => page.id));
   const usedIds = new Set<string>();
@@ -319,10 +377,13 @@ function recoverPersistedProject(project: Project): Project {
   const pages = hasActiveGenerationJob
     ? project.pages
     : project.pages.map((page) =>
-        page.status === "generating"
+        page.status === "pending" || page.status === "generating"
           ? {
               ...page,
-              status: page.html?.trim() ? "done" as const : "pending" as const,
+              status: page.html?.trim() ? "done" as const : "error" as const,
+              error: page.html?.trim()
+                ? undefined
+                : page.error ?? "Generation stopped before this page could be created.",
             }
           : page
       );
@@ -378,8 +439,8 @@ const defaultEditorState: EditorState = {
   previewMode: "preview",
   devicePreview: "desktop",
   isFullPreview: false,
-  leftPanelWidth: 220,
-  rightPanelWidth: 280,
+  leftPanelWidth: 248,
+  rightPanelWidth: 292,
   leftSidebarOpen: true,
   rightSidebarOpen: true,
   visualEditMode: true,
@@ -389,8 +450,36 @@ const defaultEditorState: EditorState = {
   canvasGridVisible: false,
 };
 
+function clampLeftPanelWidth(width: number) {
+  return Math.round(Math.min(420, Math.max(220, width)));
+}
+
+function clampRightPanelWidth(width: number) {
+  return Math.round(Math.min(520, Math.max(260, width)));
+}
+
+function normalizeRightPanelTab(tab: EditorState["rightPanelTab"] | "properties" | undefined): EditorState["rightPanelTab"] {
+  if (tab === "properties") return "style";
+  if (tab === "ai" || tab === "blocks" || tab === "style" || tab === "theme" || tab === "page") return tab;
+  return defaultEditorState.rightPanelTab;
+}
+
 function mergeEditorState(editorState?: Partial<EditorState> | null): EditorState {
-  return { ...defaultEditorState, ...(editorState ?? {}) };
+  const merged = { ...defaultEditorState, ...(editorState ?? {}) };
+  return {
+    ...merged,
+    leftPanelWidth: clampLeftPanelWidth(
+      typeof merged.leftPanelWidth === "number" && Number.isFinite(merged.leftPanelWidth)
+        ? merged.leftPanelWidth
+        : defaultEditorState.leftPanelWidth
+    ),
+    rightPanelWidth: clampRightPanelWidth(
+      typeof merged.rightPanelWidth === "number" && Number.isFinite(merged.rightPanelWidth)
+        ? merged.rightPanelWidth
+        : defaultEditorState.rightPanelWidth
+    ),
+    rightPanelTab: normalizeRightPanelTab((editorState as { rightPanelTab?: EditorState["rightPanelTab"] | "properties" } | null | undefined)?.rightPanelTab),
+  };
 }
 
 function normalizeEditorStateForProject(
@@ -555,6 +644,14 @@ function buildStoreApiError(error: unknown, fallbackCode: ErrorCode, metadata?: 
   };
 }
 
+async function waitForNextFrame(): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 export interface ApiError {
   message: string;
   requestId: string | null;
@@ -566,12 +663,16 @@ interface AppState {
   mediaLibrary: ProjectMediaAsset[];
   sessionUserId: string | null;
   currentProjectId: string | null;
+  openingProjectId: string | null;
   resumeProjectId: string | null;
   resumeProjectSnapshot: ProjectSnapshot | null;
   editor: EditorState;
   aiDraftPrompt: string | null;
   generationStatus: GenerationStatus;
   generationProgress: string;
+  generationTimingKind: LocalGenerationTimingKind | null;
+  generationStartedAt: number | null;
+  generationEstimateMs: number | null;
   generationLog: GenerationLogEntry[];
   aiChats: Record<string, AIChatMessage[]>;
   undoStack: Array<{ pageId: string; html: string }>;
@@ -607,7 +708,13 @@ interface AppActions {
     sections: PageSection[],
     options?: { completeGeneration?: boolean }
   ) => void;
+  setPageMeta: (pageId: string, meta: ProjectPageMeta) => void;
   setGenStatus: (status: GenerationStatus, progress?: string) => void;
+  setGenerationTiming: (timing: {
+    kind: LocalGenerationTimingKind;
+    estimateMs: number;
+    startedAt?: number | null;
+  }) => void;
   addGenLog: (msg: string, type?: GenerationLogEntry["type"]) => void;
   clearGenLog: () => void;
   selectPage: (pageId: string | null) => void;
@@ -617,6 +724,8 @@ interface AppActions {
   clearCanvasSelection: () => void;
   setLeftPanel: (tab: EditorState["leftPanelTab"]) => void;
   setRightPanel: (tab: EditorState["rightPanelTab"]) => void;
+  setLeftPanelWidth: (width: number) => void;
+  setRightPanelWidth: (width: number) => void;
   setPreviewMode: (mode: EditorState["previewMode"]) => void;
   setDevicePreview: (device: EditorState["devicePreview"]) => void;
   setFullPreview: (full: boolean) => void;
@@ -637,7 +746,7 @@ interface AppActions {
   setAiDraftPrompt: (prompt: string | null) => void;
   getCurrentProject: () => Project | null;
   getSelectedPage: () => ProjectPage | null;
-  addPage: (page: ProjectPage) => void;
+  addPage: (page: ProjectPage, options?: { select?: boolean }) => void;
   deletePage: (pageId: string) => void;
   duplicatePage: (pageId: string) => void;
   renamePage: (pageId: string, name: string) => void;
@@ -665,9 +774,19 @@ function buildProjectSnapshot(state: AppState): ProjectSnapshot | null {
   });
   return {
     project: canonicalProject,
-    editorState: normalizeEditorStateForProject(canonicalProject, state.editor),
+    editorState: normalizeEditorStateForProject(canonicalProject, state.editor, {
+      clearCanvasSelection: false,
+    }),
     aiChats: state.aiChats[canonicalProject.id] ?? [],
   };
+}
+
+function canOfferResumeProject(project?: Project | null): boolean {
+  return Boolean(project && !projectHasActiveGeneration(project));
+}
+
+function canShowResumePrompt(state: AppState): boolean {
+  return !projectHasActiveGeneration(null, state.generationStatus);
 }
 
 function getLocalProjectSnapshot(projectId: string, userId?: string | null): ProjectSnapshot | null {
@@ -756,18 +875,23 @@ function syncProjectPage(
         ? "done"
         : currentPage?.status ?? "pending");
 
-  const nextPages = project.pages.map((page) =>
-    page.id === pageId
+    const nextPages = project.pages.map((page) =>
+      page.id === pageId
       ? {
           ...page,
           html: derived.html,
           sections: derived.sections,
           status: nextPageStatus,
+          revision:
+            typeof page.revision === "number" && Number.isFinite(page.revision)
+              ? Math.max(1, Math.trunc(page.revision)) + 1
+              : 2,
         }
       : page
   );
   return {
     ...project,
+    blueprint: syncBlueprintPagesWithProjectPages(project.blueprint, nextPages),
     updatedAt: new Date().toISOString(),
     status: deriveProjectStatusFromPages(nextPages),
     pages: nextPages,
@@ -788,12 +912,16 @@ export const useAppStore = create<Store>()((set, get) => ({
   mediaLibrary: [],
   sessionUserId: null,
   currentProjectId: null,
+  openingProjectId: null,
   resumeProjectId: null,
   resumeProjectSnapshot: null,
   editor: defaultEditorState,
   aiDraftPrompt: null,
   generationStatus: "idle",
   generationProgress: "",
+  generationTimingKind: null,
+  generationStartedAt: null,
+  generationEstimateMs: null,
   generationLog: [],
   aiChats: {},
   undoStack: [],
@@ -809,11 +937,13 @@ export const useAppStore = create<Store>()((set, get) => ({
   setSessionUserId: (userId) => set({ sessionUserId: userId }),
 
   restoreLocalProject: (userId) => {
+    if (!canShowResumePrompt(get())) return false;
     const lastProjectId = readLastProjectId(userId);
     if (!lastProjectId) return false;
     const snapshot = getLocalProjectSnapshot(lastProjectId, userId);
     if (!snapshot) return false;
     const recoveredSnapshot = recoverPersistedSnapshot(snapshot);
+    if (!canOfferResumeProject(recoveredSnapshot.project)) return false;
     applySnapshot(set, get, recoveredSnapshot);
     set({
       resumeProjectId: recoveredSnapshot.project.id,
@@ -837,6 +967,7 @@ export const useAppStore = create<Store>()((set, get) => ({
   dismissResumeProject: () => {
     set({
       currentProjectId: null,
+      openingProjectId: null,
       resumeProjectId: null,
       resumeProjectSnapshot: null,
       editor: defaultEditorState,
@@ -906,12 +1037,16 @@ export const useAppStore = create<Store>()((set, get) => ({
       if (
         !get().currentProjectId
         && !get().resumeProjectId
+        && canShowResumePrompt(get())
         && lastProjectId
         && projects.some((project) => project.id === lastProjectId)
       ) {
+        const lastProject = projects.find((project) => project.id === lastProjectId) ?? null;
+        if (!canOfferResumeProject(lastProject)) return;
         const localSnapshot = getLocalProjectSnapshot(lastProjectId, get().sessionUserId);
         if (localSnapshot) {
           const recoveredSnapshot = recoverPersistedSnapshot(localSnapshot);
+          if (!canOfferResumeProject(recoveredSnapshot.project)) return;
           applySnapshot(set, get, recoveredSnapshot);
           set({
             resumeProjectId: recoveredSnapshot.project.id,
@@ -936,12 +1071,14 @@ export const useAppStore = create<Store>()((set, get) => ({
       if (
         !get().currentProjectId
         && !get().resumeProjectId
+        && canShowResumePrompt(get())
         && lastProjectId
         && projects.some((project) => project.id === lastProjectId)
       ) {
         const snapshot = getLocalProjectSnapshot(lastProjectId, get().sessionUserId);
         if (snapshot) {
           const recoveredSnapshot = recoverPersistedSnapshot(snapshot);
+          if (!canOfferResumeProject(recoveredSnapshot.project)) return;
           applySnapshot(set, get, recoveredSnapshot);
           set({
             resumeProjectId: recoveredSnapshot.project.id,
@@ -973,7 +1110,11 @@ export const useAppStore = create<Store>()((set, get) => ({
       });
 
       applySnapshot(set, get, snapshot, { makeCurrent: options?.open ?? true });
-      writeLastProjectId(snapshot.project.id, get().sessionUserId);
+      if (options?.open ?? true) {
+        writeLastProjectId(snapshot.project.id, get().sessionUserId);
+      } else {
+        set({ resumeProjectId: null, resumeProjectSnapshot: null });
+      }
       return snapshot.project;
     } catch (error) {
       const { appErr, apiError } = buildStoreApiError(error, DB_WRITE_001, {
@@ -988,8 +1129,17 @@ export const useAppStore = create<Store>()((set, get) => ({
   },
 
   openProject: async (id) => {
+    set({
+      openingProjectId: id,
+      apiError: null,
+      saveError: null,
+    });
+
     try {
+      await waitForNextFrame();
       const snapshot = await apiJson<ProjectSnapshot>(`/api/projects/${id}`);
+      if (get().openingProjectId !== id) return;
+
       const recoveredSnapshot = recoverPersistedSnapshot(snapshot);
       const legacyMedia = normalizeMediaAssets(recoveredSnapshot.project.media);
       const missingLegacy = findMissingMediaByUrl(get().mediaLibrary, legacyMedia);
@@ -1015,6 +1165,7 @@ export const useAppStore = create<Store>()((set, get) => ({
           });
       }
       writeLastProjectId(id, get().sessionUserId);
+      await waitForNextFrame();
     } catch (error) {
       const { appErr, apiError } = buildStoreApiError(error, DB_READ_001, {
         action: "openProject",
@@ -1023,6 +1174,10 @@ export const useAppStore = create<Store>()((set, get) => ({
       logAppError(appErr);
       set({ apiError, saveError: appErr.userMessage });
       throw appErr;
+    } finally {
+      if (get().openingProjectId === id) {
+        set({ openingProjectId: null });
+      }
     }
   },
 
@@ -1175,7 +1330,13 @@ export const useAppStore = create<Store>()((set, get) => ({
   },
 
   closeProject: () => {
-    set({ currentProjectId: null, editor: defaultEditorState, undoStack: [], redoStack: [] });
+    set({
+      currentProjectId: null,
+      openingProjectId: null,
+      editor: defaultEditorState,
+      undoStack: [],
+      redoStack: [],
+    });
   },
 
   saveCurrentProject: async (_opts) => {
@@ -1309,7 +1470,60 @@ export const useAppStore = create<Store>()((set, get) => ({
     markDirty(set);
   },
 
-  setGenStatus: (status, progress = "") => set({ generationStatus: status, generationProgress: progress }),
+  setPageMeta: (pageId, meta) => {
+    const currentProject = getCurrentProjectState(get());
+    if (!currentProject) return;
+    if (projectHasActiveGeneration(currentProject)) return;
+
+    const nextPages = currentProject.pages.map((page) => {
+      if (page.id !== pageId) return page;
+      const revision =
+        typeof page.revision === "number" && Number.isFinite(page.revision)
+          ? Math.max(1, Math.trunc(page.revision)) + 1
+          : 2;
+      return {
+        ...page,
+        meta: normalizeProjectPageMeta(meta, page),
+        revision,
+      };
+    });
+
+    set({
+      projects: replaceProject(get().projects, {
+        ...currentProject,
+        updatedAt: new Date().toISOString(),
+        pages: nextPages,
+      }),
+    });
+    markDirty(set);
+  },
+
+  setGenStatus: (status, progress = "") =>
+    set((state) => {
+      const shouldResetTiming = status === "idle" || status === "done" || status === "error";
+      return {
+        generationStatus: status,
+        generationProgress: progress,
+        ...(shouldResetTiming
+          ? {
+              generationTimingKind: null,
+              generationStartedAt: null,
+              generationEstimateMs: null,
+            }
+          : {
+              generationTimingKind: state.generationTimingKind,
+              generationStartedAt: state.generationStartedAt,
+              generationEstimateMs: state.generationEstimateMs,
+            }),
+      };
+    }),
+
+  setGenerationTiming: (timing) =>
+    set({
+      generationTimingKind: timing.kind,
+      generationStartedAt: timing.startedAt ?? Date.now(),
+      generationEstimateMs: timing.estimateMs,
+    }),
 
   addGenLog: (msg, type = "info") =>
     set({ generationLog: [...get().generationLog, { id: uid(), time: Date.now(), msg, type }] }),
@@ -1375,6 +1589,10 @@ export const useAppStore = create<Store>()((set, get) => ({
     }),
   setLeftPanel: (tab) => set({ editor: { ...get().editor, leftPanelTab: tab } }),
   setRightPanel: (tab) => set({ editor: { ...get().editor, rightPanelTab: tab } }),
+  setLeftPanelWidth: (width) =>
+    set({ editor: { ...get().editor, leftPanelWidth: clampLeftPanelWidth(width) } }),
+  setRightPanelWidth: (width) =>
+    set({ editor: { ...get().editor, rightPanelWidth: clampRightPanelWidth(width) } }),
   setPreviewMode: (mode) => set({ editor: { ...get().editor, previewMode: mode } }),
   setDevicePreview: (device) => set({ editor: { ...get().editor, devicePreview: device } }),
   setFullPreview: (full) => set({ editor: { ...get().editor, isFullPreview: full } }),
@@ -1389,6 +1607,7 @@ export const useAppStore = create<Store>()((set, get) => ({
   updateFileContent: (fileId, content) => {
     const currentProject = getCurrentProjectState(get());
     if (!currentProject) return;
+    if (projectHasActiveGeneration(currentProject)) return;
     const file = currentProject.files[fileId];
     const existingPage = currentProject.pages.find((page) => page.id === fileId);
     if (existingPage?.html && existingPage.html !== content) {
@@ -1427,6 +1646,7 @@ export const useAppStore = create<Store>()((set, get) => ({
     const currentProject = getCurrentProjectState(get());
     const pageId = get().editor.selectedPageId;
     if (!currentProject || !pageId) return;
+    if (projectHasActiveGeneration(currentProject)) return;
     const page = currentProject.pages.find((entry) => entry.id === pageId);
     if (!page) return;
     const definition = getBlockDefinition(blockId);
@@ -1462,6 +1682,7 @@ export const useAppStore = create<Store>()((set, get) => ({
     const currentProject = getCurrentProjectState(get());
     const last = get().undoStack.at(-1);
     if (!currentProject || !last) return;
+    if (projectHasActiveGeneration(currentProject)) return;
     const currentPage = currentProject.pages.find((page) => page.id === last.pageId);
     if (!currentPage) return;
 
@@ -1479,6 +1700,7 @@ export const useAppStore = create<Store>()((set, get) => ({
     const currentProject = getCurrentProjectState(get());
     const last = get().redoStack.at(-1);
     if (!currentProject || !last) return;
+    if (projectHasActiveGeneration(currentProject)) return;
     const currentPage = currentProject.pages.find((page) => page.id === last.pageId);
     if (!currentPage) return;
 
@@ -1514,17 +1736,21 @@ export const useAppStore = create<Store>()((set, get) => ({
     return currentProject.pages.find((page) => page.id === get().editor.selectedPageId) ?? null;
   },
 
-  addPage: (page) => {
+  addPage: (page, options) => {
     const currentProject = getCurrentProjectState(get());
     if (!currentProject) return;
     const normalized = normalizePage(page);
     const derived = derivePageStateFromHtml(normalized.html, normalized.sections);
+    const nextPage = { ...normalized, html: derived.html, sections: derived.sections };
+    const nextPages = [...currentProject.pages, nextPage];
+    const shouldSelect = options?.select ?? currentProject.pages.length === 0;
     set({
       projects: replaceProject(get().projects, {
         ...currentProject,
+        blueprint: syncBlueprintPagesWithProjectPages(currentProject.blueprint, nextPages),
         updatedAt: new Date().toISOString(),
-        pages: [...currentProject.pages, { ...normalized, html: derived.html, sections: derived.sections }],
-        status: deriveProjectStatusFromPages([...currentProject.pages, { ...normalized, html: derived.html, sections: derived.sections }]),
+        pages: nextPages,
+        status: deriveProjectStatusFromPages(nextPages),
         files: {
           ...currentProject.files,
           [normalized.id]: {
@@ -1537,7 +1763,9 @@ export const useAppStore = create<Store>()((set, get) => ({
           },
         },
       }),
-      editor: { ...get().editor, selectedPageId: normalized.id, selectedFileId: normalized.id },
+      editor: shouldSelect
+        ? { ...get().editor, selectedPageId: normalized.id, selectedFileId: normalized.id }
+        : get().editor,
     });
     markDirty(set);
   },
@@ -1552,6 +1780,7 @@ export const useAppStore = create<Store>()((set, get) => ({
     set({
       projects: replaceProject(get().projects, {
         ...currentProject,
+        blueprint: syncBlueprintPagesWithProjectPages(currentProject.blueprint, remaining),
         updatedAt: new Date().toISOString(),
         pages: remaining,
         status: deriveProjectStatusFromPages(remaining),
@@ -1573,12 +1802,14 @@ export const useAppStore = create<Store>()((set, get) => ({
     const newId = uid();
     const newSlug = `${page.slug || page.name.toLowerCase().replace(/\s+/g, "-")}-copy`;
     const newPage: ProjectPage = { ...page, id: newId, name: `${page.name} (Copy)`, slug: newSlug };
+    const nextPages = [...currentProject.pages, newPage];
 
     set({
       projects: replaceProject(get().projects, {
         ...currentProject,
+        blueprint: syncBlueprintPagesWithProjectPages(currentProject.blueprint, nextPages),
         updatedAt: new Date().toISOString(),
-        pages: [...currentProject.pages, newPage],
+        pages: nextPages,
         files: {
           ...currentProject.files,
           [newId]: {
@@ -1600,11 +1831,13 @@ export const useAppStore = create<Store>()((set, get) => ({
     const currentProject = getCurrentProjectState(get());
     if (!currentProject) return;
     const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const nextPages = currentProject.pages.map((page) => page.id === pageId ? { ...page, name, slug } : page);
     set({
       projects: replaceProject(get().projects, {
         ...currentProject,
+        blueprint: syncBlueprintPagesWithProjectPages(currentProject.blueprint, nextPages),
         updatedAt: new Date().toISOString(),
-        pages: currentProject.pages.map((page) => page.id === pageId ? { ...page, name, slug } : page),
+        pages: nextPages,
         files: currentProject.files[pageId]
           ? { ...currentProject.files, [pageId]: { ...currentProject.files[pageId], name: `${slug}.html`, path: `/pages/${slug}.html` } }
           : currentProject.files,
@@ -1696,7 +1929,9 @@ function savedPayload(snapshot: ProjectSnapshot): ProjectSnapshot {
       pages: canonicalProject.pages.map(normalizePage),
       media: [],
     },
-    editorState: normalizeEditorStateForProject(canonicalProject, snapshot.editorState),
+    editorState: normalizeEditorStateForProject(canonicalProject, snapshot.editorState, {
+      clearCanvasSelection: false,
+    }),
     aiChats: snapshot.aiChats ?? [],
   };
 }

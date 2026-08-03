@@ -30,7 +30,6 @@ export function WorkspaceSection({
     onSave,
     onPreview,
     errorMessage: "We couldn't save your workspace preferences.",
-    savingMessage: "Workspace changes are saving automatically...",
   });
 
   function updateDraft(patch: Partial<UserSettings["workspace"]>) {
@@ -43,6 +42,7 @@ export function WorkspaceSection({
     <SettingsStack>
       {status ? <SettingsStatus tone={status.tone}>{status.message}</SettingsStatus> : null}
 
+      <div data-settings-anchor="workspace-appearance">
       <SettingsGroup title="Appearance" body="Keep the workspace tuned to how you like to work across devices and sessions.">
         <div className="space-y-5">
           <SettingsField label="Theme">
@@ -80,7 +80,9 @@ export function WorkspaceSection({
           </SettingsField>
         </div>
       </SettingsGroup>
+      </div>
 
+      <div data-settings-anchor="workspace-behavior">
       <SettingsGroup title="Workspace behavior" body="Control density and motion for the editor, dashboard, and support surfaces.">
         <div className="space-y-4">
           <SettingsRow
@@ -114,6 +116,7 @@ export function WorkspaceSection({
           />
         </div>
       </SettingsGroup>
+      </div>
 
       <SettingsResetRow onReset={() => setDraft(defaultUserSettings.workspace)} disabled={!canReset} />
     </SettingsStack>

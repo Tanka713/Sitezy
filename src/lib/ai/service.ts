@@ -1,9 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type { TextBlock } from "@anthropic-ai/sdk/resources/messages";
 import { getSiteImagePalette, formatPaletteForPrompt } from "@/lib/utils/images";
+import { deriveImageSubject, fetchStockImage } from "@/lib/ai/utils/stock-images";
 import {
-  API_AUTH_001,
-  API_GENERATE_001,
+  stripLeadingMarkedSection,
+  stripLeadingTag,
+  stripTrailingMarkedSection,
+  stripTrailingTag,
+} from "@/lib/utils";
+import {
   API_GENERATE_002,
   createAppError,
 } from "@/lib/errors";
@@ -14,80 +17,58 @@ import type {
   PageSection,
 } from "@/types";
 import {
+  generateAdditionalPageForBlueprint,
+  generateBlueprintForBrief,
+  generatePageForBlueprint,
+} from "@/lib/ai/generate-site";
+import { runWizardEngine } from "@/lib/ai/engines/wizardEngine";
+import {
+  jsonCompletion,
+  streamCompletion,
+  streamCompletionMultiTurn,
+} from "@/lib/ai/runtime";
+export { jsonCompletion, streamCompletion, streamCompletionMultiTurn };
+import type {
+  BriefChatMessage as StructuredBriefChatMessage,
+  BriefInterviewResult as StructuredBriefInterviewResult,
+  SiteGenerationPlan,
+} from "@/lib/ai/types";
+import {
   buildDesignGuidance,
-  DESIGN_ARCHETYPES,
   selectFontPairingForBrief,
 } from "@/lib/ai/design-archetypes";
 import {
   buildBlockPlanSystemPrompt,
   buildBlockPlanUserPrompt,
   buildBusinessContextBlock,
-  buildCreativeDirectionSystemPrompt,
-  buildCreativeDirectionUserPrompt,
-  buildIndustryPromptHints,
-  buildPageCritiqueSystemPrompt,
-  buildPageCritiqueUserPrompt,
-  buildPagePlanSystemPrompt,
-  buildPagePlanUserPrompt,
   buildSectionRefreshSystemPrompt,
   buildSectionRefreshUserPrompt,
-  detectLocalGenericSignals,
   enrichBlueprintPageSections,
   formatBlockPlan,
   formatCreativeDirection,
-  formatPagePlan,
   formatSectionRefreshPlan,
   normalizeBlockPlan,
   normalizeCreativeDirection,
-  normalizePageCritique,
-  normalizePagePlan,
   normalizeSectionRefreshPlan,
   type BlockPlan,
   type CreativeDirection,
-  type PageCritique,
-  type PagePlan,
   type SectionRefreshPlan,
 } from "@/lib/ai/generation-strategy";
+import {
+  buildAdaptivePageContentSnapshot,
+  buildAdaptiveSectionContentSnapshot,
+  isAdaptiveGenerationGloballyDisabled,
+  recordAdaptiveGenerationRun,
+  resolveAdaptiveGenerationState,
+  snapshotAdaptivePreferencesFromBrief,
+  type AdaptiveGenerationContext,
+} from "@/lib/server/ai-learning";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const PAGE_MAX_TOKENS     = 16_000;
 const SECTION_MAX_TOKENS  = 8_000;
 const PLAN_MAX_TOKENS     = 4_096;
 const JSON_MAX_RETRIES    = 4;
-const GENERATOR_PLAN_MAX_TOKENS = 6_000;
 const EMOJI_REGEX = /[\p{Extended_Pictographic}\u200D\uFE0F]/gu;
-const SECTION_TYPE_OPTIONS = [
-  "navbar",
-  "hero",
-  "features",
-  "about",
-  "services",
-  "menu",
-  "pricing",
-  "testimonial",
-  "team",
-  "gallery",
-  "portfolio",
-  "stats",
-  "logos",
-  "cta",
-  "faq",
-  "contact",
-  "blog",
-  "timeline",
-  "video",
-  "map",
-  "reservation",
-  "products",
-  "integrations",
-  "case-studies",
-  "credentials",
-  "awards",
-  "process",
-  "comparison",
-  "footer",
-  "section",
-];
 const TEXT_TAG_NAMES = new Set([
   "h1",
   "h2",
@@ -137,6 +118,10 @@ const CLASS_TO_HOVER_FX: Record<string, string> = {
   "hover-lift": "lift",
   "hover-grow": "grow",
 };
+
+function isAdaptiveRunEnabled(enabled: boolean | null | undefined): boolean {
+  return Boolean(enabled) && !isAdaptiveGenerationGloballyDisabled();
+}
 const UNSUPPORTED_MOTION_CLASS_PATTERNS = [
   /^animate-/,
   /^motion-safe:animate-/,
@@ -180,62 +165,15 @@ const STRIP_TEXT_EFFECT_STYLE_PROPS = new Set([
   "text-shadow",
 ]);
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface ContentImageNeed {
-  section: string;
-  slot: string;
-  subject: string;
-}
-
-interface ContentOutline {
-  imageNeeds: ContentImageNeed[];
-}
-
-// ─── Client ───────────────────────────────────────────────────────────────────
-function getClient(): Anthropic {
-  const key = process.env.SITEZY_SPARK_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw createAppError({
-      code: API_AUTH_001,
-      devMessage:
-        "Anthropic client initialization failed: missing SITEZY_SPARK_KEY / ANTHROPIC_API_KEY",
-      severity: "fatal",
-    });
-  }
-  return new Anthropic({ apiKey: key });
-}
-
-function getModel(): string {
-  return (
-    process.env.SITEZY_SPARK_MODEL ||
-    process.env.ANTHROPIC_MODEL ||
-    "claude-sonnet-4-20250514"
-  );
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
-}
-
-function extractText(content: Anthropic.Messages.ContentBlock[]): string {
-  return content
-    .filter((b): b is TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
 }
 
 function slugifyText(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function normalizeSectionType(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
@@ -248,12 +186,6 @@ function capitalizeLabel(value: string): string {
 function truncateText(value: string, maxLength: number): string {
   const text = value.replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
-}
-
-function formatNavLinks(blueprint: SiteBlueprint): string {
-  return blueprint.pages
-    .map((p) => `${p.name} → /${p.slug || slugifyText(p.name)}`)
-    .join(", ");
 }
 
 function isGenericFont(font: string | undefined): boolean {
@@ -276,6 +208,28 @@ function normalizeBlueprint(blueprint: SiteBlueprint, brief: SiteBrief): SiteBlu
       brief
     ),
   }));
+
+  // Guarantee the wizard's page selection is honored: append any brief page that
+  // the planner didn't produce, matching on slug so we don't duplicate existing ones.
+  const existingSlugs = new Set(pages.map((page) => page.slug));
+  (brief.pages ?? []).forEach((pageName, index) => {
+    const name = (pageName || "").trim();
+    if (!name) return;
+    const slug = slugifyText(name);
+    if (!slug || existingSlugs.has(slug)) return;
+    existingSlugs.add(slug);
+    const appendedPage: BlueprintPage = {
+      id: `page-${pages.length + index + 1}`,
+      slug,
+      name,
+      purpose: `Support the ${name} user journey.`,
+      sections: [],
+    };
+    pages.push({
+      ...appendedPage,
+      sections: enrichBlueprintPageSections(appendedPage, brief),
+    });
+  });
 
   return {
     ...blueprint,
@@ -350,33 +304,6 @@ function deriveCreativeDirectionFromBlueprint(
   });
 }
 
-async function generateCreativeDirection(brief: SiteBrief): Promise<CreativeDirection> {
-  const activeArchetype = DESIGN_ARCHETYPES[brief.generationDesignStyle ?? "minimal"];
-  const direction = await jsonCompletion<CreativeDirection>(
-    buildCreativeDirectionSystemPrompt(),
-    buildCreativeDirectionUserPrompt(brief, activeArchetype.name, activeArchetype.description),
-    JSON_MAX_RETRIES,
-    GENERATOR_PLAN_MAX_TOKENS
-  );
-  return normalizeCreativeDirection(direction);
-}
-
-async function generatePagePlan(
-  blueprint: SiteBlueprint,
-  page: BlueprintPage,
-  brief: SiteBrief,
-  creativeDirection: CreativeDirection,
-  instruction?: string | null
-): Promise<PagePlan> {
-  const plan = await jsonCompletion<PagePlan>(
-    buildPagePlanSystemPrompt(),
-    buildPagePlanUserPrompt(blueprint, page, brief, creativeDirection, formatNavLinks(blueprint), instruction),
-    JSON_MAX_RETRIES,
-    GENERATOR_PLAN_MAX_TOKENS
-  );
-  return normalizePagePlan(plan, page);
-}
-
 async function generateSectionRefreshPlan(
   blueprint: SiteBlueprint,
   brief: SiteBrief,
@@ -423,34 +350,6 @@ async function generateBlockPlan(
     PLAN_MAX_TOKENS
   );
   return normalizeBlockPlan(plan);
-}
-
-async function critiqueGeneratedPage(
-  blueprint: SiteBlueprint,
-  page: BlueprintPage,
-  brief: SiteBrief,
-  creativeDirection: CreativeDirection,
-  pagePlan: PagePlan,
-  html: string
-): Promise<PageCritique> {
-  const critique = await jsonCompletion<PageCritique>(
-    buildPageCritiqueSystemPrompt(),
-    buildPageCritiqueUserPrompt(blueprint, page, brief, creativeDirection, pagePlan, html),
-    2,
-    PLAN_MAX_TOKENS
-  ).catch(() => null);
-
-  const normalized = normalizePageCritique(critique);
-  const localSignals = detectLocalGenericSignals(html);
-
-  return {
-    ...normalized,
-    genericSignals: [...new Set([...normalized.genericSignals, ...localSignals])],
-  };
-}
-
-function shouldReviseGeneratedPage(critique: PageCritique): boolean {
-  return critique.score < 8.2 || critique.genericSignals.length > 0 || critique.issues.length >= 4;
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -585,7 +484,7 @@ function simplifyDecorativeTextWrappers(html: string): string {
   return html.replace(
     /<(h[1-6]|p|a|button|li|blockquote|figcaption|label|small|strong|em|mark|span)([^>]*)>([\s\S]*?)<\/\1>/gi,
     (match, tag, attrs, inner) => {
-      if (/data-sz-icon=/i.test(inner)) return match;
+      if (/data-sz-icon=|data-sz-count|data-sz-words|sz-gradient-text|sz-word\b/i.test(inner)) return match;
       if (/<(?:svg|img|video|iframe|input|textarea|select|form|section|article|aside|header|footer|main|nav|ul|ol|figure|table|thead|tbody|tfoot|tr)\b/i.test(inner)) {
         return match;
       }
@@ -652,7 +551,7 @@ function buildImageQuery(
   slot: string,
   ctx: { siteName: string; siteType: string; description: string }
 ): string {
-  const base = ctx.siteType ?? "business";
+  const base = deriveImageSubject({ description: ctx.description, industry: ctx.siteType, excludeName: ctx.siteName });
 
   const slotQueries: Record<string, string> = {
     hero_background:       `${base} interior atmosphere wide`,
@@ -681,154 +580,6 @@ function buildImageQuery(
 }
 
 // ─── Image fetching with cache ────────────────────────────────────────────────
-const imageCache = new Map<string, string>();
-
-async function fetchImage(query: string): Promise<string | null> {
-  const key = query.toLowerCase().trim();
-  if (imageCache.has(key)) return imageCache.get(key)!;
-
-  // Try Unsplash first
-  const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
-  if (unsplashKey) {
-    try {
-      const res = await fetch(
-        `https://api.unsplash.com/photos/random?query=${encodeURIComponent(query)}&orientation=landscape&content_filter=high`,
-        { headers: { Authorization: `Client-ID ${unsplashKey}` } }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const url: string = data?.urls?.regular;
-        if (url) {
-          imageCache.set(key, url);
-          return url;
-        }
-      }
-    } catch {
-      // fall through to Pexels
-    }
-  }
-
-  // Fallback to Pexels
-  const pexelsKey = process.env.PEXELS_API_KEY;
-  if (pexelsKey) {
-    try {
-      const res = await fetch(
-        `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=3&orientation=landscape`,
-        { headers: { Authorization: pexelsKey } }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const url: string = data?.photos?.[0]?.src?.large2x ?? data?.photos?.[0]?.src?.large;
-        if (url) {
-          imageCache.set(key, url);
-          return url;
-        }
-      }
-    } catch {
-      // fall through to null
-    }
-  }
-
-  return null;
-}
-
-// ─── Resolve image slots for a set of sections ────────────────────────────────
-async function resolveImageSlots(
-  sections: string[],
-  ctx: { siteName: string; siteType: string; description: string }
-): Promise<Record<string, string>> {
-  const resolved: Record<string, string> = {};
-
-  const tasks: Array<{ slotKey: string; query: string }> = [];
-
-  for (const section of sections) {
-    const slots = IMAGE_SLOTS[section] ?? [];
-    for (const slot of slots) {
-      const query = buildImageQuery(slot, ctx);
-      tasks.push({ slotKey: `${section}__${slot}`, query });
-    }
-  }
-
-  // Resolve in parallel, cap concurrency at 5
-  const CONCURRENCY = 5;
-  for (let i = 0; i < tasks.length; i += CONCURRENCY) {
-    const batch = tasks.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(
-      batch.map(({ query }) => fetchImage(query))
-    );
-    results.forEach((result, idx) => {
-      if (result.status === "fulfilled" && result.value) {
-        resolved[batch[idx].slotKey] = result.value;
-      }
-    });
-  }
-
-  return resolved;
-}
-
-// ─── Two-pass: ask AI what images it needs, then resolve them ─────────────────
-async function resolveSmartImages(
-  blueprint: SiteBlueprint,
-  page: BlueprintPage,
-  brief: SiteBrief
-): Promise<Record<string, string>> {
-  const outlineSystem = `You are a web content planner.
-Given a page plan, return JSON describing exactly what images are needed.
-Respond ONLY with valid JSON. No markdown, no explanation.`;
-
-  const outlineUser = `Business: ${brief.siteName} — ${brief.description}
-Type: ${brief.siteType}
-Page: ${page.name}
-Sections: ${page.sections.join(", ")}
-
-Return JSON:
-{
-  "imageNeeds": [
-    { "section": "hero", "slot": "hero_background", "subject": "modern italian restaurant interior warm candlelight" },
-    { "section": "menu", "slot": "featured_dish", "subject": "handmade pasta carbonara plated on white ceramic" }
-  ]
-}
-
-Be SPECIFIC and DESCRIPTIVE for each subject — describe colors, mood, subject matter exactly as if briefing a photographer.`;
-
-  let outline: ContentOutline = { imageNeeds: [] };
-  try {
-    outline = await jsonCompletion<ContentOutline>(outlineSystem, outlineUser, 2);
-  } catch {
-    // Non-fatal: fall back to slot-based resolution
-    const resolved: Record<string, string> = {};
-    const ctx = { siteName: brief.siteName, siteType: brief.siteType ?? "agency", description: brief.description };
-    for (const section of page.sections) {
-      const slots = IMAGE_SLOTS[section] ?? [];
-      for (const slot of slots) {
-        const url = await fetchImage(buildImageQuery(slot, ctx));
-        if (url) resolved[`${section}__${slot}`] = url;
-      }
-    }
-    return resolved;
-  }
-
-  // Resolve each AI-described need in parallel
-  const resolved: Record<string, string> = {};
-  const CONCURRENCY = 5;
-  const needs = outline.imageNeeds ?? [];
-
-  for (let i = 0; i < needs.length; i += CONCURRENCY) {
-    const batch = needs.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(
-      batch.map(({ subject }) => fetchImage(subject))
-    );
-    results.forEach((result, idx) => {
-      if (result.status === "fulfilled" && result.value) {
-        const { section, slot } = batch[idx];
-        resolved[`${section}__${slot}`] = result.value;
-      }
-    });
-  }
-
-  return resolved;
-}
-
 // ─── Format resolved images for prompt injection ──────────────────────────────
 function formatResolvedImages(imageMap: Record<string, string>): string {
   if (Object.keys(imageMap).length === 0) return "";
@@ -851,210 +602,58 @@ Do NOT use placeholder.com, picsum, or any made-up URLs.
 Do NOT reuse the same image URL in multiple places.`;
 }
 
-// ─── Streaming helper ─────────────────────────────────────────────────────────
-export async function streamCompletion(
-  systemPrompt: string,
-  userPrompt: string,
-  onChunk: (chunk: string, full: string) => void,
-  maxTokens = PAGE_MAX_TOKENS
-): Promise<string> {
-  const client = getClient();
-  let full = "";
+// ─── Conversational Brief Interview ──────────────────────────────────────────
 
-  const stream = await client.messages.create({
-    model: getModel(),
-    max_tokens: maxTokens,
-    stream: true,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+export type BriefChatMessage = StructuredBriefChatMessage;
+export type BriefInterviewResult = StructuredBriefInterviewResult;
 
-  for await (const event of stream) {
-    if (
-      event.type === "content_block_delta" &&
-      event.delta.type === "text_delta"
-    ) {
-      full += event.delta.text;
-      onChunk(event.delta.text, full);
-    }
-  }
-
-  return full;
-}
-
-// ─── JSON completion ──────────────────────────────────────────────────────────
-export async function jsonCompletion<T>(
-  systemPrompt: string,
-  userPrompt: string,
-  maxRetries = JSON_MAX_RETRIES,
-  maxTokens = PLAN_MAX_TOKENS
-): Promise<T> {
-  const client = getClient();
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 2 ** (attempt - 1) * 500)
-      );
-    }
-
-    const msg = await client.messages.create({
-      model: getModel(),
-      max_tokens: maxTokens,
-      system:
-        systemPrompt +
-        "\n\nCRITICAL: Respond ONLY with valid JSON. No markdown fences, no explanation.",
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    const raw = extractText(msg.content);
-
-    try {
-      const cleaned = raw
-        .replace(/^```(?:json)?\s*/m, "")
-        .replace(/\s*```\s*$/m, "")
-        .trim();
-      return JSON.parse(cleaned) as T;
-    } catch (primaryError) {
-      lastError = primaryError as Error;
-
-      // Try extracting the first JSON object/array
-      const match = raw.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-      if (match) {
-        try {
-          return JSON.parse(match[0]) as T;
-        } catch (fallbackError) {
-          console.warn(
-            `[jsonCompletion] attempt ${attempt} fallback parse failed:`,
-            (fallbackError as Error).message
-          );
-        }
-      }
-
-      console.warn(
-        `[jsonCompletion] attempt ${attempt} failed:`,
-        lastError.message
-      );
-    }
-  }
-
-  throw createAppError({
-    code: API_GENERATE_002,
-    devMessage: `JSON generation failed after ${maxRetries + 1} attempts: ${
-      lastError?.message ?? "unknown parse error"
-    }`,
-    severity: "error",
-    metadata: { maxRetries },
-    cause: lastError,
-  });
+/**
+ * Conducts an AI-powered brief interview.
+ * The AI asks targeted questions based on what it already knows,
+ * extracting structured SiteBrief data progressively.
+ */
+export async function conductBriefInterview(
+  messages: BriefChatMessage[],
+  currentBrief: Partial<SiteBrief>,
+  options?: { skipResearch?: boolean }
+): Promise<BriefInterviewResult> {
+  return runWizardEngine(messages, currentBrief, options);
 }
 
 // ─── Blueprint ────────────────────────────────────────────────────────────────
-export async function generateBlueprint(brief: SiteBrief): Promise<SiteBlueprint> {
-  const designGuidance = buildDesignGuidance(brief);
-  const activeArchetype = DESIGN_ARCHETYPES[brief.generationDesignStyle ?? "minimal"];
-  const creativeDirection = await generateCreativeDirection(brief);
+export async function generateBlueprint(
+  brief: SiteBrief,
+  context?: AdaptiveGenerationContext
+): Promise<SiteBlueprint> {
+  const adaptiveState = await resolveAdaptiveGenerationState(brief, context);
+  const selfLearning = adaptiveState.settings?.experimental?.selfLearningGenerator ?? false;
+  const blueprint = await generateBlueprintForBrief(adaptiveState.adaptedBrief, { selfLearning });
+  const generationPlan = blueprint.generationPlan as SiteGenerationPlan | undefined;
 
-  const densityMap: Record<string, string> = {
-    short: "Keep content concise — short punchy headings, 1-2 sentence descriptions, minimal body text. Prioritize visual impact over text volume.",
-    balanced: "Use moderate content — clear headings with 2-3 sentence descriptions. Balance visual elements with readable text blocks.",
-    detailed: "Use rich detailed content — longer descriptions, multiple paragraphs where appropriate, comprehensive information. Prioritize thoroughness.",
-  };
-  const contentDensity = densityMap[brief.generationContentDensity ?? "balanced"] ?? densityMap.balanced;
+  if (context?.userId) {
+    await recordAdaptiveGenerationRun(
+      {
+        userId: context.userId,
+        projectId: context.projectId ?? null,
+        kind: "blueprint",
+        brief: adaptiveState.adaptedBrief,
+        preferenceSnapshot: snapshotAdaptivePreferencesFromBrief(adaptiveState.adaptedBrief),
+        appliedOverrides: adaptiveState.appliedOverrides,
+        profile: adaptiveState.profile,
+        adaptiveEnabled: isAdaptiveRunEnabled(adaptiveState.settings?.ai.adaptiveGenerationEnabled),
+        summary: generationPlan
+          ? summarizeGenerationPlan(generationPlan)
+          : {
+              siteName: blueprint.siteName,
+              pageCount: blueprint.pages.length,
+              pageSlugs: blueprint.pages.map((page) => page.slug),
+            },
+      },
+      { admin: context?.admin }
+    );
+  }
 
-  const structureMap: Record<string, string> = {
-    clean: "Use clean, well-organized layouts with clear visual hierarchy. Predictable grid structures with consistent alignment.",
-    "grid-heavy": "Use strong grid-based layouts — multi-column grids, bento grids, card matrices. Show information density through structured grids.",
-    asymmetric: "Use asymmetric, editorial-style layouts. Off-center compositions, varied column widths, overlapping elements, and dynamic visual flow.",
-  };
-  const structureGuidance = structureMap[brief.generationStructurePreference ?? "clean"] ?? structureMap.clean;
-
-  const system = `You are an expert web architect, designer, and brand strategist.
-Generate a unique, premium website blueprint as JSON.
-
-CRITICAL UNIQUENESS RULES:
-- Every site MUST be structurally unique based on business type and industry
-- Vary layouts: editorial, bento, asymmetric, split-screen, grid, storytelling, card-based, zigzag, product-first, magazine, sidebar-led
-- Choose fonts that match the brand personality — never default to Inter or Roboto for every site
-- Color schemes must authentically reflect the brand, industry, and tone
-- Do NOT default to the same hero+features+cta+footer pattern every time
-- Section lists must be industry-appropriate: a restaurant needs menu/reservation, a SaaS needs dashboard-preview/integrations, a law firm needs practice-areas/credentials, etc.
-- Use the supplied creative direction as hard guidance, not optional inspiration
-- The blueprint must encode a strong point of view that later page generation can execute
-
-SECTION TYPES — pick the most relevant for the industry:
-navbar, hero, features, about, services, menu, pricing, testimonial, team, gallery, portfolio, stats, logos, cta, faq, contact, blog, timeline, video, map, reservation, products, integrations, case-studies, credentials, awards, process, comparison, footer
-
-DESIGN DIRECTION GUIDELINES:
-- Be specific and actionable: describe exact visual patterns, color usage, spacing mood, and UI motifs
-- Mention specific design elements: e.g. "bold oversized serif headings, warm cream backgrounds, vintage illustration accents"
-- Tailor to the industry: medical = clean/trustworthy, restaurant = warm/appetizing, tech = sharp/modern, wellness = calm/earthy
-- Include 2-3 sentences covering: overall mood, component style, typography use
-
-CONTENT DENSITY: ${contentDensity}
-STRUCTURE: ${structureGuidance}
-
-═══════════════════════════════════════════════════════════════
-CREATIVE DIRECTION — FOLLOW CLOSELY:
-${formatCreativeDirection(creativeDirection)}
-═══════════════════════════════════════════════════════════════
-
-BUSINESS CONTEXT:
-${buildBusinessContextBlock(brief)}
-═══════════════════════════════════════════════════════════════
-
-INDUSTRY HINTS:
-${buildIndustryPromptHints(brief)}
-═══════════════════════════════════════════════════════════════
-
-DESIGN SYSTEM GUIDANCE:
-${designGuidance}
-═══════════════════════════════════════════════════════════════`;
-
-  const user = `Create a unique website blueprint for:
-
-${buildBusinessContextBlock(brief)}
-
-${
-  brief.colorPalette && brief.colorPalette.length > 0
-    ? `Specific Colors: ${brief.colorPalette.join(", ")} — build the color scheme around these exact hex values`
-    : ""
-}
-Requested Design Style: ${activeArchetype.name} — ${activeArchetype.description.slice(0, 120)}
-
-IMPORTANT: The typography, color scheme, and designDirection in your blueprint MUST align with the "${activeArchetype.name}" design archetype described in the system prompt. Do NOT fall back to generic choices.
-We already created a creative direction. Translate it into a blueprint that preserves the same voice, structure, and visual signature.
-
-Return JSON:
-{
-  "siteName": "string",
-  "tagline": "string",
-  "brandPersonality": "string (2-3 sentences)",
-  "colorScheme": { "primary":"#hex","secondary":"#hex","accent":"#hex","bg":"#hex","text":"#hex","muted":"#hex","border":"#hex" },
-  "typography": { "headingFont":"Google Font name","bodyFont":"Google Font name","style":"string","headingWeight":"700|800|900","lineHeight":"1.1|1.2|1.3" },
-  "layoutStyle": "editorial|bento|asymmetric|split-screen|grid|storytelling|card-based|zigzag|product-first|magazine|sidebar-led",
-  "navigationStyle": "minimal|full|floating",
-  "footerStyle": "simple|detailed|bold|minimal",
-  "animationStyle": "none|subtle|moderate|expressive",
-  "designDirection": "string (2-3 sentences: overall mood, component style, typography use — be specific and industry-appropriate, aligned with the ${activeArchetype.name} archetype)",
-  "pages": [{ "id":"uid","name":"string","slug":"url-slug","sections":["type1","type2","type3","type4","type5"],"purpose":"string","priority":1 }]
-}
-
-Rules:
-- Do not repeat the same sections across every page unless they truly belong there.
-- The home page should show the business model quickly.
-- If the business provided offerings, products, menu items, or services, reflect them in section choices.
-- Prefer page-specific content architecture over generic catch-all pages.`;
-
-  const blueprint = await jsonCompletion<SiteBlueprint>(
-    system,
-    user,
-    JSON_MAX_RETRIES,
-    GENERATOR_PLAN_MAX_TOKENS
-  );
-
-  return normalizeBlueprint(blueprint, brief);
+  return blueprint;
 }
 
 // ─── Extract sections from raw HTML ──────────────────────────────────────────
@@ -1157,216 +756,256 @@ function sanitizeGeneratedHtml(raw: string): string {
   return html;
 }
 
-// ─── Shared system prompt builder ────────────────────────────────────────────
-function buildPageSystemPrompt(
-  blueprint: SiteBlueprint,
-  brief: SiteBrief,
-  imageGuide: string,
-  wantsImages: boolean,
-  logoInstruction: string,
-  currencyInstruction: string,
-  creativeDirection: CreativeDirection,
-  pagePlan: PagePlan
-): string {
-  const designGuidance = buildDesignGuidance(brief);
-  const allowedSectionTypes = SECTION_TYPE_OPTIONS.join(", ");
-
-  return `You are an elite frontend developer specializing in premium, unique website design.
-Generate production-ready HTML for a single website page body.
-
-OUTPUT RULES — CRITICAL:
-- Output ONLY the raw HTML body content. Nothing else.
-- Do NOT wrap in JSON. Do NOT use markdown fences. Do NOT add explanation.
-- Do NOT include <html>, <head>, or <body> tags — output only what goes INSIDE <body>
-- Start your response directly with the first HTML tag (e.g. <nav or <header)
-
-EDITOR DATA ATTRIBUTES — MANDATORY ON EVERY TOP-LEVEL SECTION:
-Every direct child of the body MUST have these three attributes:
-  data-sz-section-id="sec-[8-char-random]"  — unique stable ID. Generate a DIFFERENT random suffix for EVERY section. NEVER reuse.
-  data-sz-section-type="[type]"              — use the real section type for that block. Allowed types: ${allowedSectionTypes}
-  data-sz-section-name="[Name]"             — short human-readable label, max 50 chars
-Examples:
-  <nav data-sz-section-id="sec-n7x2k9qm" data-sz-section-type="navbar" data-sz-section-name="Navigation" class="...">
-  <section data-sz-section-id="sec-h4p8r1wz" data-sz-section-type="hero" data-sz-section-name="Hero" class="...">
-  <footer data-sz-section-id="sec-b1k7s4dn" data-sz-section-type="footer" data-sz-section-name="Footer" class="...">
-
-NAVBAR RULES — CRITICAL:
-- ALWAYS use position:sticky; top:0; z-index:1000 — NEVER position:fixed
-- Sticky navbars stay in flow — no padding-top compensation needed on sections below
-- Do NOT use negative margins, negative translateY offsets, or absolute positioning that pulls sections up
-- The navbar must match the design archetype's NAVBAR style guidance — do NOT default to a generic logo-left links-right bar for every site
-- Make the navbar feel unique and tailored to the brand — it's the first thing users see
-${logoInstruction}
-
-MAP / LOCATION RULES:
-- For any map/location/directions section: use a REAL Google Maps iframe
-- Format: <iframe src="https://www.google.com/maps?q=[URL_ENCODED_ADDRESS]&output=embed" width="100%" height="400" style="border:0;display:block;" allowfullscreen loading="lazy"></iframe>
-- NEVER use a fake placeholder image as a map
-${currencyInstruction}
-
-TECHNICAL REQUIREMENTS:
-- Use inline Tailwind CSS classes (CDN already loaded)
-- Use inline styles with CSS variables (--primary, --secondary, --accent, --bg, --text)
-- Make it visually stunning — not a generic template
-- Include smooth hover effects using CSS transitions
-- Use semantic HTML5 elements (nav, header, section, article, footer)
-- Make fully responsive with Tailwind prefixes (sm:, md:, lg:)
-- Do NOT use external JS libraries
-- Avoid repeating the same card pattern, heading pattern, or background treatment across the whole page
-- Make each section feel like it has its own job, not just new copy inside the same shell
-${
-  wantsImages
-    ? "- Use ONLY the image URLs provided in IMAGE ASSIGNMENTS above — do NOT use placeholder.com, picsum, or make up any other URLs"
-    : "- Do NOT use any images. Design with color and typography only."
+function summarizeGenerationPlan(plan: SiteGenerationPlan): Record<string, unknown> {
+  return {
+    generatedAt: plan.generatedAt,
+    businessName: plan.businessBrief.businessName,
+    industry: plan.businessBrief.industry,
+    pageCount: plan.layout.pages.length,
+    pageSlugs: plan.layout.pages.map((page) => page.slug),
+    sectionCounts: plan.layout.pages.map((page) => ({
+      pageId: page.pageId,
+      slug: page.slug,
+      count: page.sections.length,
+    })),
+    strategy: {
+      positioning: plan.strategy.positioning,
+      trustSignals: plan.strategy.trustSignals.slice(0, 4),
+    },
+    design: {
+      conceptName: plan.design.conceptName,
+      layoutStyle: plan.design.layoutStyle,
+      siteFormat: plan.design.siteFormat,
+      navigationStyle: plan.design.navigationStyle,
+      footerStyle: plan.design.footerStyle,
+    },
+    copy: {
+      tagline: plan.copy.tagline,
+      primaryCta: plan.copy.primaryCta,
+      secondaryCta: plan.copy.secondaryCta,
+    },
+    layout: {
+      antiRepetitionRules: plan.layout.antiRepetitionRules.slice(0, 4),
+      siteWidePatterns: plan.layout.siteWidePatterns.slice(0, 4),
+    },
+  };
 }
 
-ICON RULES:
-- Do NOT use emojis anywhere in the HTML, copy, buttons, nav, badges, labels, or decorative text
-- Do NOT use raw unicode symbols as fake icons (for example: ✓, ★, →, sparkles, map-pin emoji)
-- If an icon is truly necessary, use a small inline SVG only
-- Wrap any SVG icon in: <span data-sz-icon="true" style="display:inline-flex;align-items:center;justify-content:center;line-height:0;vertical-align:middle;"><svg ...></svg></span>
-- Use icons sparingly: never more than one icon per button/card row unless the content truly requires it
+// ─── Progressive section rendering event ─────────────────────────────────────
+export interface ProgressiveSectionEvent {
+  sectionId: string;
+  sectionType: string;
+  sectionName: string;
+  sectionIndex: number;
+  totalSections: number;
+  cumulativeHtml: string;
+}
 
-EDITOR COMPATIBILITY RULES:
-- All text must remain easy to edit in the visual editor
-- Keep real copy in normal text elements: h1-h6, p, li, a, button, label, blockquote, figcaption
-- Do NOT split a sentence or word across many nested spans just for styling
-- Avoid letter-by-letter spans, per-word wrappers, SVG text, pseudo-element text, masked text, or decorative unicode text effects
-- Do NOT use gradient text patterns that require text-transparent, background-clip:text, mix-blend-mode, or masked text
-- Prefer one clean text node, with at most one simple accent span if absolutely necessary
+/** Fires `onSectionRendered` whenever the stream closes a top-level section. */
+function makeProgressiveSectionWatcher(
+  expectedSectionCount: number,
+  onSectionRendered: (event: ProgressiveSectionEvent) => void | Promise<void>
+) {
+  const SECTION_ROOT_RE =
+    /<(nav|header|section|article|footer|div|main|aside)\b[^>]*data-sz-section-id="([^"]+)"[^>]*>/gi;
+  const emitted = new Set<string>();
 
-MOTION COMPATIBILITY RULES:
-- Use ONLY Sitezy-supported motion primitives
-- Entrance motion must use data-sz-anim-in with one of: fade-up, fade-down, fade-left, fade-right, zoom-in, zoom-out
-- Hover motion must use data-sz-hover-fx with one of: lift, grow, tilt, glow, soften
-- Optional timing can use CSS variables on that same element: --sz-anim-duration, --sz-anim-delay, --sz-anim-ease
-- Do NOT use custom keyframes, animate-* classes, marquee effects, parallax hacks, animation: inline styles, or JS-driven motion
-- Do NOT hide meaning inside motion. The page must still look clean and complete with motion disabled
+  return (full: string) => {
+    SECTION_ROOT_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let sectionIndex = 0;
 
-DESIGN REQUIREMENTS:
-- Layout: ${blueprint.layoutStyle}
-- Brand: ${blueprint.brandPersonality}
-- Colors: primary=${blueprint.colorScheme.primary}, secondary=${blueprint.colorScheme.secondary}, accent=${blueprint.colorScheme.accent}, bg=${blueprint.colorScheme.bg}, text=${blueprint.colorScheme.text}${blueprint.colorScheme.muted ? `, muted=${blueprint.colorScheme.muted}` : ""}${blueprint.colorScheme.border ? `, border=${blueprint.colorScheme.border}` : ""}
-- Heading font: ${blueprint.typography.headingFont}
-- Body font: ${blueprint.typography.bodyFont}
-- Heading weight: ${blueprint.typography.headingWeight ?? "700"}
-- Line height: ${blueprint.typography.lineHeight ?? "1.2"}
-- Animation: ${blueprint.animationStyle}
-- Direction: ${blueprint.designDirection}
+    while ((match = SECTION_ROOT_RE.exec(full)) !== null) {
+      const tagName = match[1].toLowerCase();
+      const sectionId = match[2];
+      const openStart = match.index;
+      const openEnd = full.indexOf(">", openStart);
+      if (openEnd === -1) break;
 
-BUSINESS CONTEXT:
-${buildBusinessContextBlock(brief)}
+      const openRe = new RegExp(`<${tagName}\\b`, "gi");
+      const closeRe = new RegExp(`</${tagName}\\s*>`, "gi");
+      let depth = 1;
+      let pos = openEnd + 1;
+      let closed = false;
 
-CREATIVE DIRECTION — THIS IS THE STANDARD TO HIT:
-${formatCreativeDirection(creativeDirection)}
+      while (depth > 0 && pos < full.length) {
+        openRe.lastIndex = pos;
+        closeRe.lastIndex = pos;
+        const o = openRe.exec(full);
+        const c = closeRe.exec(full);
+        if (!c) break;
+        if (o && o.index < c.index) {
+          depth++;
+          pos = o.index + o[0].length;
+        } else {
+          depth--;
+          pos = c.index + c[0].length;
+          if (depth === 0) closed = true;
+        }
+      }
 
-PAGE PLAN — EXECUTE THIS CLOSELY:
-${formatPagePlan(pagePlan)}
-
-═══════════════════════════════════════════════════════════════
-DESIGN ARCHETYPE GUIDANCE — FOLLOW CLOSELY:
-${designGuidance}
-═══════════════════════════════════════════════════════════════
-
-${imageGuide}`;
+      if (closed && !emitted.has(sectionId)) {
+        emitted.add(sectionId);
+        const tagHtml = full.slice(openStart, openEnd + 1);
+        const typeMatch = tagHtml.match(/data-sz-section-type="([^"]+)"/i);
+        const nameMatch = tagHtml.match(/data-sz-section-name="([^"]+)"/i);
+        void onSectionRendered({
+          sectionId,
+          sectionType: typeMatch?.[1] ?? "section",
+          sectionName: nameMatch?.[1] ?? `Section ${sectionIndex + 1}`,
+          sectionIndex,
+          totalSections: Math.max(expectedSectionCount, emitted.size),
+          cumulativeHtml: full,
+        });
+      }
+      sectionIndex++;
+    }
+  };
 }
 
 // ─── Page generation ──────────────────────────────────────────────────────────
+// Builds a compact, truncated reference of the site's existing navbar/footer so
+// the model matches their visual language when generating the rest of the page.
+function buildChromeReference(
+  navbarHtml?: string | null,
+  footerHtml?: string | null
+): string | null {
+  const parts: string[] = [];
+  if (navbarHtml) {
+    parts.push(`Existing navbar HTML:\n${navbarHtml.slice(0, 2000)}`);
+  }
+  if (footerHtml) {
+    parts.push(`Existing footer HTML:\n${footerHtml.slice(0, 1600)}`);
+  }
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+// Re-attaches reused chrome to a generated page body, stripping any leading
+// nav/header or trailing footer the model emitted despite instructions so the
+// shared chrome is never duplicated.
+function assemblePageWithChrome(
+  rawBody: string,
+  navbarHtml?: string | null,
+  footerHtml?: string | null
+): string {
+  const reuseNavbar = !!navbarHtml;
+  const reuseFooter = !!footerHtml;
+  if (!reuseNavbar && !reuseFooter) return rawBody;
+
+  let body = rawBody;
+  if (reuseNavbar) {
+    body = stripLeadingMarkedSection(
+      stripLeadingTag(stripLeadingTag(body, "nav"), "header"),
+      "navbar"
+    );
+  }
+  if (reuseFooter) {
+    body = stripTrailingMarkedSection(stripTrailingTag(body, "footer"), "footer");
+  }
+
+  return [reuseNavbar ? navbarHtml : null, body, reuseFooter ? footerHtml : null]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function generatePage(
   blueprint: SiteBlueprint,
   page: BlueprintPage,
   brief: SiteBrief,
   onChunk?: (chunk: string, full: string) => void,
   navbarHtml?: string | null,
-  instruction?: string | null
+  footerHtml?: string | null,
+  instruction?: string | null,
+  onSectionRendered?: (event: ProgressiveSectionEvent) => void | Promise<void>,
+  context?: AdaptiveGenerationContext
 ): Promise<{ html: string; sections: PageSection[] }> {
-  const normalizedBlueprint = normalizeBlueprint(blueprint, brief);
+  const adaptiveState = await resolveAdaptiveGenerationState(brief, context);
+  const reuseNavbar = !!navbarHtml;
+  const reuseFooter = !!footerHtml;
+  const reuseChrome = reuseNavbar || reuseFooter;
+  let rawHtml = "";
   const normalizedPage: BlueprintPage = {
     ...page,
     id: page.id || slugifyText(page.name || "page"),
     slug: page.slug || slugifyText(page.name || "page"),
     sections: enrichBlueprintPageSections(
       { ...page, sections: page.sections ?? [] },
-      brief
+      adaptiveState.adaptedBrief
     ),
     purpose: page.purpose || `Support the ${page.name} user journey.`,
   };
-  const creativeDirection = deriveCreativeDirectionFromBlueprint(normalizedBlueprint, brief);
-  const pagePlan = await generatePagePlan(
-    normalizedBlueprint,
+
+  const sectionWatcher = onSectionRendered
+    ? makeProgressiveSectionWatcher(
+        normalizedPage.sections.length || 1,
+        onSectionRendered
+      )
+    : null;
+
+  const handleChunk = (chunk: string, full: string) => {
+    rawHtml = full;
+    if (sectionWatcher) sectionWatcher(full);
+    if (onChunk) onChunk(chunk, full);
+  };
+
+  const result = await generatePageForBlueprint(
+    blueprint,
     normalizedPage,
-    brief,
-    creativeDirection,
-    instruction
+    adaptiveState.adaptedBrief,
+    handleChunk,
+    instruction,
+    {
+      selfLearning: adaptiveState.settings?.experimental?.selfLearningGenerator ?? false,
+      chrome: reuseChrome
+        ? {
+            reuseNavbar,
+            reuseFooter,
+            reference: buildChromeReference(navbarHtml, footerHtml),
+          }
+        : null,
+    }
   );
-  const { wantsImages, imageGuide } = buildImageContext(brief);
+  rawHtml = result.html;
 
-  let resolvedImageGuide = imageGuide;
-  if (wantsImages) {
-    const imageMap = await resolveSmartImages(normalizedBlueprint, normalizedPage, brief);
-    const smartGuide = formatResolvedImages(imageMap);
-    resolvedImageGuide = smartGuide || imageGuide;
-  }
-
-  const logoInstruction = brief.hasLogo
-    ? `\nLOGO IMAGE — CRITICAL: A custom logo image has been uploaded. In the navbar, use EXACTLY this as the logo element (no text brand name alongside it):\n<img src="__LOGO__" alt="${normalizedBlueprint.siteName} logo" style="height:44px;width:auto;object-fit:contain;display:block;" />\nUse src="__LOGO__" exactly as written — it will be replaced with the real image. Do NOT show the site name as text next to it.`
-    : "";
-
-  const currencyInstruction = brief.currency
-    ? `\nCURRENCY: All prices MUST use ${brief.currency}. Do NOT use $ unless the currency is USD.`
-    : "";
-
-  const system = buildPageSystemPrompt(
-    normalizedBlueprint,
-    brief,
-    resolvedImageGuide,
-    wantsImages,
-    logoInstruction,
-    currencyInstruction,
-    creativeDirection,
-    pagePlan
+  const finalHtml = assemblePageWithChrome(
+    sanitizeGeneratedHtml(rawHtml),
+    reuseNavbar ? navbarHtml : null,
+    reuseFooter ? footerHtml : null
   );
-
-  const navLinks = formatNavLinks(normalizedBlueprint);
-
-  const navbarInstruction = navbarHtml
-    ? `\nNAVBAR CONSISTENCY — IMPORTANT:
-The first page already has a navbar. You MUST generate a navbar that looks visually identical in style, colors, layout, fonts, and structure — but with the correct active state for THIS page ("${normalizedPage.name}").
-Reference the design archetype guidance above for the navbar style. The existing navbar uses these navigation links: ${navLinks}.
-Do NOT copy-paste the old HTML. Regenerate it fresh using the same design system so it stays consistent but can have page-specific active states.
-Navbar concept for this page: ${pagePlan.navbarConcept}`
-    : `\nGenerate a navbar as the first section. Follow the NAVBAR style from the design archetype guidance closely — do NOT default to a generic horizontal bar.`;
-
-  const user = `Generate the "${normalizedPage.name}" page body for ${normalizedBlueprint.siteName}.
-
-Business context:
-${buildBusinessContextBlock(brief)}
-
-Page purpose: ${normalizedPage.purpose}
-Sections to include in order: ${normalizedPage.sections.join(", ")}
-Navigation links (use these exact hrefs — NOT hash anchors): ${navLinks}
-Signature moment to land: ${pagePlan.signatureMoment}
-Story arc: ${pagePlan.storyArc}
-
-IMPORTANT: For all navigation links use the slug paths above (e.g. href="/menu", href="/about"). Do NOT use href="#menu" or href="#about" — these break page navigation.
-${navbarInstruction}
-
-Output ONLY the raw HTML. Start with the first tag. No JSON, no markdown, no explanation.
-${instruction ? `\nSPECIAL DIRECTION FOR THIS GENERATION: ${instruction}` : ""}`.trimEnd();
-
-  let rawHtml = "";
-
-  if (onChunk) {
-    await streamCompletion(system, user, (chunk, full) => {
-      rawHtml = full;
-      onChunk(chunk, full);
-    });
-  } else {
-    rawHtml = await streamCompletion(system, user, () => {});
-  }
-
-  const finalHtml = sanitizeGeneratedHtml(rawHtml);
   const sections = extractSections(finalHtml);
+  const pageSnapshot = buildAdaptivePageContentSnapshot({
+    id: normalizedPage.id,
+    name: normalizedPage.name,
+    slug: normalizedPage.slug,
+    html: finalHtml,
+    sections,
+  });
+  if (context?.userId) {
+    await recordAdaptiveGenerationRun(
+      {
+        userId: context.userId,
+        projectId: context.projectId ?? null,
+        kind: "page",
+        brief: adaptiveState.adaptedBrief,
+        preferenceSnapshot: snapshotAdaptivePreferencesFromBrief(adaptiveState.adaptedBrief),
+        appliedOverrides: adaptiveState.appliedOverrides,
+        profile: adaptiveState.profile,
+        adaptiveEnabled: isAdaptiveRunEnabled(adaptiveState.settings?.ai.adaptiveGenerationEnabled),
+        summary: {
+          pageId: normalizedPage.id,
+          pageName: normalizedPage.name,
+          slug: normalizedPage.slug,
+          sectionCount: sections.length,
+          sectionTypes: sections.map((section) => section.type),
+          htmlLength: finalHtml.length,
+          pageSnapshot,
+        },
+      },
+      { admin: context?.admin }
+    );
+  }
+  // Flush one last event so subscribers observe the sanitized final HTML.
+  if (sectionWatcher) sectionWatcher(finalHtml);
   return { html: finalHtml, sections };
 }
 
@@ -1374,7 +1013,10 @@ ${instruction ? `\nSPECIAL DIRECTION FOR THIS GENERATION: ${instruction}` : ""}`
 export async function regenerateSection(
   blueprint: SiteBlueprint,
   brief: SiteBrief,
-  page: Pick<BlueprintPage, "name" | "purpose">,
+  page: Pick<BlueprintPage, "name" | "purpose"> & {
+    id?: string | null;
+    slug?: string | null;
+  },
   section: {
     id?: string;
     type: string;
@@ -1383,32 +1025,35 @@ export async function regenerateSection(
     previousSectionName?: string | null;
     nextSectionName?: string | null;
   },
-  instruction?: string
+  instruction?: string,
+  context?: AdaptiveGenerationContext
 ): Promise<string> {
-  const normalizedBlueprint = normalizeBlueprint(blueprint, brief);
-  const creativeDirection = deriveCreativeDirectionFromBlueprint(normalizedBlueprint, brief);
+  const adaptiveState = await resolveAdaptiveGenerationState(brief, context);
+  const effectiveBrief = adaptiveState.adaptedBrief;
+  const normalizedBlueprint = normalizeBlueprint(blueprint, effectiveBrief);
+  const creativeDirection = deriveCreativeDirectionFromBlueprint(normalizedBlueprint, effectiveBrief);
   const refreshPlan = await generateSectionRefreshPlan(
     normalizedBlueprint,
-    brief,
+    effectiveBrief,
     page,
     section,
     instruction
   );
-  const { wantsImages, imageGuide } = buildImageContext(brief);
+  const { wantsImages, imageGuide } = buildImageContext(effectiveBrief);
 
   let resolvedImageGuide = imageGuide;
   if (wantsImages) {
     const ctx = {
-      siteName: brief.siteName,
-      siteType: brief.siteType ?? "agency",
-      description: brief.description,
+      siteName: effectiveBrief.siteName,
+      siteType: effectiveBrief.siteType ?? "agency",
+      description: effectiveBrief.description,
     };
     const slots = IMAGE_SLOTS[section.type] ?? [];
     const imageMap: Record<string, string> = {};
 
     await Promise.allSettled(
       slots.map(async (slot) => {
-        const url = await fetchImage(buildImageQuery(slot, ctx));
+        const url = await fetchStockImage(buildImageQuery(slot, ctx));
         if (url) imageMap[`${section.type}__${slot}`] = url;
       })
     );
@@ -1417,7 +1062,7 @@ export async function regenerateSection(
     resolvedImageGuide = smartGuide || imageGuide;
   }
 
-  const designGuidance = buildDesignGuidance(brief);
+  const designGuidance = buildDesignGuidance(effectiveBrief);
 
   const system = `You are an elite frontend developer and web designer.
 Return ONLY the replacement HTML for ONE section. No explanation, no markdown.
@@ -1451,7 +1096,7 @@ SITE DESIGN SYSTEM:
 - Body font: ${normalizedBlueprint.typography.bodyFont}
 
 BUSINESS CONTEXT:
-${buildBusinessContextBlock(brief)}
+${buildBusinessContextBlock(effectiveBrief)}
 
 CREATIVE DIRECTION:
 ${formatCreativeDirection(creativeDirection)}
@@ -1468,9 +1113,9 @@ ${resolvedImageGuide}`;
 
 Page: ${page.name}
 Page purpose: ${page.purpose}
-Business type: ${brief.siteType}
-Tone: ${brief.tone}
-Features: ${brief.features || "none"}
+Business type: ${effectiveBrief.siteType}
+Tone: ${effectiveBrief.tone}
+Features: ${effectiveBrief.features || "none"}
 
 Section type: ${section.type}
 Section name: ${section.name}
@@ -1487,7 +1132,50 @@ ${instruction ? `Additional direction: ${instruction}` : ""}
 Avoid generic filler headings, repeated card shells, vague copy like "Why choose us" unless the section truly needs it, and any decorative emoji/symbol text.`;
 
   const html = await streamCompletion(system, user, () => {}, SECTION_MAX_TOKENS);
-  return sanitizeGeneratedHtml(html);
+  const finalHtml = sanitizeGeneratedHtml(html);
+  const sectionSnapshot = buildAdaptiveSectionContentSnapshot(
+    {
+      id: section.id ?? "",
+      type: section.type,
+      name: section.name,
+    },
+    finalHtml
+  );
+  if (context?.userId) {
+    await recordAdaptiveGenerationRun(
+      {
+        userId: context.userId,
+        projectId: context.projectId ?? null,
+        kind: "section",
+        brief: effectiveBrief,
+        preferenceSnapshot: snapshotAdaptivePreferencesFromBrief(effectiveBrief),
+        appliedOverrides: adaptiveState.appliedOverrides,
+        profile: adaptiveState.profile,
+        adaptiveEnabled: isAdaptiveRunEnabled(adaptiveState.settings?.ai.adaptiveGenerationEnabled),
+        summary: {
+          pageId: page.id ?? null,
+          pageSlug: page.slug ?? null,
+          pageName: page.name,
+          pagePurpose: page.purpose,
+          sectionId: section.id ?? null,
+          sectionType: section.type,
+          sectionName: section.name,
+          htmlLength: finalHtml.length,
+          instruction: instruction ?? null,
+          sectionSnapshot: sectionSnapshot
+            ? {
+                ...sectionSnapshot,
+                pageId: page.id ?? null,
+                pageSlug: page.slug ?? null,
+                pageName: page.name,
+              }
+            : null,
+        },
+      },
+      { admin: context?.admin }
+    );
+  }
+  return finalHtml;
 }
 
 // ─── Generate new block ───────────────────────────────────────────────────────
@@ -1559,7 +1247,7 @@ export async function generateNewBlock(
 
     await Promise.allSettled(
       slots.map(async (slot) => {
-        const url = await fetchImage(buildImageQuery(slot, ctx));
+        const url = await fetchStockImage(buildImageQuery(slot, ctx));
         if (url) imageMap[`${block.type}__${slot}`] = url;
       })
     );
@@ -1661,26 +1349,75 @@ export async function aiAssist(
   context: {
     projectName: string;
     blueprint?: SiteBlueprint | null;
+    brief?: SiteBrief | null;
     pageName?: string;
     pageHtml?: string;
     siteType?: string;
+    selectedSectionId?: string | null;
+    selectedElement?: {
+      nodeId: string;
+      tagName: string;
+      textContent?: string;
+      sectionId?: string;
+    } | null;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+    scope?: "element" | "section" | "page" | "site";
   },
   onChunk: (chunk: string, full: string) => void
 ): Promise<string> {
   const palette    = getSiteImagePalette(context.siteType ?? "agency");
   const imageGuide = formatPaletteForPrompt(palette);
 
-  // Summarise pageHtml rather than blindly truncating — indicate truncation to AI
-  const pageContext = context.pageHtml
-    ? context.pageHtml.length > 6000
-      ? `${context.pageHtml.slice(0, 6000)}\n<!-- HTML truncated at 6000 chars — full page is longer -->`
-      : context.pageHtml
-    : null;
+  // Provide focused context based on scope / selection
+  let pageContext: string | null = null;
+  if (context.pageHtml) {
+    if (
+      context.selectedSectionId &&
+      context.scope !== "page" &&
+      context.scope !== "site"
+    ) {
+      const sectionHtml = extractSectionHtmlById(
+        context.pageHtml,
+        context.selectedSectionId
+      );
+      if (sectionHtml) {
+        pageContext = `[Selected section HTML — data-sz-section-id="${context.selectedSectionId}"]\n${sectionHtml}`;
+      }
+    }
+    if (!pageContext) {
+      pageContext =
+        context.pageHtml.length > 6000
+          ? `${context.pageHtml.slice(0, 6000)}\n<!-- HTML truncated at 6000 chars — full page is longer -->`
+          : context.pageHtml;
+    }
+  }
+
+  const designContext = context.blueprint
+    ? `\nDesign system: ${context.blueprint.colorScheme.primary} primary, ${context.blueprint.colorScheme.secondary} secondary, ${context.blueprint.colorScheme.accent} accent, bg ${context.blueprint.colorScheme.bg}, text ${context.blueprint.colorScheme.text}. Fonts: ${context.blueprint.typography.headingFont} / ${context.blueprint.typography.bodyFont}.`
+    : "";
+
+  const selectionContext = context.selectedElement
+    ? `\nUser has selected: <${context.selectedElement.tagName}> element${context.selectedElement.textContent ? ` containing "${context.selectedElement.textContent.slice(0, 100)}"` : ""}${context.selectedElement.sectionId ? ` in section "${context.selectedElement.sectionId}"` : ""}.`
+    : context.selectedSectionId
+    ? `\nUser has selected section: "${context.selectedSectionId}".`
+    : "";
+
+  const scopeHint = context.scope
+    ? `\nEdit scope: ${context.scope}. ${
+        context.scope === "element"
+          ? "Focus changes on the selected element only."
+          : context.scope === "section"
+          ? "Focus changes on the selected section."
+          : context.scope === "site"
+          ? "Apply changes across all sections consistently."
+          : "Apply changes to the current page."
+      }`
+    : "";
 
   const system = `You are Sitezy's in-editor AI assistant. You help the user modify their website with friendly, concise natural-language replies AND, when they ask for a change, perform a precise edit on a single section.
 
 Project: ${context.projectName}
-${context.pageName ? `Current page: ${context.pageName}` : ""}
+${context.pageName ? `Current page: ${context.pageName}` : ""}${designContext}${selectionContext}${scopeHint}
 
 REPLY FORMAT — follow exactly:
 1. ALWAYS begin with a short, friendly natural-language message (1–2 sentences) describing what you are doing or answering. Examples: "Alright, punching up the hero headline.", "Sure — swapping the CTA button copy to 'Start free trial'."
@@ -1700,14 +1437,61 @@ STRICT RULES:
 - Never write anything after ---SITEZY-END---.
 - If the user is just asking a question or you cannot identify a target section, omit the edit block entirely and only reply with the natural-language message.
 - Keep the natural-language message friendly, specific, and under 200 characters.
+- When the user has a section or element selected, prefer editing that section unless they explicitly reference a different one.
 
 ${imageGuide}`;
 
-  const user = pageContext
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  if (context.history && context.history.length > 0) {
+    const recent = context.history.slice(-10);
+    for (const msg of recent) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+  }
+
+  const userMsg = pageContext
     ? `Current page HTML:\n${pageContext}\n\nUser request: ${instruction}`
     : instruction;
+  messages.push({ role: "user", content: userMsg });
 
-  return streamCompletion(system, user, onChunk);
+  return streamCompletionMultiTurn(system, messages, onChunk);
+}
+
+/** Extract a single section's HTML from a full page by section ID */
+function extractSectionHtmlById(
+  pageHtml: string,
+  sectionId: string
+): string | null {
+  const marker = `data-sz-section-id="${sectionId}"`;
+  const markerIdx = pageHtml.indexOf(marker);
+  if (markerIdx === -1) return null;
+  const start = pageHtml.lastIndexOf("<", markerIdx);
+  if (start === -1) return null;
+  const tagMatch = pageHtml.slice(start + 1).match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
+  if (!tagMatch) return null;
+  const tag = tagMatch[1];
+  const openEnd = pageHtml.indexOf(">", markerIdx);
+  if (openEnd === -1) return null;
+  const openRe = new RegExp(`<${tag}\\b`, "gi");
+  const closeRe = new RegExp(`</${tag}\\s*>`, "gi");
+  let depth = 1;
+  let pos = openEnd + 1;
+  while (depth > 0) {
+    openRe.lastIndex = pos;
+    closeRe.lastIndex = pos;
+    const o = openRe.exec(pageHtml);
+    const c = closeRe.exec(pageHtml);
+    if (!c) return null;
+    if (o && o.index < c.index) {
+      depth++;
+      pos = o.index + o[0].length;
+    } else {
+      depth--;
+      pos = c.index + c[0].length;
+    }
+  }
+  return pageHtml.slice(start, pos);
 }
 
 // ─── Add new page ─────────────────────────────────────────────────────────────
@@ -1715,64 +1499,58 @@ export async function generateNewPage(
   blueprint: SiteBlueprint,
   pageName: string,
   pageDescription: string,
-  brief: SiteBrief
+  brief: SiteBrief,
+  options?: {
+    pageId?: string;
+    pageSlug?: string;
+    navbarHtml?: string | null;
+    footerHtml?: string | null;
+  }
 ): Promise<{ page: BlueprintPage; html: string; sections: PageSection[] }> {
-  const normalizedBlueprint = normalizeBlueprint(blueprint, brief);
-  const creativeDirection = deriveCreativeDirectionFromBlueprint(normalizedBlueprint, brief);
-  const planSystem =
-    "You are a web architect planning a new page for an existing premium website. Return JSON only.";
-  const planUser = `Add a "${pageName}" page to ${normalizedBlueprint.siteName}.
+  const reuseNavbar = !!options?.navbarHtml;
+  const reuseFooter = !!options?.footerHtml;
+  const reuseChrome = reuseNavbar || reuseFooter;
 
-${buildBusinessContextBlock(brief)}
-
-Existing pages: ${normalizedBlueprint.pages.map((p) => `${p.name} (${p.purpose})`).join(", ")}
-Current design direction: ${normalizedBlueprint.designDirection}
-Creative direction:
-${formatCreativeDirection(creativeDirection)}
-
-New page description: ${pageDescription}
-
-Return JSON:
-{
-  "id":"uid",
-  "name":"${pageName}",
-  "slug":"url-slug",
-  "sections":["type1","type2","type3"],
-  "purpose":"string",
-  "priority": 99
-}
-
-Rules:
-- Make the section list specific to the actual purpose of this page.
-- Avoid generic filler sections unless they are truly needed.
-- Use section types from this list when possible: ${SECTION_TYPE_OPTIONS.join(", ")}.`;
-
-  const rawPageBlueprint = await jsonCompletion<BlueprintPage>(
-    planSystem,
-    planUser,
-    JSON_MAX_RETRIES,
-    PLAN_MAX_TOKENS
+  const generated = await generateAdditionalPageForBlueprint(
+    blueprint,
+    pageName,
+    {
+      ...brief,
+      pages: brief.pages.includes(pageName) ? brief.pages : [...brief.pages, pageName],
+      businessBrief: brief.businessBrief
+        ? {
+            ...brief.businessBrief,
+            pages: brief.businessBrief.pages.includes(pageName)
+              ? brief.businessBrief.pages
+              : [...brief.businessBrief.pages, pageName],
+          }
+        : brief.businessBrief,
+    },
+    {
+      chrome: reuseChrome
+        ? {
+            reuseNavbar,
+            reuseFooter,
+            reference: buildChromeReference(options?.navbarHtml, options?.footerHtml),
+          }
+        : null,
+    }
   );
-  const pageBlueprint: BlueprintPage = {
-    ...rawPageBlueprint,
-    id: rawPageBlueprint.id || slugifyText(pageName),
-    name: rawPageBlueprint.name || pageName,
-    slug: rawPageBlueprint.slug || slugifyText(pageName),
-    purpose: rawPageBlueprint.purpose || pageDescription,
-    sections: enrichBlueprintPageSections(
-      {
-        ...rawPageBlueprint,
-        name: rawPageBlueprint.name || pageName,
-        slug: rawPageBlueprint.slug || slugifyText(pageName),
-        sections: rawPageBlueprint.sections ?? [],
-        purpose: rawPageBlueprint.purpose || pageDescription,
-      },
-      brief
-    ),
-    priority: rawPageBlueprint.priority,
+
+  const page: BlueprintPage = {
+    ...generated.page,
+    id: options?.pageId?.trim() || generated.page.id,
+    slug: options?.pageSlug?.trim() || generated.page.slug,
+    purpose: pageDescription.trim() || generated.page.purpose,
   };
-  const result = await generatePage(normalizedBlueprint, pageBlueprint, brief);
-  return { page: pageBlueprint, html: result.html, sections: result.sections };
+
+  const html = assemblePageWithChrome(
+    sanitizeGeneratedHtml(generated.html),
+    reuseNavbar ? options?.navbarHtml : null,
+    reuseFooter ? options?.footerHtml : null
+  );
+  const sections = extractSections(html);
+  return { page, html, sections };
 }
 
 // ─── Engine availability ──────────────────────────────────────────────────────

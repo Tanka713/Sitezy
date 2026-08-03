@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { formatCreditAmount, getAIUsageCost } from "@/lib/ai-usage";
 import { useAppStore } from "@/lib/store";
 import {
   duplicateSectionInPageHtml,
@@ -24,8 +25,15 @@ import {
   AlertCircle, CheckCircle2, Clock, Loader2, Sparkles, GripVertical,
 } from "lucide-react";
 import { EditorSwitch } from "./EditorSwitch";
-import { extractNavbarHtml, uid } from "@/lib/utils";
-import { streamGeneratePage } from "@/lib/utils/generateStream";
+import { buildProjectPageNavigationLinks, cn, extractNavbarHtml, extractFooterHtml, uid } from "@/lib/utils";
+import { PAGE_GENERATION_TIMEOUT_MS, streamGeneratePage } from "@/lib/utils/generateStream";
+import { projectHasActiveGeneration } from "@/lib/project-generation";
+import {
+  estimateFullSiteDurationMs,
+  estimateAddPageDurationMs,
+  estimateSectionRegenerationDurationMs,
+  estimateSiteRegenerationDurationMs,
+} from "@/lib/generation-eta";
 import type { PageSection, Project, ProjectPage } from "@/types";
 
 function getRequestId(error: unknown): string | null {
@@ -62,9 +70,39 @@ function buildClientApiError(error: unknown, fallbackCode: ErrorCode, metadata?:
   };
 }
 
-interface Props { project: Project; }
+interface Props {
+  project: Project;
+  edge?: "left" | "right";
+}
 
-export function LeftSidebar({ project }: Props) {
+type LocalPageGenerationKind = "add-page" | "regenerate-page";
+
+interface ActiveLocalPageGeneration {
+  token: symbol;
+  pageId: string;
+  pageName: string;
+  kind: LocalPageGenerationKind;
+  cancel: () => void;
+}
+
+const activeLocalPageGenerations = new Map<string, ActiveLocalPageGeneration>();
+
+function registerLocalPageGeneration(entry: ActiveLocalPageGeneration) {
+  activeLocalPageGenerations.set(entry.pageId, entry);
+}
+
+function clearLocalPageGeneration(pageId: string, token?: symbol) {
+  const current = activeLocalPageGenerations.get(pageId);
+  if (!current) return;
+  if (token && current.token !== token) return;
+  activeLocalPageGenerations.delete(pageId);
+}
+
+function getLocalPageGeneration(pageId: string): ActiveLocalPageGeneration | null {
+  return activeLocalPageGenerations.get(pageId) ?? null;
+}
+
+export function LeftSidebar({ project, edge = "left" }: Props) {
   const leftPanelTab      = useAppStore((s) => s.editor.leftPanelTab);
   const selectedPageId    = useAppStore((s) => s.editor.selectedPageId);
   const selectedFileId    = useAppStore((s) => s.editor.selectedFileId);
@@ -92,20 +130,26 @@ export function LeftSidebar({ project }: Props) {
   };
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/[0.04] bg-[#0e1117]/95 backdrop-blur-2xl">
+    <aside
+      className={cn(
+        "sz-editor-dock editor-sidebar flex h-full w-full flex-col overflow-hidden",
+        edge === "left" ? "rounded-r-[22px] rounded-l-none border-l-0" : "rounded-l-[22px] rounded-r-none border-r-0"
+      )}
+    >
       <div className="flex flex-shrink-0 flex-col gap-2.5 px-3.5 pb-2.5 pt-3.5">
-        <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] p-1">
+        <div className="flex items-center justify-center gap-6 px-1 pb-1">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setLeftPanel(t.key)}
-              className={`relative flex h-8 flex-1 items-center justify-center rounded-[10px] text-center transition-all duration-200 ${
+              className={cn(
+                "relative flex h-8 items-center justify-center px-1.5 text-center transition-colors duration-200",
                 leftPanelTab === t.key
-                  ? "bg-white/[0.08] text-white/90 shadow-[0_1px_3px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)]"
-                  : "text-white/32 hover:text-white/55"
-              }`}
+                  ? "text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
             >
-              <span className="text-[10.5px] font-medium tracking-wide">{t.label}</span>
+              <span className="text-[11.5px] font-medium tracking-wide">{t.label}</span>
             </button>
           ))}
         </div>
@@ -130,24 +174,23 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
   const setPageContent  = useAppStore((s) => s.setPageContent);
   const setPageStatus   = useAppStore((s) => s.setPageStatus);
   const setGenStatus    = useAppStore((s) => s.setGenStatus);
+  const setGenerationTiming = useAppStore((s) => s.setGenerationTiming);
   const addGenLog       = useAppStore((s) => s.addGenLog);
   const genStatus       = useAppStore((s) => s.generationStatus);
   const genProgress     = useAppStore((s) => s.generationProgress);
   const setApiError     = useAppStore((s) => s.setApiError);
+  const syncProjectFromServer = useAppStore((s) => s.syncProjectFromServer);
 
-  const isGenerating =
-    genStatus === "blueprint" ||
-    genStatus === "pages" ||
-    genStatus === "normalizing" ||
-    project.generationJob?.status === "queued" ||
-    project.generationJob?.status === "running" ||
-    project.status === "generating" ||
-    pages.some((page) => page.status === "pending" || page.status === "generating");
+  const isGenerating = projectHasActiveGeneration(project, genStatus);
+  const hasRetryableBrief = project.brief.siteName.trim().length > 0 && project.brief.description.trim().length > 0;
+  const retryGenerationPageCount = Math.max(project.blueprint?.pages.length ?? 0, project.brief.pages.length, 1);
+  const canRetryEmptySite = pages.length === 0 && !isGenerating && hasRetryableBrief;
 
   const [showRegen, setShowRegen]     = useState(false);
   const [regenPrompt, setRegenPrompt] = useState("");
   const [regenBtnPos, setRegenBtnPos] = useState<DOMRect | null>(null);
   const regenPopupRef = useRef<HTMLDivElement>(null);
+  const regenerateAllCreditsLabel = formatCreditAmount(pages.length * getAIUsageCost("generate-page"));
 
   useEffect(() => {
     if (!showRegen) return;
@@ -164,9 +207,14 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
     if (!project.blueprint || isGenerating) return;
     setShowRegen(false);
     setRegenPrompt("");
+    setGenerationTiming({
+      kind: "site-regeneration",
+      estimateMs: estimateSiteRegenerationDurationMs(pages.length),
+    });
     setGenStatus("pages", "Regenerating all pages…");
     addGenLog("🔄 Regenerating entire site…", "progress");
     let sharedNavbarHtml: string | null = null;
+    let sharedFooterHtml: string | null = null;
     let successCount = 0;
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
@@ -176,15 +224,22 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
       try {
         const bpPage = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map((s) => s.type || s.name), purpose: page.purpose };
         const result = await streamGeneratePage(
-          { blueprint: project.blueprint, page: bpPage, brief: project.brief, navbarHtml: i > 0 ? sharedNavbarHtml : null },
+          {
+            blueprint: project.blueprint,
+            page: bpPage,
+            brief: project.brief,
+            navbarHtml: i > 0 ? sharedNavbarHtml : null,
+            footerHtml: i > 0 ? sharedFooterHtml : null,
+          },
           () => setGenStatus("pages", `Regenerating ${page.name} (${i + 1}/${pages.length})...`),
-          180_000
+          PAGE_GENERATION_TIMEOUT_MS
         );
         setPageContent(page.id, result.html, result.sections, { completeGeneration: true });
         successCount += 1;
         addGenLog(`✅ ${page.name} regenerated`, "success");
-        if (i === 0 && !sharedNavbarHtml && result.html) {
-          sharedNavbarHtml = extractNavbarHtml(result.html);
+        if (i === 0 && result.html) {
+          if (!sharedNavbarHtml) sharedNavbarHtml = extractNavbarHtml(result.html);
+          if (!sharedFooterHtml) sharedFooterHtml = extractFooterHtml(result.html);
         }
       } catch (err) {
         const { appErr, apiError } = buildClientApiError(err, API_GENERATE_001, { pageId: page.id, pageName: page.name });
@@ -199,11 +254,67 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
     addGenLog(failCount === 0 ? "✅ All done!" : `⚠️ Done with ${failCount} failure${failCount > 1 ? "s" : ""}.`, failCount === 0 ? "success" : "error");
   }
 
+  async function handleRetryEmptySite() {
+    if (!canRetryEmptySite) return;
+
+    setApiError(null);
+    setGenerationTiming({
+      kind: "full-site",
+      estimateMs: estimateFullSiteDurationMs(retryGenerationPageCount),
+    });
+    setGenStatus("blueprint", "Retrying full-site generation...");
+    addGenLog("🔁 Retrying full-site generation from the saved brief…", "progress");
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/generation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: project.brief }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw payload;
+      }
+
+      const progressMessage =
+        typeof payload?.job?.progressMessage === "string" && payload.job.progressMessage.trim()
+          ? payload.job.progressMessage.trim()
+          : "Queued for background generation...";
+
+      setGenStatus("blueprint", progressMessage);
+      addGenLog("🟡 Background generation queued. Rebuilding pages now.", "info");
+      await syncProjectFromServer(project.id, { preserveEditor: true, preserveHistory: true });
+    } catch (err) {
+      const { appErr, apiError } = buildClientApiError(err, API_GENERATE_001, {
+        action: "retryEmptySiteGeneration",
+        projectId: project.id,
+        projectName: project.name,
+      });
+      logAppError(appErr);
+      setApiError(apiError);
+      setGenStatus("error", appErr.userMessage);
+      addGenLog(`❌ ${appErr.userMessage}`, "error");
+    }
+  }
+
+  const emptyStateMessage = project.generationJob?.status === "queued"
+    ? project.generationJob.progressMessage?.trim() || "Queued for generation..."
+    : project.generationJob?.status === "running"
+      ? project.generationJob.progressMessage?.trim() || "Generating pages..."
+      : project.status === "generating"
+        ? "Analyzing brief and preparing pages..."
+        : genStatus === "blueprint" || genStatus === "pages"
+          ? genProgress || "Preparing generation..."
+          : project.blueprint
+            ? "No pages were created from the last generation run."
+            : "No pages yet.";
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex flex-shrink-0 items-center justify-between px-0.5 pb-3">
-          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/25">
-            Pages <span className="ml-1 text-white/14">{pages.length}</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+            Pages <span className="ml-1 text-[var(--text-tertiary)]">{pages.length}</span>
           </span>
         <div className="flex items-center gap-1.5">
           <button
@@ -213,7 +324,7 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
             }}
             disabled={!project.blueprint || isGenerating}
             title="Regenerate all pages"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-white/25 transition-all hover:bg-white/[0.06] hover:text-white/70 disabled:opacity-25 disabled:cursor-not-allowed"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-all hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed"
           >
             {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
           </button>
@@ -222,61 +333,64 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
             <div
               ref={regenPopupRef}
               style={{ position: "fixed", top: regenBtnPos.bottom + 8, left: Math.max(8, regenBtnPos.right - 260), zIndex: 9999 }}
-              className="w-[260px] overflow-hidden rounded-2xl border border-white/[0.06] bg-[#12161f] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+              className="editor-dialog editor-preview-surface w-[260px] overflow-hidden rounded-2xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]"
             >
-              <div className="flex items-center gap-2.5 border-b border-white/[0.05] px-3.5 py-3">
+              <div className="flex items-center gap-2.5 border-b border-[var(--border-soft)] px-3.5 py-3">
                 <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-[#5B8CFF]/12 text-[#5B8CFF]">
                   <Sparkles size={11} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-white/85">Regenerate site</p>
-                  <p className="text-[9.5px] text-white/30">{pages.length} pages will be rewritten</p>
+                  <p className="text-[12px] font-semibold text-[var(--text-primary)]">Regenerate site</p>
+                  <p className="text-[10.5px] text-[var(--text-secondary)]">{pages.length} pages will be rewritten · {regenerateAllCreditsLabel}</p>
                 </div>
-                <button onClick={() => setShowRegen(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/60">
+                <button onClick={() => setShowRegen(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]">
                   <X size={11} />
                 </button>
               </div>
               <div className="px-3.5 py-3">
-                <p className="mb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-white/22">
-                  Direction <span className="normal-case tracking-normal text-white/16">— optional</span>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                  Direction <span className="normal-case tracking-normal text-[var(--text-disabled)]">— optional</span>
                 </p>
                 <textarea
                   value={regenPrompt}
                   onChange={(e) => setRegenPrompt(e.target.value)}
                   placeholder="Change tone, update content, try a new layout…"
                   rows={2}
-                  className="w-full resize-none rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[10.5px] leading-relaxed text-white/70 placeholder-white/16 outline-none transition-colors focus:border-white/[0.1]"
+                  className="w-full resize-none rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2.5 text-[11.5px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none transition-colors focus:border-[var(--border-focus)]"
                 />
               </div>
-              <div className="flex items-center justify-end border-t border-white/[0.05] px-3.5 py-2.5">
+              <div className="flex items-center justify-end border-t border-[var(--border-soft)] px-3.5 py-2.5">
                 <button
                   onClick={() => void handleRegenerateAll()}
                   disabled={isGenerating}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#5B8CFF] px-3.5 py-1.5 text-[10px] font-semibold text-white shadow-[0_2px_8px_rgba(91,140,255,0.25)] transition-all hover:bg-[#6B99FF] disabled:cursor-not-allowed disabled:opacity-35"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#5B8CFF] px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_2px_8px_rgba(91,140,255,0.25)] transition-all hover:bg-[#6B99FF] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <Sparkles size={10} />
-                  Regenerate all
+                  Regenerate all · {regenerateAllCreditsLabel}
                 </button>
               </div>
             </div>,
             document.body
           )}
 
-          <button onClick={onAddPage} className="flex h-7 w-7 items-center justify-center rounded-lg text-white/25 transition-all hover:bg-white/[0.06] hover:text-white/70">
+          <button onClick={onAddPage} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-all hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]">
             <Plus size={12}/>
           </button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto pb-2">
         {pages.length === 0 ? (
-          <div className="px-3 py-8 text-center text-[11px] text-white/22">
-            {project.generationJob?.status === "queued"
-              ? project.generationJob.progressMessage?.trim() || "Queued for generation..."
-              : project.generationJob?.status === "running"
-                ? project.generationJob.progressMessage?.trim() || "Generating pages..."
-                : project.status === "generating"
-                  ? "Analyzing brief and preparing pages..."
-                  : "No pages yet."}
+          <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-[12px] text-[var(--text-tertiary)]">
+            <p>{emptyStateMessage}</p>
+            {canRetryEmptySite && (
+              <button
+                onClick={() => void handleRetryEmptySite()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#5B8CFF] px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_2px_8px_rgba(91,140,255,0.25)] transition-all hover:bg-[#6B99FF]"
+              >
+                <Sparkles size={10} />
+                {project.blueprint ? "Retry generation" : "Generate site"}
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -294,7 +408,7 @@ function PagesPanel({ project, pages, selectedPageId, onSelectPage, onAddPage }:
           </div>
         )}
         {pages.length > 0 && (
-          <button onClick={onAddPage} className="mt-1.5 flex w-full items-center gap-2 rounded-xl border border-dashed border-white/[0.06] px-3 py-2 text-[10.5px] text-white/25 transition-all hover:border-white/[0.1] hover:bg-white/[0.03] hover:text-white/50">
+          <button onClick={onAddPage} className="mt-1.5 flex w-full items-center gap-2 rounded-xl border border-dashed border-[var(--border-soft)] px-3 py-2 text-[11.5px] text-[var(--text-tertiary)] transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]">
             <Plus size={10}/> Add page
           </button>
         )}
@@ -324,20 +438,23 @@ function PageRow({
   const setPageContent  = useAppStore((s) => s.setPageContent);
   const setPageStatus   = useAppStore((s) => s.setPageStatus);
   const setGenStatus    = useAppStore((s) => s.setGenStatus);
+  const setGenerationTiming = useAppStore((s) => s.setGenerationTiming);
   const addGenLog       = useAppStore((s) => s.addGenLog);
   const setApiError     = useAppStore((s) => s.setApiError);
 
   const [menu,           setMenu]           = useState(false);
   const [ren,            setRen]            = useState(false);
   const [name,           setName]           = useState(page.name);
-  const [regen,          setRegen]          = useState(false);
   const [armedDelete,    setArmedDelete]    = useState(false);
+  const [armedCancel,    setArmedCancel]    = useState(false);
   const [showRegenPopup, setShowRegenPopup] = useState(false);
   const [regenPromptVal, setRegenPromptVal] = useState("");
   const [regenBtnPos,    setRegenBtnPos]    = useState<DOMRect | null>(null);
+  const pageRegenerationCreditsLabel = formatCreditAmount(getAIUsageCost("generate-page"));
   const menuRef      = useRef<HTMLDivElement>(null);
   const regenPopRef  = useRef<HTMLDivElement>(null);
   const armRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelArmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!showRegenPopup) return;
@@ -360,6 +477,23 @@ function PageRow({
     deletePage(page.id);
   }
 
+  function handleCancelGeneration(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+
+    if (!activeLocalGeneration) return;
+
+    if (!armedCancel) {
+      setArmedCancel(true);
+      if (cancelArmRef.current) clearTimeout(cancelArmRef.current);
+      cancelArmRef.current = setTimeout(() => setArmedCancel(false), 2400);
+      return;
+    }
+
+    if (cancelArmRef.current) clearTimeout(cancelArmRef.current);
+    setArmedCancel(false);
+    activeLocalGeneration.cancel();
+  }
+
   useEffect(() => {
     if (!menu) return;
     function h(e: MouseEvent) { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false); }
@@ -370,36 +504,88 @@ function PageRow({
   const progressTargetsPage =
     generationProgress.trim().length > 0 &&
     generationProgress.toLowerCase().includes(page.name.trim().toLowerCase());
+  const activeLocalGeneration = getLocalPageGeneration(page.id);
+  const canCancelLocalGeneration = activeLocalGeneration !== null;
   const showsGeneratingState =
-    regen ||
     page.status === "pending" ||
     page.status === "generating" ||
     (isGlobalGenerating && (progressTargetsPage || (isSelected && !page.html)));
+
+  useEffect(() => {
+    if (canCancelLocalGeneration) return;
+    setArmedCancel(false);
+    if (cancelArmRef.current) {
+      clearTimeout(cancelArmRef.current);
+      cancelArmRef.current = null;
+    }
+  }, [canCancelLocalGeneration]);
+
+  useEffect(() => {
+    return () => {
+      if (armRef.current) clearTimeout(armRef.current);
+      if (cancelArmRef.current) clearTimeout(cancelArmRef.current);
+    };
+  }, []);
 
   function status() {
     if (showsGeneratingState) return <Loader2 size={10} className="text-accent-400 animate-spin"/>;
     if (page.status === "done")  return <CheckCircle2 size={10} className="text-emerald-500"/>;
     if (page.status === "error") return <AlertCircle  size={10} className="text-red-400"/>;
-    return <Clock size={10} className="text-white/18"/>;
+    return <Clock size={10} className="text-[var(--text-disabled)]"/>;
   }
 
   async function handleRegen(prompt?: string) {
-    if (!project.blueprint) return;
-    setShowRegenPopup(false); setMenu(false); setRegen(true); setPageStatus(page.id, "generating");
+    if (!project.blueprint || isGlobalGenerating) return;
+    const previousStatus = page.status;
+    const controller = new AbortController();
+    let cancelled = false;
+    const token = Symbol(`regenerate:${page.id}`);
+
+    registerLocalPageGeneration({
+      token,
+      pageId: page.id,
+      pageName: page.name,
+      kind: "regenerate-page",
+      cancel: () => {
+        if (cancelled) return;
+        cancelled = true;
+        controller.abort();
+        clearLocalPageGeneration(page.id, token);
+        setApiError(null);
+        setPageStatus(page.id, previousStatus);
+        setGenStatus("idle", "");
+        addGenLog(`Stopped regenerating ${page.name}.`, "info");
+      },
+    });
+
+    setShowRegenPopup(false);
+    setMenu(false);
+    setRegenPromptVal("");
+    setPageStatus(page.id, "generating");
+    setGenerationTiming({
+      kind: "page",
+      estimateMs: estimateAddPageDurationMs(),
+    });
     setGenStatus("pages", `Regenerating ${page.name}…`);
     // Reuse navbar from another already-generated page for consistency
     const otherPage = project.pages?.find((p) => p.html && p.id !== page.id);
     const navbarHtml = otherPage?.html ? extractNavbarHtml(otherPage.html) : null;
+    const footerHtml = otherPage?.html ? extractFooterHtml(otherPage.html) : null;
     try {
       const bp = { id: page.id, name: page.name, slug: page.slug, sections: page.sections.map((s) => s.type || s.name), purpose: page.purpose };
       const result = await streamGeneratePage(
-        { blueprint: project.blueprint, page: bp, brief: project.brief, navbarHtml, instruction: prompt?.trim() || null },
+        { blueprint: project.blueprint, page: bp, brief: project.brief, navbarHtml, footerHtml, instruction: prompt?.trim() || null },
         () => setGenStatus("pages", `Regenerating ${page.name}...`),
-        180_000
+        PAGE_GENERATION_TIMEOUT_MS,
+        controller.signal
       );
+      if (cancelled || controller.signal.aborted) return;
+      clearLocalPageGeneration(page.id, token);
       setPageContent(page.id, result.html, result.sections, { completeGeneration: true });
       setGenStatus("done", "Done!");
     } catch (error) {
+      if (cancelled || controller.signal.aborted) return;
+      clearLocalPageGeneration(page.id, token);
       const { appErr, apiError } = buildClientApiError(error, API_GENERATE_001, {
         pageId: page.id,
         pageName: page.name,
@@ -410,7 +596,9 @@ function PageRow({
       addGenLog(`❌ ${appErr.userMessage}`, "error");
       setGenStatus("error", "Failed");
     }
-    finally { setRegen(false); }
+    finally {
+      clearLocalPageGeneration(page.id, token);
+    }
   }
 
   function commitRename() {
@@ -425,44 +613,63 @@ function PageRow({
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
             onBlur={commitRename}
             onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRen(false); }}
-            className="flex-1 rounded-lg border border-[#5B8CFF]/30 bg-white/[0.05] px-2.5 py-1.5 text-[11.5px] text-white outline-none min-w-0"/>
-          <button onClick={() => setRen(false)} className="text-white/25 hover:text-white transition-colors"><X size={10}/></button>
+            className="flex-1 min-w-0 rounded-lg border border-[var(--border-focus)] bg-[var(--surface-4)] px-2.5 py-1.5 text-[11.5px] text-[var(--text-primary)] outline-none"/>
+          <button onClick={() => setRen(false)} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"><X size={10}/></button>
         </div>
       ) : (
         <div onClick={onSelect} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect()}
-          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-left text-[11.5px] transition-all duration-150 cursor-pointer ${
+          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-left text-[12.5px] transition-all duration-150 cursor-pointer ${
             isSelected
-              ? "bg-[#5B8CFF]/10 text-white shadow-[inset_0_0_0_1px_rgba(91,140,255,0.15)]"
-              : "text-white/50 hover:text-white/75 hover:bg-white/[0.04]"
+              ? "bg-[var(--accent-subtle)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_var(--border-focus)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-4)]"
           }`}>
           <span className="flex-shrink-0">{status()}</span>
           <span className="flex-1 truncate font-medium">{page.name}</span>
-          <button type="button"
-            onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}
-            onKeyDown={(e) => e.key === "Enter" && (e.stopPropagation(), setMenu(!menu))}
-            className="opacity-0 group-hover/row:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-white/25 hover:text-white hover:bg-white/[0.08] transition-all flex-shrink-0 cursor-pointer">
-            <MoreHorizontal size={11}/>
-          </button>
+          {canCancelLocalGeneration ? (
+            <button
+              type="button"
+              onClick={handleCancelGeneration}
+              title={
+                armedCancel
+                  ? "Click again to confirm cancellation"
+                  : activeLocalGeneration?.kind === "add-page"
+                    ? "Cancel page creation"
+                    : "Cancel page regeneration"
+              }
+              className="flex h-6 items-center gap-1 rounded-md border border-[var(--border-soft)] px-2 text-[9px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)]"
+            >
+              <X size={9} />
+              {armedCancel ? "Confirm?" : "Cancel"}
+            </button>
+          ) : (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}
+              onKeyDown={(e) => e.key === "Enter" && (e.stopPropagation(), setMenu(!menu))}
+              disabled={isGlobalGenerating}
+              className="opacity-0 group-hover/row:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-5)] transition-all flex-shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-20">
+              <MoreHorizontal size={11}/>
+            </button>
+          )}
         </div>
       )}
       {menu && (
-        <div ref={menuRef} className="absolute right-1 top-9 z-50 w-[172px] overflow-hidden rounded-xl border border-white/[0.06] bg-[#12161f] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.4)]">
-          <MI icon={<RefreshCw size={11}/>} label="Regenerate" disabled={!project.blueprint} onClick={(e) => {
+        <div ref={menuRef} className="editor-dialog editor-preview-surface absolute right-1 top-9 z-50 w-[172px] overflow-hidden rounded-xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
+          <MI icon={<RefreshCw size={11}/>} label="Regenerate" disabled={!project.blueprint || isGlobalGenerating} onClick={(e) => {
             setRegenBtnPos((e.currentTarget as HTMLElement).getBoundingClientRect());
             setMenu(false);
             setShowRegenPopup(true);
           }}/>
-          <MI icon={<Pencil size={11}/>}    label="Rename"     onClick={() => { setRen(true); setMenu(false); }}/>
-          <MI icon={<Copy size={11}/>}      label="Duplicate"  onClick={() => { duplicatePage(page.id); setMenu(false); }}/>
-          <div className="mx-2.5 h-px bg-white/[0.05] my-0.5"/>
-          <MI icon={<Trash2 size={11}/>}    label={armedDelete ? "Confirm delete?" : "Delete"} danger onClick={handleDeletePage} disabled={(project.pages?.length??0)<=1}/>
+          <MI icon={<Pencil size={11}/>}    label="Rename"     disabled={isGlobalGenerating} onClick={() => { setRen(true); setMenu(false); }}/>
+          <MI icon={<Copy size={11}/>}      label="Duplicate"  disabled={isGlobalGenerating} onClick={() => { duplicatePage(page.id); setMenu(false); }}/>
+          <div className="mx-2.5 my-0.5 h-px bg-[var(--border-soft)]"/>
+          <MI icon={<Trash2 size={11}/>}    label={armedDelete ? "Confirm delete?" : "Delete"} danger onClick={handleDeletePage} disabled={isGlobalGenerating || (project.pages?.length??0)<=1}/>
         </div>
       )}
       {showRegenPopup && regenBtnPos && createPortal(
         <div
           ref={regenPopRef}
           style={{ position: "fixed", top: regenBtnPos.bottom + 6, left: Math.max(8, regenBtnPos.right - 260), zIndex: 9999 }}
-          className="w-[260px] overflow-hidden rounded-2xl border border-white/[0.06] bg-[#12161f] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+          className="editor-dialog editor-preview-surface w-[260px] overflow-hidden rounded-2xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]"
         >
           <div className="flex items-center gap-2.5 border-b border-white/[0.05] px-3.5 py-3">
             <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-[#5B8CFF]/12 text-[#5B8CFF]">
@@ -470,7 +677,7 @@ function PageRow({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-semibold text-white/85">Regenerate page</p>
-              <p className="truncate text-[9.5px] text-white/30">{page.name}</p>
+              <p className="truncate text-[9.5px] text-white/30">{page.name} · {pageRegenerationCreditsLabel}</p>
             </div>
             <button onClick={() => setShowRegenPopup(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/60">
               <X size={11} />
@@ -485,17 +692,18 @@ function PageRow({
               onChange={(e) => setRegenPromptVal(e.target.value)}
               placeholder="Change tone, update content, try a new layout…"
               rows={2}
+              disabled={isGlobalGenerating || canCancelLocalGeneration}
               className="w-full resize-none rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[10.5px] leading-relaxed text-white/70 placeholder-white/16 outline-none transition-colors focus:border-white/[0.1]"
             />
           </div>
           <div className="flex items-center justify-end border-t border-white/[0.05] px-3.5 py-2.5">
             <button
               onClick={() => { void handleRegen(regenPromptVal); setRegenPromptVal(""); }}
-              disabled={regen}
+              disabled={canCancelLocalGeneration || isGlobalGenerating}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#5B8CFF] px-3.5 py-1.5 text-[10px] font-semibold text-white shadow-[0_2px_8px_rgba(91,140,255,0.25)] transition-all hover:bg-[#6B99FF] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <Sparkles size={10} />
-              Regenerate
+              Regenerate · {pageRegenerationCreditsLabel}
             </button>
           </div>
         </div>,
@@ -508,8 +716,8 @@ function PageRow({
 function MI({ icon, label, onClick, danger, disabled }: { icon: React.ReactNode; label: string; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; danger?: boolean; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`flex items-center gap-2.5 w-full px-3 py-2 text-[11px] transition-colors duration-100 disabled:opacity-20 disabled:cursor-not-allowed ${
-        danger ? "text-red-400/60 hover:bg-red-500/8 hover:text-red-300" : "text-white/50 hover:bg-white/[0.05] hover:text-white/85"
+      className={`flex items-center gap-2.5 w-full px-3 py-2 text-[12px] transition-colors duration-100 disabled:opacity-20 disabled:cursor-not-allowed ${
+        danger ? "text-red-400/60 hover:bg-red-500/8 hover:text-red-300" : "text-[var(--text-secondary)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
       }`}>
       {icon} {label}
     </button>
@@ -543,14 +751,24 @@ function buildManualPageTemplate(project: Project, pageName: string, purpose: st
     .find((html) => !!html)
     ?.trim();
   const navbarHtml = existingNavbar ? extractNavbarHtml(existingNavbar) : null;
+  const manualNavbarLinks = buildProjectPageNavigationLinks(
+    [
+      ...project.pages.map((page) => ({ id: page.id, name: page.name, slug: page.slug })),
+      {
+        id: `manual-${pageName}`,
+        name: pageName,
+        slug: pageName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+      },
+    ],
+    (_page, _index, slug) => (slug === "home" ? "/" : `/${slug}`)
+  );
 
   return `
 ${navbarHtml ?? `<nav data-sz-section-id="sec-${uid()}" data-sz-section-type="navbar" data-sz-section-name="Navigation" style="position:sticky;top:0;z-index:1000;padding:18px 32px;border-bottom:1px solid ${border};background:color-mix(in srgb, ${bg} 92%, white 8%);backdrop-filter:blur(18px);font-family:'${bodyFont}',system-ui,sans-serif;">
   <div style="width:min(100%,1180px);margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:20px;">
     <a href="/" style="font-family:'${headingFont}',system-ui,sans-serif;font-size:22px;font-weight:800;color:${text};text-decoration:none;">${escapeHtml(siteName)}</a>
     <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
-      <a href="/home" style="color:${muted};text-decoration:none;font-size:14px;">Home</a>
-      <a href="/${escapeHtml(pageName.toLowerCase().replace(/\s+/g, "-"))}" style="color:${text};text-decoration:none;font-size:14px;font-weight:600;">${escapeHtml(pageName)}</a>
+      ${manualNavbarLinks.map((link) => `<a data-sz-nav-link="1" href="${escapeHtml(link.href)}" style="color:${link.label === pageName ? text : muted};text-decoration:none;font-size:14px;${link.label === pageName ? "font-weight:600;" : ""}">${escapeHtml(link.label)}</a>`).join("")}
       <a href="#next-step" style="display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;border-radius:14px;background:${primary};color:#fff;text-decoration:none;font-size:14px;font-weight:700;box-shadow:0 12px 28px rgba(0,0,0,0.12);">Get started</a>
     </div>
   </div>
@@ -660,7 +878,9 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
   const setPageContent = useAppStore((s) => s.setPageContent);
   const addGenLog = useAppStore((s) => s.addGenLog);
   const setGenStatus = useAppStore((s) => s.setGenStatus);
+  const setGenerationTiming = useAppStore((s) => s.setGenerationTiming);
   const setApiError = useAppStore((s) => s.setApiError);
+  const generationLocked = projectHasActiveGeneration(project);
   const [exp, setExp] = useState<Record<string,boolean>>(() =>
     Object.fromEntries(pages.map((p) => [p.id, true]))
   );
@@ -713,12 +933,29 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
     iframe?.contentWindow?.postMessage({ target: "sitezy-iframe", type: "focus-section", sectionId }, "*");
   }
 
+  function fireSectionEvent(
+    eventType: "section_deleted" | "section_reordered",
+    sectionId: string,
+    sectionType: string | undefined
+  ) {
+    fetch("/api/ai-learning", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventType,
+        projectId: project.id,
+        metadata: { sectionId, sectionType: sectionType ?? "unknown" },
+      }),
+    }).catch(() => {});
+  }
+
   function confirmDeleteSection(sectionId: string) {
     setConfirmDelete(null);
     const page = pages.find((p) => p.id === selectedPageId);
     if (!page?.html) return;
 
     const removedIndex = page.sections.findIndex((section) => section.id === sectionId);
+    const removedSection = page.sections[removedIndex];
     const result = removeSectionFromPageHtml(page.html, sectionId);
     const fallbackSelection =
       result.sections[Math.min(Math.max(removedIndex, 0), Math.max(result.sections.length - 1, 0))]?.id ?? null;
@@ -727,6 +964,7 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
     onSelectPage(page.id);
     onSelectSection(selectedSectionId === sectionId ? fallbackSelection : selectedSectionId);
     setTimeout(() => focusSectionInFrame(fallbackSelection), 80);
+    fireSectionEvent("section_deleted", sectionId, removedSection?.type);
   }
 
   function moveSection(page: ProjectPage, sectionId: string, direction: -1 | 1) {
@@ -749,6 +987,8 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
       onSelectPage(page.id);
       onSelectSection(result.sectionId);
       setTimeout(() => focusSectionInFrame(result.sectionId), 80);
+      const movedSection = page.sections.find((s) => s.id === dragSrc.sectionId);
+      fireSectionEvent("section_reordered", dragSrc.sectionId, movedSection?.type);
     }
     setDragSrc(null); setDragOver(null);
   }
@@ -764,7 +1004,7 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
   }
 
   async function handleRegenerateSection(page: ProjectPage, sectionId: string, mode: SectionRegenMode, prompt: string) {
-    if (!project.blueprint || regeneratingSectionId) return;
+    if (!project.blueprint || regeneratingSectionId || generationLocked) return;
 
     const context = getSectionContext(page.html, sectionId);
     if (!context) return;
@@ -775,6 +1015,10 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
     setRegeneratingSectionId(sectionId);
     onSelectPage(page.id);
     onSelectSection(sectionId);
+    setGenerationTiming({
+      kind: "section",
+      estimateMs: estimateSectionRegenerationDurationMs(),
+    });
     addGenLog(`🔄 Regenerating ${context.section.name}…`, "progress");
     setGenStatus("pages", `Regenerating ${context.section.name}…`);
 
@@ -783,9 +1027,12 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId: project.id,
           blueprint: project.blueprint,
           brief: project.brief,
           page: {
+            id: page.id,
+            slug: page.slug,
             name: page.name,
             purpose: page.purpose,
           },
@@ -882,8 +1129,8 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex flex-shrink-0 items-center justify-between px-0.5 pb-3">
-        <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/25">
-          Layers <span className="ml-1 text-white/14">{pages.reduce((count, page) => count + page.sections.length, 0)}</span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+          Layers <span className="ml-1 text-[var(--text-tertiary)]">{pages.reduce((count, page) => count + page.sections.length, 0)}</span>
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto pb-2">
@@ -900,45 +1147,65 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                 }}
                 className={`w-full rounded-xl transition-all duration-150 ${
                   isPageSelected
-                    ? "bg-[#5B8CFF]/10 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.15)]"
-                    : "hover:bg-white/[0.04]"
+                    ? "bg-[var(--accent-subtle)] shadow-[inset_0_0_0_1px_var(--border-focus)]"
+                    : "hover:bg-[var(--surface-4)]"
                 }`}
               >
                 <div className="flex items-center gap-2 px-3 py-2">
-                  <ChevronRight size={10} className={`flex-shrink-0 text-white/20 transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
+                  <ChevronRight size={10} className={`flex-shrink-0 text-[var(--text-disabled)] transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
                   <div className="min-w-0 flex-1 text-left">
-                    <div className={`truncate text-[11px] font-medium ${isPageSelected ? "text-white" : "text-white/65"}`}>{page.name}</div>
+                    <div className={`truncate text-[12px] font-medium ${isPageSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>{page.name}</div>
                   </div>
-                  <span className="text-[9px] tabular-nums text-white/20">
+                  <span className="text-[10px] tabular-nums text-[var(--text-disabled)]">
                     {page.sections.length}
                   </span>
                 </div>
               </button>
               {open && (
-                <div className="space-y-0.5 pl-3 ml-1.5 border-l border-white/[0.04]">
+                <div className="ml-1.5 space-y-0.5 border-l border-[var(--border-soft)] pl-3">
                   {page.sections.length === 0
                     ? (
                       <div className="rounded-lg px-2.5 py-2.5">
-                        <p className="text-[10px] text-white/25">No sections yet</p>
-                        <p className="mt-0.5 text-[9px] leading-4 text-white/15">Use Elements to add the first section.</p>
+                        <p className="text-[11px] text-[var(--text-tertiary)]">No sections yet</p>
+                        <p className="mt-0.5 text-[10px] leading-4 text-[var(--text-disabled)]">Use Elements to add the first section.</p>
                       </div>
                     )
                     : page.sections.map((sec, i) => (
                       <div
                         key={sec.id}
                         className={`group/sec transition-opacity ${dragSrc?.sectionId === sec.id ? "opacity-40" : ""}`}
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragSrc({ pageId: page.id, sectionId: sec.id, index: i }); }}
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver({ pageId: page.id, index: i }); }}
-                        onDragLeave={() => setDragOver(null)}
-                        onDrop={(e) => { e.preventDefault(); dropSection(page, i); }}
-                        onDragEnd={() => { setDragSrc(null); setDragOver(null); }}
+                        draggable={!generationLocked}
+                        onDragStart={(e) => {
+                          if (generationLocked) return;
+                          e.dataTransfer.effectAllowed = "move";
+                          setDragSrc({ pageId: page.id, sectionId: sec.id, index: i });
+                        }}
+                        onDragOver={(e) => {
+                          if (generationLocked) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setDragOver({ pageId: page.id, index: i });
+                        }}
+                        onDragLeave={() => {
+                          if (generationLocked) return;
+                          setDragOver(null);
+                        }}
+                        onDrop={(e) => {
+                          if (generationLocked) return;
+                          e.preventDefault();
+                          dropSection(page, i);
+                        }}
+                        onDragEnd={() => {
+                          if (generationLocked) return;
+                          setDragSrc(null);
+                          setDragOver(null);
+                        }}
                         style={dragOver?.pageId === page.id && dragOver.index === i && dragSrc?.sectionId !== sec.id ? { outline: "1px solid rgba(91,140,255,0.4)", borderRadius: 10 } : undefined}
                       >
                         {confirmDelete === sec.id ? (
                           <div className="flex items-center gap-2 rounded-xl bg-red-500/8 px-2.5 py-1.5 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.15)]">
                             <Trash2 size={9} className="text-red-400/70 flex-shrink-0" />
-                            <span className="flex-1 text-[10px] text-red-300/70 truncate">Delete "{sec.name||sec.type}"?</span>
+                            <span className="flex-1 text-[11px] text-red-300/70 truncate">Delete "{sec.name||sec.type}"?</span>
                             <button
                               onClick={() => setConfirmDelete(null)}
                               className="px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 rounded transition-colors">
@@ -955,11 +1222,11 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                             className={`relative rounded-xl transition-all duration-150 ${
                               selectedSectionId === sec.id
                                 ? "bg-[#5B8CFF]/8 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.12)]"
-                                : "hover:bg-white/[0.03]"
+                                : "hover:bg-[var(--surface-4)]"
                             }`}
                           >
                             <div className="flex items-center gap-1.5 px-2 py-1.5">
-                              <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-white/16 transition-colors group-hover/sec:text-white/30">
+                              <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--text-disabled)] transition-colors group-hover/sec:text-[var(--text-tertiary)]">
                                 <GripVertical size={9} className="cursor-grab active:cursor-grabbing" />
                               </span>
                               <button
@@ -972,10 +1239,10 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                                 }}
                                 className="min-w-0 flex-1 text-left"
                               >
-                                <div className={`truncate text-[10.5px] font-medium ${selectedSectionId === sec.id ? "text-white" : "text-white/55"}`}>
+                                <div className={`truncate text-[11.5px] font-medium ${selectedSectionId === sec.id ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>
                                   {sec.name || sec.type}
                                 </div>
-                                <div className="mt-0.5 truncate text-[8px] text-white/18">
+                                <div className="mt-0.5 truncate text-[9px] text-[var(--text-disabled)]">
                                   {sec.type}
                                 </div>
                               </button>
@@ -984,15 +1251,17 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                               }`}>
                               <button
                                 onClick={(e) => {
+                                  if (generationLocked) return;
                                   e.stopPropagation();
                                   if (secMenu?.pageId === page.id && secMenu?.sectionId === sec.id) { setSecMenu(null); return; }
                                   setSecMenu({ pageId: page.id, sectionId: sec.id, pos: (e.currentTarget as HTMLElement).getBoundingClientRect() });
                                 }}
-                                className={`flex h-5 w-5 items-center justify-center rounded-md text-white/22 transition-all flex-shrink-0 cursor-pointer hover:bg-white/[0.07] hover:text-white/70 ${
+                                disabled={generationLocked}
+                                className={`flex h-5 w-5 items-center justify-center rounded-md text-[var(--text-disabled)] transition-all flex-shrink-0 cursor-pointer hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)] ${
                                   secMenu?.pageId === page.id && secMenu?.sectionId === sec.id
-                                    ? "opacity-100 text-white/70 bg-white/[0.07]"
+                                    ? "opacity-100 bg-[var(--surface-5)] text-[var(--text-primary)]"
                                     : ""
-                                }`}
+                                } disabled:cursor-not-allowed disabled:opacity-20`}
                               >
                                 {regeneratingSectionId === sec.id ? <Loader2 size={9} className="animate-spin" /> : <MoreHorizontal size={10} />}
                               </button>
@@ -1008,26 +1277,26 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                                   top: regenMenuPos?.top ?? 0,
                                   zIndex: 9999,
                                 }}
-                                className="w-[260px] overflow-hidden rounded-2xl border border-white/[0.06] bg-[#12161f] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+                                className="editor-dialog editor-preview-surface w-[260px] overflow-hidden rounded-2xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]"
                               >
-                                <div className="flex items-center gap-2.5 border-b border-white/[0.05] px-3.5 py-3">
+                                <div className="flex items-center gap-2.5 border-b border-[var(--border-soft)] px-3.5 py-3">
                                   <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-[#5B8CFF]/12 text-[#5B8CFF]">
                                     <Sparkles size={11} />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <p className="text-[11px] font-semibold text-white/85">Regenerate</p>
-                                    <p className="truncate text-[9.5px] text-white/30">{sec.name || sec.type}</p>
+                                    <p className="text-[11px] font-semibold text-[var(--text-primary)]">Regenerate</p>
+                                    <p className="truncate text-[9.5px] text-[var(--text-secondary)]">{sec.name || sec.type}</p>
                                   </div>
                                   <button
                                     onClick={() => { setRegenMenu(null); setRegenMenuPos(null); }}
-                                    className="flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
                                   >
                                     <X size={11} />
                                   </button>
                                 </div>
 
                                 <div className="px-3.5 py-3">
-                                  <p className="mb-2 text-[9px] font-medium uppercase tracking-[0.14em] text-white/22">Direction</p>
+                                  <p className="mb-2 text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Direction</p>
                                   <div className="grid grid-cols-2 gap-1.5">
                                     {SECTION_REGEN_OPTIONS.map((option) => (
                                       <button
@@ -1035,29 +1304,29 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
                                         onClick={() => setRegenMode(option.key)}
                                         className={`rounded-lg px-2.5 py-2 text-left transition-all duration-150 ${
                                           regenMode === option.key
-                                            ? "bg-[#5B8CFF]/12 text-white/85 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.2)]"
-                                            : "bg-white/[0.02] text-white/35 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] hover:bg-white/[0.04] hover:text-white/55"
+                                            ? "bg-[#5B8CFF]/12 text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(91,140,255,0.2)]"
+                                            : "bg-[var(--surface-3)] text-[var(--text-tertiary)] shadow-[inset_0_0_0_1px_var(--border-soft)] hover:bg-[var(--surface-4)] hover:text-[var(--text-secondary)]"
                                         }`}
                                       >
                                         <div className="text-[10px] font-semibold leading-tight">{option.label}</div>
-                                        <div className="mt-0.5 text-[8.5px] leading-tight text-white/20">{option.hint}</div>
+                                        <div className="mt-0.5 text-[8.5px] leading-tight text-[var(--text-disabled)]">{option.hint}</div>
                                       </button>
                                     ))}
                                   </div>
                                 </div>
 
                                 <div className="px-3.5 pb-3">
-                                  <p className="mb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-white/22">Prompt <span className="normal-case tracking-normal text-white/16">— optional</span></p>
+                                  <p className="mb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Prompt <span className="normal-case tracking-normal text-[var(--text-disabled)]">— optional</span></p>
                                   <textarea
                                     value={regenPrompt}
                                     onChange={(e) => setRegenPrompt(e.target.value)}
                                     placeholder="Extra direction, tone changes…"
                                     rows={2}
-                                    className="w-full resize-none rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[10.5px] leading-relaxed text-white/70 placeholder-white/16 outline-none transition-colors focus:border-white/[0.1]"
+                                    className="w-full resize-none rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2.5 text-[10.5px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none transition-colors focus:border-[var(--border-focus)]"
                                   />
                                 </div>
 
-                                <div className="flex items-center justify-end border-t border-white/[0.05] gap-2 px-3.5 py-2.5">
+                                <div className="flex items-center justify-end gap-2 border-t border-[var(--border-soft)] px-3.5 py-2.5">
                                   <button
                                     onClick={() => void handleRegenerateSection(page, sec.id, regenMode, regenPrompt)}
                                     disabled={regeneratingSectionId !== null}
@@ -1093,21 +1362,22 @@ function NavPanel({ project, pages, selectedPageId, selectedSectionId, onSelectP
               left: Math.max(8, secMenu.pos.right - 172),
               zIndex: 9999,
             }}
-            className="w-[172px] overflow-hidden rounded-xl border border-white/[0.06] bg-[#12161f] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
+            className="editor-dialog editor-preview-surface w-[172px] overflow-hidden rounded-xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]"
           >
             <button onClick={() => { if (p) duplicateSection(p, secMenu.sectionId); setSecMenu(null); }}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-white/50 hover:bg-white/[0.05] hover:text-white/85 transition-colors duration-100">
+              disabled={generationLocked}
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-colors duration-100 hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-20">
               <Copy size={11} /> Duplicate
             </button>
             {project.blueprint && (
-              <button onClick={() => { if (p) openRegenMenu(secMenu.pageId, secMenu.sectionId, secMenuRef.current as HTMLElement); setSecMenu(null); }} disabled={regeneratingSectionId !== null}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-white/50 hover:bg-white/[0.05] hover:text-white/85 transition-colors duration-100 disabled:opacity-20 disabled:cursor-not-allowed">
+              <button onClick={() => { if (p) openRegenMenu(secMenu.pageId, secMenu.sectionId, secMenuRef.current as HTMLElement); setSecMenu(null); }} disabled={regeneratingSectionId !== null || generationLocked}
+                className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-colors duration-100 hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)] disabled:opacity-20 disabled:cursor-not-allowed">
                 <RefreshCw size={11} /> Regenerate
               </button>
             )}
-            <div className="mx-2.5 h-px bg-white/[0.05] my-0.5" />
-            <button onClick={() => { setConfirmDelete(secMenu.sectionId); setSecMenu(null); }}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-red-400/60 hover:bg-red-500/8 hover:text-red-300 transition-colors duration-100">
+            <div className="mx-2.5 my-0.5 h-px bg-[var(--border-soft)]" />
+            <button onClick={() => { setConfirmDelete(secMenu.sectionId); setSecMenu(null); }} disabled={generationLocked}
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-[11px] text-red-400/60 hover:bg-red-500/8 hover:text-red-300 transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-20">
               <Trash2 size={11} /> Delete
             </button>
           </div>,
@@ -1127,20 +1397,20 @@ function FilesPanel({ pages, files, selectedFileId, onSelectFile }: {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex flex-shrink-0 items-center justify-between px-0.5 pb-3">
-        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/25">Files</p>
-        <span className="text-[9px] tabular-nums text-white/14">{pages.length + css.length}</span>
+        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-secondary)]">Files</p>
+        <span className="text-[10px] tabular-nums text-[var(--text-tertiary)]">{pages.length + css.length}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto space-y-0.5 pb-2">
-        <div className="px-1 pb-1.5 text-[9px] font-medium text-white/18 uppercase tracking-[0.12em]">Pages</div>
+        <div className="px-1 pb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Pages</div>
         {pages.map((p) => {
           const rawSlug = (p.slug || p.name.toLowerCase().replace(/\s+/g,"-")).replace(/^\/+/, "");
           const filename = rawSlug ? `${rawSlug}.html` : "index.html";
           return (
             <button key={p.id} onClick={() => onSelectFile(p.id)}
-              className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-[11px] transition-all duration-150 ${
+              className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-[12px] transition-all duration-150 ${
                 selectedFileId===p.id
-                  ? "bg-[#5B8CFF]/10 text-white shadow-[inset_0_0_0_1px_rgba(91,140,255,0.15)]"
-                  : "text-white/45 hover:text-white/70 hover:bg-white/[0.04]"
+                  ? "bg-[var(--accent-subtle)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_var(--border-focus)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
               }`}>
               <FileCode2 size={11} className={`flex-shrink-0 ${selectedFileId===p.id ? "text-[#5B8CFF]" : "text-[#5B8CFF]/40"}`}/>
               <span className="truncate font-mono">{filename}</span>
@@ -1149,13 +1419,13 @@ function FilesPanel({ pages, files, selectedFileId, onSelectFile }: {
         })}
         {css.length > 0 && (
           <>
-            <div className="px-1 pt-3 pb-1.5 text-[9px] font-medium text-white/18 uppercase tracking-[0.12em]">Styles</div>
+            <div className="px-1 pt-3 pb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Styles</div>
             {css.map((f) => (
               <button key={f.id} onClick={() => onSelectFile(f.id)}
-                className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-[11px] transition-all duration-150 ${
+                className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-[12px] transition-all duration-150 ${
                   selectedFileId===f.id
-                    ? "bg-amber-500/8 text-white shadow-[inset_0_0_0_1px_rgba(245,158,11,0.15)]"
-                    : "text-white/45 hover:text-white/70 hover:bg-white/[0.04]"
+                    ? "bg-amber-500/8 text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.15)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
                 }`}>
                 <FileCode2 size={11} className={`flex-shrink-0 ${selectedFileId===f.id ? "text-amber-400/80" : "text-amber-300/30"}`}/>
                 <span className="truncate font-mono">{f.name}</span>
@@ -1171,84 +1441,155 @@ function FilesPanel({ pages, files, selectedFileId, onSelectFile }: {
 // ── Add Page Modal ─────────────────────────────────────────────────────────────
 function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>void }) {
   const addPage        = useAppStore((s) => s.addPage);
+  const deletePage     = useAppStore((s) => s.deletePage);
   const setPageContent = useAppStore((s) => s.setPageContent);
   const setPageStatus  = useAppStore((s) => s.setPageStatus);
   const setGenStatus   = useAppStore((s) => s.setGenStatus);
+  const setGenerationTiming = useAppStore((s) => s.setGenerationTiming);
   const addGenLog      = useAppStore((s) => s.addGenLog);
   const setApiError    = useAppStore((s) => s.setApiError);
 
   const [name,     setName]     = useState("");
   const [purpose,  setPurpose]  = useState("");
   const [useAI,    setUseAI]    = useState(true);
-  const [creating, setCreating] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+  const generationLocked = projectHasActiveGeneration(project);
+  const addPageCreditsLabel = formatCreditAmount(getAIUsageCost("add-page"));
 
   async function create() {
     if (!name.trim()) return;
+    if (generationLocked) {
+      setError("Finish the current generation before creating another page.");
+      return;
+    }
     setError(null);
+    const pageName = name.trim();
+    const pagePurpose = purpose.trim() || pageName;
     const id   = crypto.randomUUID();
-    const slug = name.trim().toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"");
+    const slug = pageName.toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"");
     const manualTemplateHtml = useAI ? "" : buildManualPageTemplate(project, name.trim(), purpose.trim());
     addPage({
       id,
-      name: name.trim(),
+      name: pageName,
       slug,
       sections: [],
-      purpose: purpose.trim() || name.trim(),
+      purpose: pagePurpose,
       html: manualTemplateHtml,
-      status: useAI ? "generating" : "done",
+      status: useAI ? "pending" : "done",
+    }, {
+      select: !useAI || project.pages.length === 0,
     });
 
     if (!useAI) { onClose(); return; }
 
-    setCreating(true);
-    setGenStatus("pages", `Generating ${name.trim()}…`);
-    addGenLog(`📄 Generating page: ${name.trim()}…`, "progress");
-    // Reuse navbar from first page that has HTML for brand consistency
-    const firstPage = project.pages?.find((p) => p.html);
-    const navbarHtml = firstPage?.html ? extractNavbarHtml(firstPage.html) : null;
-    try {
-      const result = await streamGeneratePage(
-        {
-          blueprint: project.blueprint,
-          page: { id, name: name.trim(), slug, sections: ["hero", "content", "cta"], purpose: purpose.trim() || name.trim() },
-          brief: project.brief,
-          navbarHtml,
-        },
-        () => setGenStatus("pages", `Generating ${name.trim()}...`),
-        180_000
-      );
-      setPageContent(id, result.html, result.sections, { completeGeneration: true });
-      addGenLog(`✅ ${name.trim()} generated`, "success");
-      setGenStatus("done", "Done!");
-      onClose();
-    } catch (err) {
-      const { appErr, apiError } = buildClientApiError(err, API_GENERATE_001, {
-        pageId: id,
-        pageName: name.trim(),
-      });
-      logAppError(appErr);
-      setApiError(apiError);
-      setError(appErr.userMessage);
-      setPageStatus(id, "error");
-      addGenLog(`❌ ${appErr.userMessage}`, "error");
-      setGenStatus("error", "Failed");
-    } finally {
-      setCreating(false);
-    }
+    const controller = new AbortController();
+    let cancelled = false;
+    const token = Symbol(`add:${id}`);
+
+    registerLocalPageGeneration({
+      token,
+      pageId: id,
+      pageName,
+      kind: "add-page",
+      cancel: () => {
+        if (cancelled) return;
+        cancelled = true;
+        controller.abort();
+        clearLocalPageGeneration(id, token);
+        setApiError(null);
+        deletePage(id);
+        setGenStatus("idle", "");
+        addGenLog(`Stopped creating ${pageName}.`, "info");
+      },
+    });
+
+    setPageStatus(id, "generating");
+    setGenerationTiming({
+      kind: "page",
+      estimateMs: estimateAddPageDurationMs(),
+    });
+    setGenStatus("pages", `Planning ${pageName}…`);
+    addGenLog(`📄 Planning page: ${pageName}…`, "progress");
+    onClose();
+
+    // Reuse navbar/footer from an already-generated page so the new page's chrome matches the site.
+    const chromeSource = project.pages?.find((p) => p.html);
+    const navbarHtml = chromeSource?.html ? extractNavbarHtml(chromeSource.html) : null;
+    const footerHtml = chromeSource?.html ? extractFooterHtml(chromeSource.html) : null;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/add-page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            blueprint: project.blueprint,
+            pageId: id,
+            pageName,
+            pageSlug: slug,
+            pageDescription: pagePurpose,
+            brief: project.brief,
+            navbarHtml,
+            footerHtml,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
+          throw createAppError({
+            code: (data.code as ErrorCode | undefined) ?? API_GENERATE_001,
+            devMessage: `Add page failed (${res.status}): ${data.error ?? "unknown"}`,
+            userMessage: data.error,
+            severity: res.status >= 500 ? "error" : "warn",
+            metadata: { pageId: id, pageName, requestId: data.requestId ?? null, status: res.status },
+          });
+        }
+
+        setGenStatus("pages", `Generating ${pageName}…`);
+        const result = await res.json() as { html?: string; sections?: PageSection[] };
+        if (cancelled || controller.signal.aborted) return;
+        if (!result.html) {
+          throw createAppError({
+            code: API_RESPONSE_001,
+            devMessage: `Add page returned invalid HTML for "${pageName}"`,
+            severity: "error",
+            metadata: { pageId: id, pageName },
+          });
+        }
+        clearLocalPageGeneration(id, token);
+        setPageContent(id, result.html, result.sections ?? [], { completeGeneration: true });
+        addGenLog(`✅ ${pageName} generated`, "success");
+        setGenStatus("done", "Done!");
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) return;
+        clearLocalPageGeneration(id, token);
+        const { appErr, apiError } = buildClientApiError(err, API_GENERATE_001, {
+          pageId: id,
+          pageName,
+        });
+        logAppError(appErr);
+        setApiError(apiError);
+        setPageStatus(id, "error");
+        addGenLog(`❌ ${appErr.userMessage}`, "error");
+        setGenStatus("error", "Failed");
+      } finally {
+        clearLocalPageGeneration(id, token);
+      }
+    })();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-md sm:p-6">
-      <div className="flex w-full max-w-[960px] max-h-[min(840px,90vh)] flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0e1117] shadow-[0_40px_120px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-backdrop)] p-4 backdrop-blur-md sm:p-6">
+      <div className="editor-dialog editor-preview-surface flex max-h-[min(840px,90vh)] w-full max-w-[960px] flex-col overflow-hidden rounded-2xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]">
+        <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-6 py-5">
           <div className="min-w-0">
-            <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-white/20">Pages</p>
-            <h3 className="mt-1.5 text-[22px] font-semibold tracking-tight text-white/90 sm:text-[26px]">New page</h3>
+            <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Pages</p>
+            <h3 className="mt-1.5 text-[22px] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[26px]">New page</h3>
           </div>
           <button
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
           >
             <X size={15}/>
           </button>
@@ -1256,21 +1597,21 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
         <div className="grid flex-1 gap-0 overflow-hidden lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-5 overflow-y-auto px-6 py-5">
             <div className="space-y-2">
-              <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-white/28">Page name</p>
+              <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Page name</p>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !creating && create()}
+              onKeyDown={(e) => e.key === "Enter" && create()}
               placeholder="Page name (e.g. About, Pricing)"
-              className="w-full rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-[15px] text-white/90 placeholder:text-white/20 outline-none transition-colors focus:border-white/[0.1]"/>
+              className="w-full rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-4 py-3.5 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none transition-colors focus:border-[var(--border-focus)]"/>
             </div>
 
             <div className="space-y-2">
-              <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-white/28">
+              <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                 {useAI ? "Page direction" : "Starter summary"}
               </p>
               <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)}
                 placeholder={useAI ? "Describe what this page should contain (optional)" : "Add a short summary to seed the demo page (optional)"}
                 rows={5}
-                className="w-full rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-[14px] leading-relaxed text-white/80 placeholder:text-white/18 resize-none outline-none transition-colors focus:border-white/[0.1]"/>
+                className="w-full resize-none rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-4 py-3.5 text-[14px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none transition-colors focus:border-[var(--border-focus)]"/>
             </div>
 
             {error && (
@@ -1278,64 +1619,74 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
                 {error}
               </div>
             )}
+            {generationLocked && !error && (
+              <div className="rounded-xl bg-amber-500/8 px-4 py-3 text-[12px] text-amber-200/85 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)]">
+                A page is still generating. You can close this modal, but starting another page waits until that run is finished.
+              </div>
+            )}
           </div>
 
-          <div className="border-t border-white/[0.05] bg-white/[0.015] lg:border-l lg:border-t-0">
+          <div className="border-t border-[var(--border-soft)] bg-[var(--surface-3)] lg:border-l lg:border-t-0">
             <div className="space-y-4 overflow-y-auto px-6 py-5">
               <div className="space-y-2.5">
-                <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-white/28">Start with</p>
+                <p className="text-[9.5px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Start with</p>
                 <div className="grid gap-2.5">
                   <button
                     type="button"
                     onClick={() => setUseAI(true)}
+                    disabled={generationLocked}
                     data-active={useAI}
                     className={`flex min-h-[120px] flex-col items-start justify-between rounded-xl px-4 py-4 text-left transition-all duration-200 ${
                       useAI
-                        ? "bg-[#5B8CFF]/10 text-white shadow-[inset_0_0_0_1px_rgba(91,140,255,0.2)]"
-                        : "bg-white/[0.02] text-white/45 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] hover:bg-white/[0.04]"
-                    }`}
+                        ? "bg-[#5B8CFF]/10 text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(91,140,255,0.2)]"
+                        : "bg-[var(--surface-4)] text-[var(--text-secondary)] shadow-[inset_0_0_0_1px_var(--border-soft)] hover:bg-[var(--surface-5)]"
+                    } disabled:cursor-not-allowed disabled:opacity-45`}
                   >
                     <span className="flex items-center gap-2 text-[12.5px] font-semibold text-inherit">
                       <Sparkles size={13} className="flex-shrink-0" />
                       AI generate
                     </span>
-                    <span className={`max-w-[28ch] text-[12px] leading-relaxed ${useAI ? "text-white/65" : "text-white/28"}`}>
+                    <span className={`max-w-[28ch] text-[12px] leading-relaxed ${useAI ? "text-[var(--text-secondary)]" : "text-[var(--text-disabled)]"}`}>
                       Build a page that follows your project direction, style, and structure.
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setUseAI(false)}
+                    disabled={generationLocked}
                     data-active={!useAI}
                     className={`flex min-h-[120px] flex-col items-start justify-between rounded-xl px-4 py-4 text-left transition-all duration-200 ${
                       !useAI
-                        ? "bg-[#7A5CFF]/10 text-white shadow-[inset_0_0_0_1px_rgba(122,92,255,0.2)]"
-                        : "bg-white/[0.02] text-white/45 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] hover:bg-white/[0.04]"
-                    }`}
+                        ? "bg-[#7A5CFF]/10 text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(122,92,255,0.2)]"
+                        : "bg-[var(--surface-4)] text-[var(--text-secondary)] shadow-[inset_0_0_0_1px_var(--border-soft)] hover:bg-[var(--surface-5)]"
+                    } disabled:cursor-not-allowed disabled:opacity-45`}
                   >
                     <span className="flex items-center gap-2 text-[12.5px] font-semibold text-inherit">
                       <FileCode2 size={13} className="flex-shrink-0" />
                       Demo starter
                     </span>
-                    <span className={`max-w-[28ch] text-[12px] leading-relaxed ${!useAI ? "text-white/65" : "text-white/28"}`}>
+                    <span className={`max-w-[28ch] text-[12px] leading-relaxed ${!useAI ? "text-[var(--text-secondary)]" : "text-[var(--text-disabled)]"}`}>
                       Start from a simple editable template and shape it manually.
                     </span>
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.025] px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-[var(--surface-4)] px-4 py-3.5 shadow-[inset_0_0_0_1px_var(--border-soft)]">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-white/70">
-                    {useAI ? "AI will generate this page." : "A demo page will be created instantly."}
+                  <p className="text-[13px] font-medium text-[var(--text-secondary)]">
+                    {useAI ? `AI will generate this page for ${addPageCreditsLabel}.` : "A demo page will be created instantly."}
                   </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-white/30">
+                  <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
                     {useAI ? "Use this when you know the intent and want the system to build it." : "Use this when you want a quick scaffold you can edit right away."}
                   </p>
                 </div>
                 <EditorSwitch
                   checked={useAI}
-                  onChange={() => setUseAI(!useAI)}
+                  onChange={() => {
+                    if (generationLocked) return;
+                    setUseAI(!useAI);
+                  }}
                   title={useAI ? "AI generate on" : "Demo starter on"}
                   className="scale-[0.9] flex-shrink-0"
                 />
@@ -1343,12 +1694,11 @@ function AddPageModal({ project, onClose }: { project: Project; onClose: ()=>voi
             </div>
           </div>
         </div>
-        <div className="flex flex-col gap-2 border-t border-white/[0.05] px-6 py-4 sm:flex-row sm:justify-end">
-          <button onClick={onClose} disabled={creating} className="rounded-xl bg-white/[0.04] px-5 py-2.5 text-[13px] font-medium text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white/80 disabled:opacity-40">Cancel</button>
-          <button onClick={create} disabled={!name.trim() || creating}
+        <div className="flex flex-col gap-2 border-t border-[var(--border-soft)] px-6 py-4 sm:flex-row sm:justify-end">
+            <button onClick={onClose} className="rounded-xl bg-[var(--surface-4)] px-5 py-2.5 text-[13px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)]">Cancel</button>
+          <button onClick={create} disabled={!name.trim() || generationLocked}
             className="flex min-w-[170px] items-center justify-center gap-1.5 rounded-xl bg-[#5B8CFF] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(91,140,255,0.3)] transition-all hover:bg-[#6B99FF] disabled:opacity-25">
-            {creating && <Loader2 size={11} className="animate-spin"/>}
-            {creating ? "Generating..." : useAI ? "Generate page" : "Create demo"}
+            {useAI ? "Generate page" : "Create demo"}
           </button>
         </div>
       </div>

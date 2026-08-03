@@ -32,14 +32,14 @@ export function SettingsSectionHeading({
     <div className="flex flex-col gap-4 px-1 pb-6 md:flex-row md:items-start md:justify-between">
       <div className="space-y-2">
         {eyebrow ? (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#5B8CFF]">{eyebrow}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[var(--text-accent)]">{eyebrow}</p>
         ) : null}
         <div className="space-y-2">
-          <h1 className="text-[26px] font-semibold tracking-[-0.035em] text-white md:text-[30px]">
+          <h1 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--text-primary)] md:text-[30px]">
             {title}
           </h1>
           {body ? (
-            <p className="max-w-[680px] text-[13px] leading-[1.7] text-white/55 md:text-[13.5px]">
+            <p className="max-w-[680px] text-[13px] leading-[1.7] text-[var(--text-secondary)] md:text-[13.5px]">
               {body}
             </p>
           ) : null}
@@ -55,15 +55,16 @@ export function SettingsGroup({
   body,
   className,
   children,
+  ...props
 }: HTMLAttributes<HTMLDivElement> & {
   title: string;
   body?: string;
 }) {
   return (
-    <div className={cn("space-y-5", className)}>
+    <div className={cn("space-y-5", className)} {...props}>
       <div>
-        <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-white">{title}</h2>
-        {body ? <p className="mt-1.5 text-[12.5px] leading-[1.65] text-white/55">{body}</p> : null}
+        <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">{title}</h2>
+        {body ? <p className="mt-1.5 text-[12.5px] leading-[1.65] text-[var(--text-secondary)]">{body}</p> : null}
       </div>
       <div>{children}</div>
     </div>
@@ -90,14 +91,14 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "rounded-[14px] border border-white/[0.05] bg-white/[0.015] px-5 py-4 transition-colors hover:border-white/[0.08]",
+        "rounded-[14px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-5 py-4 transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-4)]",
         className
       )}
     >
       <div className={cn("flex gap-4", stacked ? "flex-col" : "flex-col lg:flex-row lg:items-start lg:justify-between")}>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-white">{title}</h3>
-          {body ? <p className="mt-1 text-[12.5px] leading-[1.6] text-white/55">{body}</p> : null}
+          <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{title}</h3>
+          {body ? <p className="mt-1 text-[12.5px] leading-[1.6] text-[var(--text-secondary)]">{body}</p> : null}
           {children ? <div className="mt-4">{children}</div> : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
@@ -118,8 +119,8 @@ export function SettingsField({
   return (
     <label className="block space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-white/45">{label}</span>
-        {hint ? <span className="text-[11px] text-white/35">{hint}</span> : null}
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">{label}</span>
+        {hint ? <span className="text-[11px] text-[var(--text-disabled)]">{hint}</span> : null}
       </div>
       {children}
     </label>
@@ -199,8 +200,8 @@ export function SettingsSegmented<T extends string>({
             className={cn(
               "relative overflow-hidden rounded-[12px] border px-4 py-3 text-left transition-all",
               active
-                ? "border-[#5B8CFF]/40 bg-[#5B8CFF]/[0.08] text-white"
-                : "border-white/[0.06] bg-white/[0.015] text-white/65 hover:border-white/[0.12] hover:bg-white/[0.03] hover:text-white"
+                ? "border-[var(--border-focus)] bg-[var(--accent-subtle)] text-[var(--text-primary)]"
+                : "border-[var(--border-soft)] bg-[var(--surface-3)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
             )}
           >
             <div className="text-[13px] font-semibold tracking-[-0.01em]">{option.label}</div>
@@ -208,7 +209,7 @@ export function SettingsSegmented<T extends string>({
               <div
                 className={cn(
                   "mt-1 text-[12px] leading-[1.5]",
-                  active ? "text-white/65" : "text-white/40"
+                  active ? "text-[var(--text-secondary)]" : "text-[var(--text-tertiary)]"
                 )}
               >
                 {option.description}
@@ -238,9 +239,9 @@ export function SettingsSlider({
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between text-[12px] text-white/45">
+      <div className="flex items-center justify-between text-[12px] text-[var(--text-tertiary)]">
         <span>{min}{suffix}</span>
-        <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[12px] font-medium text-white/85">
+        <span className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-4)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-primary)]">
           {value}{suffix}
         </span>
         <span>{max}{suffix}</span>
@@ -252,7 +253,7 @@ export function SettingsSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/[0.06] accent-[#5B8CFF]"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-4)] accent-[var(--accent-default)]"
       />
     </div>
   );
@@ -589,9 +590,9 @@ export function SettingsPlaceholder({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[14px] border border-dashed border-white/[0.08] bg-white/[0.015] px-6 py-7">
-      <h3 className="text-[14px] font-semibold tracking-[-0.01em] text-white">{title}</h3>
-      <p className="mt-2 max-w-[560px] text-[12.5px] leading-[1.65] text-white/55">{body}</p>
+    <div className="rounded-[14px] border border-dashed border-[var(--border-soft)] bg-[var(--surface-3)] px-6 py-7">
+      <h3 className="text-[14px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{title}</h3>
+      <p className="mt-2 max-w-[560px] text-[12.5px] leading-[1.65] text-[var(--text-secondary)]">{body}</p>
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );
@@ -604,7 +605,7 @@ export function SettingsActionRow({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 rounded-[14px] border border-white/[0.05] bg-white/[0.015] px-4 py-3.5 md:px-5",
+        "flex flex-wrap items-center gap-3",
         className
       )}
     >

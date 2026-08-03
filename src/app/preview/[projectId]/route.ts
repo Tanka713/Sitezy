@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
+import { resolveProjectPageSeo } from "@/lib/seo";
+import { listCmsCollectionsForProject } from "@/lib/server/project-cms";
 import { getProjectSnapshot } from "@/lib/server/project-db";
+import { resolveProjectPreviewShare } from "@/lib/server/project-collaboration";
+import { buildPreviewPageRuntime } from "@/lib/server/project-page-runtime";
+import { readUserSettings } from "@/lib/server/user-settings";
+import { resolveEffectiveProjectLeadCaptureSettings } from "@/lib/lead-capture";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
-import { buildFullPageHtml } from "@/lib/utils";
+import { buildFullPageHtml, buildProjectPageNavigationLinks } from "@/lib/utils";
+import type { CmsRuntimeConfig } from "@/lib/cms-runtime";
 import type { ProjectPage } from "@/types";
 
 export const runtime = "nodejs";
@@ -132,6 +139,23 @@ function resolvePageIdFromHref(href: string, slugMap: Record<string, string>): s
 
 function buildPreviewHref(projectId: string, pageId: string): string {
   return `/preview/${projectId}?page=${encodeURIComponent(pageId)}`;
+}
+
+function buildPreviewCmsDetailTemplate(projectId: string, pageId: string) {
+  return `/preview/${projectId}?page=${encodeURIComponent(pageId)}&entry=:slug`;
+}
+
+function rewritePreviewCmsRuntimeConfig(
+  config: CmsRuntimeConfig | null,
+  projectId: string,
+  activePage: ProjectPage
+): CmsRuntimeConfig | null {
+  if (!config?.detailPathTemplate) return config;
+  const detailPageId = activePage.meta?.cmsBinding?.detailPageId || activePage.id;
+  return {
+    ...config,
+    detailPathTemplate: buildPreviewCmsDetailTemplate(projectId, detailPageId),
+  };
 }
 
 function rewriteInternalPreviewLinks(html: string, projectId: string, pages: ProjectPage[]): string {
@@ -301,18 +325,28 @@ function notFoundHtml(message: string) {
 
 export async function GET(request: NextRequest, { params }: { params: { projectId: string } }) {
   const user = await getAuthenticatedUser();
-  if (!user) {
+  const shareToken = request.nextUrl.searchParams.get("share");
+  const previewShare =
+    !user && shareToken
+      ? await resolveProjectPreviewShare(shareToken, params.projectId)
+      : null;
+
+  if (!user && !previewShare) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
-  const snapshot = await getProjectSnapshot(params.projectId, user.id);
+  const accessUserId = user?.id ?? previewShare?.created_by ?? "";
+  const snapshot = await getProjectSnapshot(params.projectId, accessUserId, {
+    admin: !user,
+  });
   if (!snapshot) {
     return htmlResponse(notFoundHtml("This project could not be found for your account."), 404);
   }
 
   const requestedPageId = request.nextUrl.searchParams.get("page");
+  const requestedEntrySlug = request.nextUrl.searchParams.get("entry");
   const pages = snapshot.project.pages ?? [];
   const activePage =
     pages.find((page) => page.id === requestedPageId) ??
@@ -328,11 +362,55 @@ export async function GET(request: NextRequest, { params }: { params: { projectI
     rewriteInternalPreviewLinks(activePage.html, snapshot.project.id, pages),
     activePage.sections
   );
+  const settings = await readUserSettings(accessUserId, {
+    admin: !user,
+  });
+  const cmsCollections = (
+    await listCmsCollectionsForProject(params.projectId, accessUserId, { admin: !user })
+  ).collections;
+  const previewRuntime = buildPreviewPageRuntime(
+    snapshot.project,
+    activePage,
+    cmsCollections,
+    requestedEntrySlug
+  );
+  const effectiveSettings = resolveEffectiveProjectLeadCaptureSettings(
+    snapshot.project.integrationSettings,
+    settings,
+    user?.email?.trim() ?? null
+  );
+  const navigationLinks = buildProjectPageNavigationLinks(pages, (target) =>
+    buildPreviewHref(snapshot.project.id, target.id)
+  );
   const html = buildFullPageHtml(
     normalized.html,
     snapshot.project.blueprint ?? null,
     activePage.name,
-    buildPreviewNavScript(snapshot.project.id, pages)
+    buildPreviewNavScript(snapshot.project.id, pages),
+    "",
+    resolveProjectPageSeo(snapshot.project, activePage, null, previewRuntime.seoOverrides),
+    {
+      mode: "preview",
+      projectId: snapshot.project.id,
+      contactCaptureEnabled: effectiveSettings.contactCapture === "sitezy",
+      newsletterCaptureEnabled: effectiveSettings.newsletterCapture === "sitezy",
+      submitEndpoint: "/api/leads/submit",
+    },
+    {
+      projectId: snapshot.project.id,
+      endpoint: `/api/projects/${snapshot.project.id}/analytics`,
+      enableSitezyAnalytics: Boolean(settings.integrations.analytics.enableSitezyAnalytics),
+      ga4MeasurementId:
+        settings.integrations.analytics.ga4.enabled
+          ? settings.integrations.analytics.ga4.measurementId
+          : null,
+      metaPixelId:
+        settings.integrations.analytics.metaPixel.enabled
+          ? settings.integrations.analytics.metaPixel.pixelId
+          : null,
+    },
+    rewritePreviewCmsRuntimeConfig(previewRuntime.cmsRuntimeConfig, snapshot.project.id, activePage),
+    navigationLinks,
   );
 
   return htmlResponse(html);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertLaunchRole, readBetaAccessRecordById } from "@/lib/server/beta-access";
+import { readBillingSummary, setBillingManualCreditTotal } from "@/lib/server/billing";
 import { readUserSettings, updateUserBillingSnapshot } from "@/lib/server/user-settings";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
@@ -20,7 +21,7 @@ function buildBillingSnapshot(settings: Awaited<ReturnType<typeof readUserSettin
     planName: settings.planName,
     tokenUsage: settings.tokenUsage,
     tokenLimit: settings.tokenLimit,
-    remainingCredits: Math.max(0, settings.tokenLimit - settings.tokenUsage),
+    remainingCredits: settings.remainingCredits,
   };
 }
 
@@ -106,8 +107,13 @@ export async function PATCH(
     }
 
     const nextTokenUsage = shouldResetUsage ? 0 : current.billing.tokenUsage;
-    const nextTokenLimit =
-      requestedLimit !== null ? requestedLimit : current.billing.tokenLimit + requestedDelta;
+    const baseAllowance = current.billing.allowanceCredits;
+    const currentManualCredits = current.billing.manualGrantCredits;
+    const requestedManualCredits =
+      requestedLimit !== null
+        ? Math.max(0, requestedLimit - baseAllowance)
+        : Math.max(0, currentManualCredits + requestedDelta);
+    const nextTokenLimit = baseAllowance + requestedManualCredits;
 
     if (nextTokenLimit < nextTokenUsage) {
       throw createAppError({
@@ -124,18 +130,31 @@ export async function PATCH(
       });
     }
 
-    const next = await updateUserBillingSnapshot(
-      member.userId,
-      {
-        tokenUsage: nextTokenUsage,
-        tokenLimit: nextTokenLimit,
-      },
-      { admin: true }
-    );
+    await setBillingManualCreditTotal({
+      userId: member.userId,
+      totalCredits: requestedManualCredits,
+      grantedBy: actor.id,
+      reason: requestedLimit !== null ? "Admin set total credit limit" : "Admin credit adjustment",
+    });
+
+    await readBillingSummary(member.userId);
+
+    if (shouldResetUsage) {
+      await updateUserBillingSnapshot(
+        member.userId,
+        {
+          tokenUsage: nextTokenUsage,
+          remainingCredits: Math.max(0, nextTokenLimit - nextTokenUsage),
+        },
+        { admin: true }
+      );
+    }
+
+    const nextSettings = await readUserSettings(member.userId, { admin: true });
 
     const record: AdminMemberRecord = {
       ...member,
-      billing: buildBillingSnapshot(next.billing),
+      billing: buildBillingSnapshot(nextSettings.billing),
     };
 
     return NextResponse.json({ record });

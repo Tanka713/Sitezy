@@ -15,8 +15,8 @@ export function LaunchPageShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen">
-      <header className="sz-topbar sticky top-0 z-40">
+    <div className="sz-page-shell">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-5">
           <Link href="/" className="flex items-center gap-3 text-[15px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
             <ArrowLeft size={14} />
@@ -33,8 +33,9 @@ export function LaunchPageShell({
         </div>
       </header>
 
-      <main className="sz-grid-shell py-10 md:py-14">
-        <div className="mx-auto w-full max-w-[920px] space-y-8">
+      <main className="sz-page-scroll">
+        <div className="sz-grid-shell py-10 md:py-14">
+          <div className="mx-auto w-full max-w-[920px] space-y-8">
           <div className="space-y-4">
             <SitezyBadge>{eyebrow}</SitezyBadge>
             <div className="space-y-3">
@@ -52,6 +53,7 @@ export function LaunchPageShell({
               {children}
             </div>
           </SitezyCard>
+          </div>
         </div>
       </main>
     </div>

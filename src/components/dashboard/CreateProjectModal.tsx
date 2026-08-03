@@ -9,9 +9,15 @@ import {
 } from "@/lib/settings";
 import {
   API_AUTH_001, API_BILLING_001, API_GENERATE_001, API_RATE_LIMIT_001,
-  API_RESPONSE_001, API_RESPONSE_002, API_TIMEOUT_001, API_UNKNOWN_001,
+  API_RESPONSE_001, API_RESPONSE_002, API_TIMEOUT_001, API_UNKNOWN_001, DB_READ_001,
   createAppError, logAppError, normalizeError, type ErrorCode,
 } from "@/lib/errors";
+import {
+  estimateFullSiteGenerationCredits,
+  formatCreditAmount,
+  getAIUsageCost,
+} from "@/lib/ai-usage";
+import { estimateFullSiteDurationMs } from "@/lib/generation-eta";
 import {
   X, Zap, ChevronRight, ChevronLeft, Check, Sparkles, Upload,
   Palette, Code2, Utensils, Coffee, ShoppingBag, Activity,
@@ -19,8 +25,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { GeneratingScreen } from "./GeneratingScreen";
+import { ConversationalBrief } from "./ConversationalBrief";
 import { SitezyButton } from "@/components/ui/sitezy";
 import { OverlayDialog } from "@/components/ui/OverlayDialog";
+import { SettingsColorPicker } from "@/components/settings/ui";
 import type { SiteBrief, SiteBlueprint, SmartBrief } from "@/types";
 
 // ── Constants (unchanged) ─────────────────────────────────────────────────────
@@ -42,8 +50,29 @@ const INDUSTRIES: { label: string; Icon: LucideIcon }[] = [
   { label: "Local Business",     Icon: MapPin },
 ];
 
+// Recommended page sets per business type. Selecting a type auto-fills these so
+// the wizard maps real customer needs to dedicated pages instead of defaulting
+// to a generic Home/About/Services/Contact template.
+const PAGES_BY_TYPE: Record<string, string[]> = {
+  "Creative Agency":    ["Home", "About", "Services", "Portfolio", "Contact"],
+  "SaaS & Tech":        ["Home", "Pricing", "About", "Blog", "Contact"],
+  "Restaurant":         ["Home", "Menu", "About", "Booking", "Contact"],
+  "Cafe & Coffee":      ["Home", "Menu", "About", "Contact"],
+  "Online Store":       ["Home", "Shop", "About", "FAQ", "Contact"],
+  "Health & Fitness":   ["Home", "Services", "Booking", "About", "Contact"],
+  "Real Estate":        ["Home", "Listings", "About", "Contact"],
+  "Portfolio":          ["Home", "Portfolio", "About", "Contact"],
+  "Personal Brand":     ["Home", "About", "Blog", "Contact"],
+  "Consulting":         ["Home", "Services", "Case Studies", "About", "Contact"],
+  "Events":             ["Home", "Events", "Booking", "About", "Contact"],
+  "Education":          ["Home", "Services", "About", "FAQ", "Contact"],
+  "Beauty & Lifestyle": ["Home", "Services", "Booking", "About", "Contact"],
+  "Local Business":     ["Home", "Services", "About", "Contact"],
+};
+
 // Auto-derive tone from design style — replaces the manual tone picker
 const DESIGN_STYLE_TO_TONE: Record<string, string> = {
+  "ai-pick":   "Distinctive",
   minimal:    "Minimal",
   luxury:     "Luxurious",
   playful:    "Playful",
@@ -81,6 +110,7 @@ const IMAGE_STYLES = [
 ];
 
 const DESIGN_STYLES = [
+  { value:"ai-pick",    label:"AI Pick",    desc:"Let Sitezy choose the strongest design direction", emoji:"✦" },
   { value:"minimal",    label:"Minimal",    desc:"Clean Swiss design, whitespace-driven", emoji:"○" },
   { value:"luxury",     label:"Luxury",     desc:"Dark elegance, serif headings, gold accents", emoji:"◆" },
   { value:"playful",    label:"Playful",    desc:"Bold colors, rounded shapes, bouncy energy", emoji:"●" },
@@ -240,6 +270,7 @@ export function CreateProjectModal({ onClose }: Props) {
   const openProject        = useAppStore((s) => s.openProject);
   const syncProjectFromServer = useAppStore((s) => s.syncProjectFromServer);
   const setGenStatus       = useAppStore((s) => s.setGenStatus);
+  const setGenerationTiming = useAppStore((s) => s.setGenerationTiming);
   const addGenLog          = useAppStore((s) => s.addGenLog);
   const clearGenLog        = useAppStore((s) => s.clearGenLog);
   const setApiError        = useAppStore((s) => s.setApiError);
@@ -250,7 +281,7 @@ export function CreateProjectModal({ onClose }: Props) {
   const [wizardStep, setWizardStep]   = useState<1|2|3>(1);
   const [colorPreset, setColorPreset] = useState(0);
   const [customPage, setCustomPage]   = useState("");
-  const [generatorMode, setGeneratorMode] = useState<"quick"|"smart">("quick");
+  const [generatorMode, setGeneratorMode] = useState<"conversation" | "confirm">("conversation");
   const [smartBrief, setSmartBrief]   = useState<SmartBrief>(SMART_DEFAULTS);
   const [logoDragging, setLogoDragging] = useState(false);
   const [showCustomColor, setShowCustomColor] = useState(false);
@@ -277,9 +308,24 @@ export function CreateProjectModal({ onClose }: Props) {
   const projectIdRef = useRef<string|null>(null);
   const progressRef = useRef("");
   const completionHandledRef = useRef(false);
+  const [queuedProjectId, setQueuedProjectId] = useState<string | null>(null);
 
   function togglePage(page: string) {
     setBrief(b => ({ ...b, pages: b.pages.includes(page) ? b.pages.filter(p => p !== page) : [...b.pages, page] }));
+  }
+
+  // Selecting a site type auto-fills its recommended pages while preserving any
+  // pages the user added manually (i.e. not part of the previous type's preset).
+  function selectSiteType(label: string) {
+    setBrief(b => {
+      if (b.siteType === label) return { ...b, siteType: "" };
+      const recommended = PAGES_BY_TYPE[label] ?? [];
+      const prevRecommended = b.siteType ? (PAGES_BY_TYPE[b.siteType] ?? []) : [];
+      const manualPages = b.pages.filter(p => !prevRecommended.includes(p));
+      const pages = [...recommended];
+      manualPages.forEach(p => { if (!pages.includes(p)) pages.push(p); });
+      return { ...b, siteType: label, pages };
+    });
   }
 
   function addCustomPage() {
@@ -331,8 +377,16 @@ export function CreateProjectModal({ onClose }: Props) {
         severity: "error",
       });
     }
+    setQueuedProjectId(projectId);
 
-    const { job } = await fetchJsonWithTimeout<{ job: { progressMessage?: string | null } }>(
+    const { job } = await fetchJsonWithTimeout<{
+      job: {
+        progressMessage?: string | null;
+        createdAt?: string | null;
+        startedAt?: string | null;
+        totalPages?: number | null;
+      };
+    }>(
       `/api/projects/${projectId}/generation`,
       {
         method: "POST",
@@ -343,12 +397,20 @@ export function CreateProjectModal({ onClose }: Props) {
     );
 
     const progressMessage = job.progressMessage?.trim() || "Queued for background generation...";
+    const timingStart =
+      (job.startedAt ? Date.parse(job.startedAt) : null)
+      || (job.createdAt ? Date.parse(job.createdAt) : null)
+      || Date.now();
+    setGenerationTiming({
+      kind: "full-site",
+      estimateMs: estimateFullSiteDurationMs(job.totalPages ?? fullBrief.pages.length),
+      startedAt: Number.isFinite(timingStart) ? timingStart : Date.now(),
+    });
     progressRef.current = progressMessage;
     setGenStatus("blueprint", progressMessage);
     addGenLog("🟡 Background generation started. You can refresh, leave, or sign out while it keeps running.", "info");
 
     try {
-      await openProject(projectId);
       await syncProjectFromServer(projectId, { preserveEditor: true, preserveHistory: true });
     } catch (error) {
       const { appError } = normalizeClientError(error, API_GENERATE_001, {
@@ -357,8 +419,6 @@ export function CreateProjectModal({ onClose }: Props) {
       });
       logAppError(appError);
     }
-
-    onClose();
   }
 
   useEffect(() => {
@@ -393,6 +453,14 @@ export function CreateProjectModal({ onClose }: Props) {
           addGenLog("🎉 Background generation finished. Opening editor...", "success");
           window.setTimeout(() => {
             onClose();
+            void openProject(projectId).catch((error) => {
+              const { appError, apiError } = normalizeClientError(error, DB_READ_001, {
+                projectId,
+                action: "openGeneratedProjectAfterCompletion",
+              });
+              logAppError(appError);
+              setApiError(apiError);
+            });
           }, 1200);
           return;
         }
@@ -422,7 +490,93 @@ export function CreateProjectModal({ onClose }: Props) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [addGenLog, onClose, setApiError, setGenStatus, step, syncProjectFromServer]);
+  }, [addGenLog, onClose, openProject, setApiError, setGenStatus, step, syncProjectFromServer]);
+
+  function handleConversationalComplete(conversationalBrief: Partial<SiteBrief>) {
+    // Merge conversational brief into main brief, then auto-generate
+    const merged: SiteBrief = {
+      ...brief,
+      ...conversationalBrief,
+      pages: conversationalBrief.pages ?? brief.pages,
+      siteName: conversationalBrief.siteName ?? brief.siteName,
+      description: conversationalBrief.description ?? brief.description,
+      siteType: conversationalBrief.siteType ?? brief.siteType,
+      tone: conversationalBrief.tone ?? brief.tone,
+      targetAudience: conversationalBrief.targetAudience ?? brief.targetAudience,
+      colorPreference: conversationalBrief.colorPreference ?? brief.colorPreference,
+      imageStyle: conversationalBrief.imageStyle ?? brief.imageStyle,
+    };
+    // Make sure there's always a sensible page set to confirm: prefer what the
+    // AI inferred, fall back to the type's recommended pages, then a safe default.
+    const ensuredPages =
+      merged.pages && merged.pages.length > 0
+        ? merged.pages
+        : merged.siteType && PAGES_BY_TYPE[merged.siteType]
+          ? PAGES_BY_TYPE[merged.siteType]
+          : ["Home", "About", "Services", "Contact"];
+    setBrief({ ...merged, pages: ensuredPages });
+    if (merged.smartBrief) {
+      setSmartBrief({
+        ...SMART_DEFAULTS,
+        ...merged.smartBrief,
+        contactDetails: {
+          ...SMART_DEFAULTS.contactDetails,
+          ...merged.smartBrief.contactDetails,
+        },
+      });
+    }
+    // Show a lightweight confirmation step so the user can review and adjust the
+    // AI-inferred site type and pages before spending generation credits.
+    setGeneratorMode("confirm");
+  }
+
+  async function handleGenerateWithBrief(overrideBrief: SiteBrief) {
+    if (genStatus !== "idle") return;
+    if (!overrideBrief.siteName.trim() || !overrideBrief.description.trim()) return;
+    setApiError(null);
+    clearGenLog();
+    setStep(2);
+
+    const conversationalSmartBrief = overrideBrief.smartBrief ?? smartBrief;
+    const currency = detectCurrency(
+      overrideBrief.description,
+      conversationalSmartBrief.contactDetails?.address ?? "",
+      conversationalSmartBrief.offeringsText ?? ""
+    );
+    const baseBrief: SiteBrief = {
+      ...overrideBrief,
+      generatorMode: "conversation",
+      smartBrief: conversationalSmartBrief,
+      hasLogo: overrideBrief.hasLogo ?? !!conversationalSmartBrief.logoUrl,
+      // The confirm screen is the source of truth for pages. The nested
+      // businessBrief (from the AI chat) carries its own pages that otherwise
+      // win in siteBriefToBusinessBrief, so force it to match the selection.
+      businessBrief: overrideBrief.businessBrief
+        ? { ...overrideBrief.businessBrief, pages: overrideBrief.pages }
+        : overrideBrief.businessBrief,
+      ...(currency && { currency }),
+    };
+    const fullBrief = buildBriefFromSettings(baseBrief, readCachedUserSettings() ?? defaultUserSettings);
+
+    try {
+      setGenerationTiming({
+        kind: "full-site",
+        estimateMs: estimateFullSiteDurationMs(fullBrief.pages.length),
+      });
+      progressRef.current = "Queued for background generation...";
+      completionHandledRef.current = false;
+      setGenStatus("blueprint", "Queued for background generation...");
+      addGenLog("🔍 Extracting brand direction and visual identity...", "info");
+      addGenLog("✦ Conversational brief — enriched context active", "info");
+      await runQueuedGeneration(fullBrief);
+    } catch (err) {
+      const { appError, apiError } = normalizeClientError(err, API_GENERATE_001, { projectId: projectIdRef.current, siteName: fullBrief.siteName });
+      logAppError(appError);
+      setApiError(apiError);
+      setGenStatus("error", `Error: ${appError.userMessage}`);
+      addGenLog(`❌ ${appError.userMessage}`, "error");
+    }
+  }
 
   async function handleGenerate() {
     if (genStatus !== "idle") return;
@@ -434,20 +588,22 @@ export function CreateProjectModal({ onClose }: Props) {
 
     const currency = detectCurrency(brief.description, smartBrief.contactDetails?.address ?? "", smartBrief.offeringsText ?? "");
     const baseBrief: SiteBrief = {
-      ...brief, generatorMode, hasLogo: generatorMode === "smart" && !!smartBrief.logoUrl,
+      ...brief, generatorMode: "conversation", hasLogo: false,
       ...(currency && { currency }),
-      ...(generatorMode === "smart" && { smartBrief }),
     };
     const fullBrief = buildBriefFromSettings(baseBrief, readCachedUserSettings() ?? defaultUserSettings);
 
     try {
+      setGenerationTiming({
+        kind: "full-site",
+        estimateMs: estimateFullSiteDurationMs(fullBrief.pages.length),
+      });
       progressRef.current = "Queued for background generation...";
       completionHandledRef.current = false;
       setGenStatus("blueprint", "Queued for background generation...");
       addGenLog("🔍 Extracting brand direction and visual identity...","info");
       if (brief.colorPreference) addGenLog(`🎨 Color: ${COLOR_PRESETS[colorPreset]?.label ?? "custom"}`, "info");
       addGenLog(`🖼️ Image style: ${brief.imageStyle ?? "photos"}`, "info");
-      if (generatorMode === "smart") addGenLog("✦ Smart Setup — enriched context active", "info");
       await runQueuedGeneration(fullBrief);
     } catch (err) {
       const { appError, apiError } = normalizeClientError(err, API_GENERATE_001, { projectId: projectIdRef.current, siteName: fullBrief.siteName });
@@ -464,6 +620,7 @@ export function CreateProjectModal({ onClose }: Props) {
       <GeneratingScreen
         projectName={brief.siteName || "Your Website"}
         pageCount={brief.pages.length}
+        projectId={queuedProjectId}
         errorActions={
           genStatus === "error" ? (
             <>
@@ -502,9 +659,22 @@ export function CreateProjectModal({ onClose }: Props) {
   }
 
   const wizardCanNext =
-    ws === 1 ? brief.siteName.trim().length > 0 && brief.description.trim().length > 5
+    ws === 1 ? brief.siteName.trim().length > 0 && brief.description.trim().length > 0
     : ws === 2 ? brief.pages.length > 0
     : true;
+
+  const wizardNextHint =
+    ws === 1
+      ? !brief.siteName.trim()
+        ? "Add a site name to continue."
+        : !brief.description.trim()
+          ? "Add a short description to continue."
+          : ""
+      : ws === 2
+        ? brief.pages.length === 0
+          ? "Select at least one page to continue."
+          : ""
+        : "";
 
   const STEP_META = [
     {
@@ -524,6 +694,145 @@ export function CreateProjectModal({ onClose }: Props) {
     },
   ];
   const activeStep = STEP_META[ws - 1];
+  const generatorCreditEstimate = estimateFullSiteGenerationCredits(brief.pages.length);
+  const blueprintCreditCost = getAIUsageCost("blueprint");
+  const pageGenerationCreditCost = getAIUsageCost("generate-page");
+
+  // ── Conversation mode ─────────────────────────────────────────────────────
+  if (generatorMode === "conversation") {
+    return (
+      <OverlayDialog
+        open
+        onClose={onClose}
+        titleId={dialogTitleId}
+        containerClassName="overflow-y-auto p-4"
+        panelClassName="animate-scale-in sz-modal-shell relative my-auto flex w-full max-w-[920px] flex-col overflow-hidden rounded-[26px]"
+      >
+        <div className="flex h-[min(600px,80vh)] flex-col">
+          <ConversationalBrief
+            onComplete={handleConversationalComplete}
+            onCancel={onClose}
+          />
+        </div>
+      </OverlayDialog>
+    );
+  }
+
+  // ── Confirm step: review AI-inferred site type + pages before generating ────
+  if (generatorMode === "confirm") {
+    return (
+      <OverlayDialog
+        open
+        onClose={onClose}
+        titleId={dialogTitleId}
+        containerClassName="overflow-y-auto p-4"
+        panelClassName="animate-scale-in sz-modal-shell relative my-auto flex w-full max-w-[680px] flex-col overflow-hidden rounded-[26px]"
+      >
+        <div className="flex max-h-[85vh] flex-col">
+          {/* Header */}
+          <div className="border-b border-[var(--border-soft)] px-5 py-3.5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Review &amp; confirm</p>
+            <h2 id={dialogTitleId} className="mt-0.5 text-[16px] font-semibold text-[var(--text-primary)]">
+              {brief.siteName || "Your website"}
+            </h2>
+            <p className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+              We mapped your brief to a site type and pages. Adjust anything below, then generate.
+            </p>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Site type</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {INDUSTRIES.map(({ label, Icon }) => {
+                  const active = brief.siteType === label;
+                  return (
+                    <button key={label} onClick={() => selectSiteType(label)}
+                      className="flex flex-col items-center gap-1.5 rounded-[14px] border px-3 py-3.5 text-center transition-all"
+                      style={{ border: `1px solid ${active ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: active ? "rgba(107,119,255,0.14)" : "var(--surface-3)" }}>
+                      <Icon size={16} style={{ color: active ? "rgba(162,172,255,1)" : "var(--fg-muted)" }} />
+                      <span style={{ fontSize: 11, fontWeight: 500, color: active ? "var(--text-primary)" : "var(--fg-soft)", lineHeight: 1.3 }}>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Pages</p>
+              <div className="flex flex-wrap gap-1.5">
+                {COMMON_PAGES.map(page => {
+                  const active = brief.pages.includes(page);
+                  return (
+                    <button key={page} onClick={() => togglePage(page)}
+                      className="rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all"
+                      style={{ border: `1px solid ${active ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: active ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: active ? "var(--text-primary)" : "var(--fg-soft)" }}>
+                      {active && <span style={{ marginRight: 5, color: "rgba(162,172,255,0.8)", fontSize: 10 }}>✓</span>}{page}
+                    </button>
+                  );
+                })}
+              </div>
+              {brief.pages.filter(p => !COMMON_PAGES.includes(p)).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {brief.pages.filter(p => !COMMON_PAGES.includes(p)).map(p => (
+                    <span key={p} className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px]" style={{ background: "rgba(107,119,255,0.14)", border: "1px solid rgba(129,140,255,0.25)", color: "rgba(162,172,255,1)" }}>
+                      {p}
+                      <button onClick={() => togglePage(p)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", lineHeight: 1, padding: 0, fontSize: 14 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2.5 flex gap-2">
+                <input value={customPage} onChange={e => setCustomPage(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addCustomPage()}
+                  placeholder="Add a custom page…" style={{ ...inputBase, fontSize: 13 }} />
+                <button onClick={addCustomPage} disabled={!customPage.trim()}
+                  style={{ padding: "0 16px", background: "var(--surface-4)", border: "1px solid var(--border-softer)", borderRadius: 12, fontSize: 11.5, color: "var(--fg-soft)", cursor: "pointer", opacity: customPage.trim() ? 1 : 0.4, whiteSpace: "nowrap" }}>
+                  + Add
+                </button>
+              </div>
+              {brief.pages.length === 0 && (
+                <p className="mt-2 text-[11px] text-[rgba(255,150,150,0.9)]">Select at least one page to generate.</p>
+              )}
+            </div>
+
+            <div className="rounded-[18px] border border-[rgba(129,140,255,0.18)] bg-[rgba(107,119,255,0.06)] px-3.5 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[rgba(162,172,255,0.12)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[rgba(182,191,255,0.92)]">
+                  Estimated credits
+                </span>
+                <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                  {formatCreditAmount(generatorCreditEstimate)}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-5 text-[var(--fg-muted)]">
+                {formatCreditAmount(blueprintCreditCost)} for the site blueprint plus {brief.pages.length} x {formatCreditAmount(pageGenerationCreditCost)} for page generation.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-[var(--border-soft)] px-5 py-3.5">
+            <button
+              onClick={() => setGeneratorMode("conversation")}
+              className="flex items-center gap-2 text-[13px] font-medium text-[var(--fg-muted)] transition-all hover:text-[var(--text-primary)]"
+            >
+              <ChevronLeft size={15} /> Back to chat
+            </button>
+            <SitezyButton
+              variant="primary"
+              onClick={() => void handleGenerateWithBrief(brief)}
+              disabled={brief.pages.length === 0 || !brief.siteName.trim() || !brief.description.trim()}
+              title={brief.pages.length === 0 ? "Select at least one page to continue." : undefined}
+            >
+              Continue <ChevronRight size={14} />
+            </SitezyButton>
+          </div>
+        </div>
+      </OverlayDialog>
+    );
+  }
 
   // ── Step 1 ────────────────────────────────────────────────────────────────
   return (
@@ -532,12 +841,12 @@ export function CreateProjectModal({ onClose }: Props) {
       onClose={onClose}
       titleId={dialogTitleId}
       containerClassName="overflow-y-auto p-4"
-      panelClassName="animate-scale-in sz-modal-shell relative my-auto flex w-full max-w-[860px] flex-col overflow-hidden rounded-[28px]"
+      panelClassName="animate-scale-in sz-modal-shell relative my-auto flex w-full max-w-[836px] flex-col overflow-hidden rounded-[26px]"
     >
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-6 py-4">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-5 py-3.5">
+          <div className="flex items-center gap-2.5">
             {/* Step dots */}
             <div className="flex items-center gap-1.5">
               {Array.from({ length: WIZARD_STEPS }).map((_, i) => (
@@ -562,15 +871,15 @@ export function CreateProjectModal({ onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex max-h-[calc(100vh-220px)] min-h-[360px] flex-col overflow-y-auto px-8 py-6">
-          <div className="mb-6 space-y-2">
+        <div className="flex max-h-[calc(100vh-220px)] min-h-[340px] flex-col overflow-y-auto px-6 py-5">
+          <div className="mb-5 space-y-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--fg-faint)]">
               {activeStep.eyebrow}
             </p>
-            <h2 id={dialogTitleId} className="text-[28px] font-semibold leading-tight tracking-[-0.04em] text-[var(--text-primary)]">
+            <h2 id={dialogTitleId} className="text-[26px] font-semibold leading-tight tracking-[-0.04em] text-[var(--text-primary)]">
               {activeStep.title}
             </h2>
-            <p className="max-w-[640px] text-[14px] leading-7 text-[var(--text-secondary)]">
+            <p className="max-w-[620px] text-[13px] leading-6 text-[var(--text-secondary)]">
               {activeStep.body}
             </p>
           </div>
@@ -580,46 +889,7 @@ export function CreateProjectModal({ onClose }: Props) {
 
             {/* Step 1: Brief */}
             {ws === 1 && (
-              <div className="space-y-6">
-                <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Generation mode</p>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {[
-                      {
-                        key: "quick" as const,
-                        title: "Quick",
-                        body: "Minimal setup. Best when you want to move fast and refine inside the editor.",
-                        icon: <Zap size={16} />,
-                      },
-                      {
-                        key: "smart" as const,
-                        title: "Smart",
-                        body: "Adds logo and contact context so the first pass feels more tailored.",
-                        icon: <Sparkles size={16} />,
-                      },
-                    ].map((mode) => {
-                      const active = generatorMode === mode.key;
-                      return (
-                        <button
-                          key={mode.key}
-                          type="button"
-                          onClick={() => setGeneratorMode(mode.key)}
-                          className="rounded-[20px] border p-4 text-left transition-all"
-                          style={{
-                            border: `1px solid ${active ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`,
-                            background: active ? "rgba(107,119,255,0.12)" : "var(--surface-3)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2 text-[var(--text-primary)]">
-                            {mode.icon}
-                            <span className="text-[15px] font-semibold tracking-[-0.03em]">{mode.title}</span>
-                          </div>
-                          <p className="mt-2 text-[12px] leading-6 text-[var(--fg-muted)]">{mode.body}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="space-y-5">
 
                 <div className="space-y-3">
                   <input
@@ -644,13 +914,13 @@ export function CreateProjectModal({ onClose }: Props) {
                 </div>
 
                 <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Site type</p>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Site type</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {INDUSTRIES.map(({ label, Icon }) => {
                       const active = brief.siteType === label;
                       return (
-                        <button key={label} onClick={() => setBrief(b => ({...b, siteType: b.siteType === label ? "" : label}))}
-                          className="flex flex-col items-center gap-2 rounded-[14px] border px-3 py-4 text-center transition-all"
+                        <button key={label} onClick={() => selectSiteType(label)}
+                          className="flex flex-col items-center gap-1.5 rounded-[14px] border px-3 py-3.5 text-center transition-all"
                           style={{ border: `1px solid ${active ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: active ? "rgba(107,119,255,0.14)" : "var(--surface-3)" }}>
                           <Icon size={16} style={{ color: active ? "rgba(162,172,255,1)" : "var(--fg-muted)" }} />
                           <span style={{ fontSize: 11, fontWeight: 500, color: active ? "var(--text-primary)" : "var(--fg-soft)", lineHeight: 1.3 }}>{label}</span>
@@ -658,7 +928,7 @@ export function CreateProjectModal({ onClose }: Props) {
                       );
                     })}
                     <button onClick={() => setBrief(b => ({...b, siteType: ""}))}
-                      className="flex flex-col items-center gap-2 rounded-[14px] border px-3 py-4 text-center transition-all"
+                      className="flex flex-col items-center gap-1.5 rounded-[14px] border px-3 py-3.5 text-center transition-all"
                       style={{ border: `1px solid ${!brief.siteType ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: !brief.siteType ? "rgba(107,119,255,0.14)" : "var(--surface-3)" }}>
                       <Sparkles size={16} style={{ color: !brief.siteType ? "rgba(162,172,255,1)" : "var(--fg-muted)" }} />
                       <span style={{ fontSize: 11, fontWeight: 500, color: !brief.siteType ? "var(--text-primary)" : "var(--fg-soft)", lineHeight: 1.3 }}>AI decides</span>
@@ -670,15 +940,15 @@ export function CreateProjectModal({ onClose }: Props) {
 
             {/* Step 2: Style */}
             {ws === 2 && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Design style</p>
-                  <div className="flex flex-wrap gap-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Design style</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {DESIGN_STYLES.map(style => {
                       const isActive = brief.generationDesignStyle === style.value;
                       return (
                         <button key={style.value} onClick={() => setBrief({...brief, generationDesignStyle: style.value as SiteBrief["generationDesignStyle"], tone: DESIGN_STYLE_TO_TONE[style.value] ?? "Professional"})}
-                          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] transition-all"
+                          className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] transition-all"
                           style={{ border: `1px solid ${isActive ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: isActive ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: isActive ? "var(--text-primary)" : "var(--fg-soft)" }}>
                           <span style={{ fontSize: 11, opacity: isActive ? 1 : 0.4 }}>{style.emoji}</span>
                           {style.label}
@@ -688,11 +958,11 @@ export function CreateProjectModal({ onClose }: Props) {
                   </div>
                 </div>
                 <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Color palette</p>
-                  <div className="flex flex-wrap gap-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Color palette</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {COLOR_PRESETS.map((preset, idx) => (
                       <button key={preset.label} onClick={() => pickColorPreset(idx)}
-                        className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] transition-all"
+                        className="flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] transition-all"
                         style={{ border: `1px solid ${colorPreset === idx ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: colorPreset === idx ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: colorPreset === idx ? "var(--text-primary)" : "var(--fg-soft)" }}>
                         <div className="flex gap-1">
                           {(preset.colors.length > 0 ? preset.colors.slice(0, 3) : ["#9BA4FF","#6B77FF","#4550F0"]).map((c, i) => (
@@ -705,7 +975,7 @@ export function CreateProjectModal({ onClose }: Props) {
                     {/* Settings default palette — show if user has custom colors configured that differ from hard-coded default */}
                     {initialBriefSettings.colorPalette.length > 0 && initialBriefSettings.colorPalette[0] !== "#6b77ff" && (
                       <button onClick={() => { setColorPreset(-2); setBrief(b => ({...b, colorPalette: initialBriefSettings.colorPalette, colorPreference: "user default palette from settings"})); }}
-                        className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] transition-all"
+                        className="flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] transition-all"
                         style={{ border: `1px solid ${colorPreset === -2 ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: colorPreset === -2 ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: colorPreset === -2 ? "var(--text-primary)" : "var(--fg-soft)" }}>
                         <div className="flex gap-1">
                           {initialBriefSettings.colorPalette.slice(0, 3).map((c, i) => (
@@ -717,7 +987,7 @@ export function CreateProjectModal({ onClose }: Props) {
                     )}
                     {/* Custom color input */}
                     <button onClick={() => { setColorPreset(-1); setShowCustomColor(true); }}
-                      className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] transition-all"
+                      className="flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] transition-all"
                       style={{ border: `1px solid ${colorPreset === -1 ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: colorPreset === -1 ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: colorPreset === -1 ? "var(--text-primary)" : "var(--fg-soft)" }}>
                       <Palette size={10} style={{ opacity: 0.6 }} />
                       Custom
@@ -725,47 +995,59 @@ export function CreateProjectModal({ onClose }: Props) {
                   </div>
                   {/* Custom color inputs */}
                   {showCustomColor && colorPreset === -1 && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                       {(brief.colorPalette ?? []).map((hex, i) => (
-                        <div key={i} className="flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] py-1 pl-1.5 pr-2.5">
-                          <input
-                            type="color"
+                        <div key={i} className="space-y-2 rounded-[18px] border border-[var(--border-soft)] bg-[var(--surface-2)] p-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">
+                              Color {i + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = (brief.colorPalette ?? []).filter((_, j) => j !== i);
+                                setBrief(b => ({...b, colorPalette: next, colorPreference: next.join(", ")}));
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] text-[var(--fg-subtle)] transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]"
+                              aria-label={`Remove color ${i + 1}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                          <SettingsColorPicker
                             value={hex}
-                            onChange={e => {
+                            onChange={(nextHex) => {
                               const next = [...(brief.colorPalette ?? [])];
-                              next[i] = e.target.value;
+                              next[i] = nextHex;
                               setBrief(b => ({...b, colorPalette: next, colorPreference: next.join(", ")}));
                             }}
-                            className="h-5 w-5 cursor-pointer rounded-full border-0 bg-transparent p-0"
-                            style={{ appearance: "none", WebkitAppearance: "none" }}
                           />
-                          <span className="font-mono text-[10px] text-[var(--fg-muted)]">{hex}</span>
-                          <button onClick={() => {
-                            const next = (brief.colorPalette ?? []).filter((_, j) => j !== i);
-                            setBrief(b => ({...b, colorPalette: next, colorPreference: next.join(", ")}));
-                          }} className="ml-0.5 text-[var(--fg-subtle)] hover:text-[var(--text-primary)]"><X size={10} /></button>
                         </div>
                       ))}
                       {(brief.colorPalette ?? []).length < 6 && (
-                        <button onClick={() => {
-                          const next = [...(brief.colorPalette ?? []), "#6b77ff"];
-                          setBrief(b => ({...b, colorPalette: next, colorPreference: next.join(", ")}));
-                        }}
-                          className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-[var(--border-softer)] text-[var(--fg-subtle)] transition-all hover:border-[rgba(129,140,255,0.3)] hover:text-[var(--fg-soft)]">
-                          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...(brief.colorPalette ?? []), "#6b77ff"];
+                            setBrief(b => ({...b, colorPalette: next, colorPreference: next.join(", ")}));
+                          }}
+                          className="flex min-h-[92px] items-center justify-center gap-2 rounded-[18px] border border-dashed border-[var(--border-softer)] bg-[var(--surface-2)] px-4 text-[11px] font-medium text-[var(--fg-subtle)] transition-all hover:border-[rgba(129,140,255,0.35)] hover:bg-[var(--surface-3)] hover:text-[var(--fg-soft)]"
+                        >
+                          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+                          Add color
                         </button>
                       )}
                     </div>
                   )}
                 </div>
-                <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Pages</p>
-                <div className="flex flex-wrap gap-2">
+                <div className="mt-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Pages</p>
+                <div className="flex flex-wrap gap-1.5">
                   {COMMON_PAGES.map(page => {
                     const active = brief.pages.includes(page);
                     return (
                       <button key={page} onClick={() => togglePage(page)}
-                        className="rounded-full px-4 py-2 text-[13px] font-medium transition-all"
+                        className="rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all"
                         style={{ border: `1px solid ${active ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: active ? "rgba(107,119,255,0.14)" : "var(--surface-3)", color: active ? "var(--text-primary)" : "var(--fg-soft)" }}>
                         {active && <span style={{ marginRight: 5, color: "rgba(162,172,255,0.8)", fontSize: 10 }}>✓</span>}{page}
                       </button>
@@ -782,14 +1064,30 @@ export function CreateProjectModal({ onClose }: Props) {
                     ))}
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="mt-2.5 flex gap-2">
                   <input value={customPage} onChange={e => setCustomPage(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && addCustomPage()}
                     placeholder="Add a custom page…" style={{ ...inputBase, fontSize: 13 }} />
                   <button onClick={addCustomPage} disabled={!customPage.trim()}
-                    style={{ padding: "0 18px", background: "var(--surface-4)", border: "1px solid var(--border-softer)", borderRadius: 14, fontSize: 12, color: "var(--fg-soft)", cursor: "pointer", opacity: customPage.trim() ? 1 : 0.4, whiteSpace: "nowrap" }}>
+                    style={{ padding: "0 16px", background: "var(--surface-4)", border: "1px solid var(--border-softer)", borderRadius: 12, fontSize: 11.5, color: "var(--fg-soft)", cursor: "pointer", opacity: customPage.trim() ? 1 : 0.4, whiteSpace: "nowrap" }}>
                     + Add
                   </button>
+                </div>
+                <div className="mt-2.5 rounded-[18px] border border-[rgba(129,140,255,0.18)] bg-[rgba(107,119,255,0.06)] px-3.5 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[rgba(162,172,255,0.12)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[rgba(182,191,255,0.92)]">
+                      Estimated credits
+                    </span>
+                    <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                      {formatCreditAmount(generatorCreditEstimate)}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] leading-5 text-[var(--fg-muted)]">
+                    {formatCreditAmount(blueprintCreditCost)} for the site blueprint plus {brief.pages.length} x {formatCreditAmount(pageGenerationCreditCost)} for page generation.
+                  </p>
+                  <p className="text-[11px] leading-5 text-[var(--fg-subtle)]">
+                    Credits are charged when generation begins.
+                  </p>
                 </div>
                 </div>
               </div>
@@ -799,11 +1097,11 @@ export function CreateProjectModal({ onClose }: Props) {
             {ws === 3 && (
               <div className="space-y-5">
                 <div>
-                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Image style</p>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">Image style</p>
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                     {IMAGE_STYLES.map(style => (
                       <button key={style.value} onClick={() => setBrief({...brief, imageStyle: style.value as SiteBrief["imageStyle"]})}
-                        className="rounded-[14px] px-3 py-3 text-center transition-all"
+                        className="rounded-[14px] px-3 py-2.5 text-center transition-all"
                         style={{ border: `1px solid ${brief.imageStyle === style.value ? "rgba(129,140,255,0.35)" : "var(--border-soft)"}`, background: brief.imageStyle === style.value ? "rgba(107,119,255,0.14)" : "var(--surface-3)" }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: brief.imageStyle === style.value ? "var(--text-primary)" : "var(--fg-soft)" }}>{style.label}</div>
                         <div style={{ fontSize: 9, color: "var(--fg-subtle)", marginTop: 2, lineHeight: 1.4 }}>{style.desc}</div>
@@ -823,45 +1121,13 @@ export function CreateProjectModal({ onClose }: Props) {
                   />
                 </div>
 
-                {generatorMode === "smart" && (
-                  <div className="rounded-[14px] border border-[rgba(129,140,255,0.18)] bg-[rgba(107,119,255,0.06)] p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={11} style={{ color: "rgba(162,172,255,0.8)" }} />
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[rgba(162,172,255,0.8)]">Smart context</span>
-                    </div>
-                    <input ref={logoInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp" style={{ display: "none" }}
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoFile(f); }} />
-                    {smartBrief.logoUrl ? (
-                      <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-3 py-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={smartBrief.logoUrl} alt="Logo" style={{ width: 28, height: 28, objectFit: "contain", borderRadius: 6, flexShrink: 0 }} />
-                        <p className="flex-1 text-[11px] text-[var(--fg-soft)]">Logo attached</p>
-                        <button onClick={() => { setSmartBrief(s => ({...s, logoUrl: ""})); if (logoInputRef.current) logoInputRef.current.value = ""; }} className="text-[var(--fg-faint)] hover:text-[var(--text-primary)]"><X size={12} /></button>
-                      </div>
-                    ) : (
-                      <button onClick={() => logoInputRef.current?.click()}
-                        onDragOver={e => { e.preventDefault(); setLogoDragging(true); }}
-                        onDragLeave={() => setLogoDragging(false)}
-                        onDrop={e => { e.preventDefault(); setLogoDragging(false); const f = e.dataTransfer.files[0]; if (f) handleLogoFile(f); }}
-                        className="flex w-full items-center gap-2.5 rounded-[10px] border border-dashed px-3 py-2.5 text-left transition-all"
-                        style={{ borderColor: logoDragging ? "rgba(129,140,255,0.5)" : "var(--border-softer)", background: logoDragging ? "rgba(107,119,255,0.08)" : "transparent" }}>
-                        <Upload size={12} style={{ color: "var(--fg-faint)", flexShrink: 0 }} />
-                        <span className="text-[11px] text-[var(--fg-muted)]">Upload your logo (optional)</span>
-                      </button>
-                    )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <input value={smartBrief.contactDetails?.email} onChange={e => patchSmartContact("email", e.target.value)} placeholder="Email" style={{ ...inputBase, fontSize: 12, padding: "10px 14px" }} />
-                      <input value={smartBrief.contactDetails?.phone} onChange={e => patchSmartContact("phone", e.target.value)} placeholder="Phone" style={{ ...inputBase, fontSize: 12, padding: "10px 14px" }} />
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
         </div>
 
         {/* Footer nav */}
-        <div className="flex items-center justify-between border-t border-[var(--border-soft)] px-8 py-5">
+        <div className="flex items-center justify-between border-t border-[var(--border-soft)] px-6 py-4">
           <button
             onClick={prevWizard}
             className={`flex items-center gap-2 text-[13px] font-medium text-[var(--fg-muted)] transition-all hover:text-[var(--text-primary)] ${ws === 1 ? "invisible" : ""}`}
@@ -872,25 +1138,32 @@ export function CreateProjectModal({ onClose }: Props) {
           {/* Live summary chips */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">
-              {generatorMode === "smart" ? "Smart" : "Quick"}
+              AI Brief
             </span>
             {brief.siteName && <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">{brief.siteName}</span>}
             {brief.siteType && <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">{brief.siteType}</span>}
             {brief.generationDesignStyle && brief.generationDesignStyle !== "minimal" && <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">{DESIGN_STYLES.find(s => s.value === brief.generationDesignStyle)?.label ?? brief.generationDesignStyle}</span>}
             {brief.pages.length > 0 && <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">{brief.pages.length} pages</span>}
+            {brief.pages.length > 0 && <span className="rounded-full bg-[var(--surface-4)] px-2.5 py-1 text-[10px] text-[var(--fg-muted)]">{formatCreditAmount(generatorCreditEstimate)}</span>}
           </div>
 
-          <SitezyButton
-            variant="primary"
-            onClick={nextWizard}
-            disabled={!wizardCanNext}
-          >
-            {ws === WIZARD_STEPS ? (
-              <>{generatorMode === "smart" ? <Sparkles size={14} /> : <Zap size={14} />} Generate</>
-            ) : (
-              <>Continue <ChevronRight size={14} /></>
+          <div className="flex flex-col items-end gap-1">
+            {wizardNextHint && (
+              <span className="text-[10px] text-[var(--fg-faint)]">{wizardNextHint}</span>
             )}
-          </SitezyButton>
+            <SitezyButton
+              variant="primary"
+              onClick={nextWizard}
+              disabled={!wizardCanNext}
+              title={wizardNextHint || undefined}
+            >
+              {ws === WIZARD_STEPS ? (
+                <><Sparkles size={14} /> Generate</>
+              ) : (
+                <>Continue <ChevronRight size={14} /></>
+              )}
+            </SitezyButton>
+          </div>
         </div>
       </div>
     </OverlayDialog>
@@ -923,14 +1196,14 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 const inputBase: React.CSSProperties = {
   width: "100%",
-  minHeight: 48,
-  padding: "0 16px",
+  minHeight: 44,
+  padding: "0 14px",
   fontSize: 13,
   fontWeight: 500,
   color: "var(--text-primary)",
   background: "var(--surface-4)",
   border: "1px solid var(--border-softer)",
-  borderRadius: 16,
+  borderRadius: 15,
   outline: "none",
   fontFamily: "inherit",
   transition: "border-color 0.18s, box-shadow 0.18s, background 0.18s",

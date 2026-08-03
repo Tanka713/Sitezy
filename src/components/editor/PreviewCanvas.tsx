@@ -1,10 +1,15 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { formatCreditAmount, getAIUsageCost } from "@/lib/ai-usage";
 import { isSignificantNode, type LiveIntelligenceSuggestion } from "@/lib/editor/intelligence";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
+import { getJobGenerationEtaLabel, getTimingEtaLabel } from "@/lib/generation-eta";
+import { resolveEffectiveProjectLeadCaptureSettings } from "@/lib/lead-capture";
+import { projectHasActiveGeneration } from "@/lib/project-generation";
+import { defaultUserSettings, readCachedUserSettings } from "@/lib/settings";
 import { useAppStore } from "@/lib/store";
 import { API_UNKNOWN_001, createAppError, logAppError, normalizeError, type ErrorCode } from "@/lib/errors";
-import { buildFullPageHtml } from "@/lib/utils";
+import { buildFullPageHtml, buildProjectPageNavigationLinks } from "@/lib/utils";
 import { buildVisualEditorScript } from "@/lib/utils/visualEditor";
 import {
   Loader2, MousePointer2, Eye, Code2, Columns,
@@ -48,7 +53,8 @@ const NAV_GUARD_SCRIPT = `<script>
         }
         e.preventDefault();return;
       }
-      e.preventDefault();szNav(href);return;
+      if(szNav(href)){e.preventDefault();}
+      return;
     }
     // Also handle <button> elements inside navbar sections
     var btn=e.target.closest&&e.target.closest('nav button,[data-sz-section-type="navbar"] button,header button');
@@ -77,7 +83,7 @@ const NAV_GUARD_SCRIPT = `<script>
 
 function ToolbarTooltip({ label, shortcut }: { label: string; shortcut?: string }) {
   return (
-    <span className="sz-tooltip pointer-events-none absolute left-1/2 top-full z-[120] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] px-2.5 py-1 text-[10px] font-medium opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+    <span className="sz-tooltip pointer-events-none absolute left-1/2 top-full z-[120] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] px-2.5 py-1 text-[10px] font-medium opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.34)] transition-all duration-150 group-hover:opacity-100">
       {label}
       {shortcut ? <span className="ml-1 text-[9px] font-normal text-[var(--fg-muted)]">({shortcut})</span> : null}
     </span>
@@ -115,6 +121,8 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   const redoStack          = useAppStore((s) => s.redoStack);
   const generationStatus   = useAppStore((s) => s.generationStatus);
   const generationProgress = useAppStore((s) => s.generationProgress);
+  const generationStartedAt = useAppStore((s) => s.generationStartedAt);
+  const generationEstimateMs = useAppStore((s) => s.generationEstimateMs);
 
   const [zoom, setZoom] = useState(100);
   const zoomRef = useRef(100);
@@ -133,6 +141,8 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   const [liveCardVisible, setLiveCardVisible] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveIsAI, setLiveIsAI] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const intelligenceCostLabel = formatCreditAmount(getAIUsageCost("intelligence"));
   const aiCacheRef = useRef<Map<string, LiveIntelligenceSuggestion[]>>(new Map());
   // Ref so postMessage handlers always read the latest visualEditMode value
   const visualEditModeRef = useRef(visualEditMode);
@@ -151,25 +161,21 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
 
   const pages = project?.pages ?? [];
   const files = project?.files ?? {};
+  const cachedSettings = useMemo(() => readCachedUserSettings() ?? defaultUserSettings, []);
+  const effectiveLeadSettings = useMemo(
+    () => resolveEffectiveProjectLeadCaptureSettings(project.integrationSettings, cachedSettings),
+    [cachedSettings, project.integrationSettings]
+  );
 
   const activePageId = leftPanelTab === "files" && selectedFileId ? selectedFileId : selectedPageId;
   const page = pages.find((p) => p.id === activePageId) ?? null;
   const file = files[selectedFileId ?? ""] ?? null;
   const codeContextKeyRef = useRef<string>("");
-  const hasGeneratingPages = pages.some((entry) => entry.status === "pending" || entry.status === "generating");
   const backgroundProgress =
     project.generationJob?.status === "queued" || project.generationJob?.status === "running"
       ? project.generationJob.progressMessage?.trim() || ""
       : "";
-  const backgroundJobActive =
-    project.generationJob?.status === "queued" || project.generationJob?.status === "running";
-  const isGlobalGenerating =
-    generationStatus === "blueprint" ||
-    generationStatus === "pages" ||
-    generationStatus === "normalizing" ||
-    backgroundJobActive ||
-    project.status === "generating" ||
-    hasGeneratingPages;
+  const isGlobalGenerating = projectHasActiveGeneration(project, generationStatus);
   const progressLower = (backgroundProgress || generationProgress.trim()).toLowerCase();
   const progressTargetsCurrentPage = !!page?.name && progressLower.includes(page.name.trim().toLowerCase());
   const showGeneratingState =
@@ -192,6 +198,10 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
         : pages.length === 0
           ? "Analyzing your brief"
           : "Generating page");
+  const generationEtaLabel =
+    project.generationJob?.status === "queued" || project.generationJob?.status === "running"
+      ? getJobGenerationEtaLabel(project.generationJob, now)
+      : getTimingEtaLabel(generationStartedAt, generationEstimateMs, now);
 
   const codeContent = (leftPanelTab === "files" && file && file.type !== "html")
     ? file.content : page?.html ?? "";
@@ -204,6 +214,10 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
   useEffect(() => { setLocalCode(codeContent); }, [codeContent, activePageId, selectedFileId]);
   useEffect(() => {
     if (visualEditMode && previewMode !== "preview") setPreviewMode("preview");
+    if (!visualEditMode) {
+      clearCanvasSelection();
+      selectSection(null);
+    }
   }, [visualEditMode]);
 
   useEffect(() => {
@@ -300,9 +314,29 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     if (!doc) return;
     const script = withEditor ? buildVisualEditorScript() : NAV_GUARD_SCRIPT;
     const safeHtml = derivePageStateFromHtml(html).html;
-    const full   = buildFullPageHtml(safeHtml, project?.blueprint ?? null, page?.name ?? "", script);
+    const navigationLinks = buildProjectPageNavigationLinks(project.pages ?? [], (target, _index, slug) =>
+      slug === "home" ? "/" : `/${slug}`
+    );
+    const full = buildFullPageHtml(
+      safeHtml,
+      project?.blueprint ?? null,
+      page?.name ?? "",
+      script,
+      "",
+      null,
+      {
+        mode: "preview",
+        projectId: project.id,
+        contactCaptureEnabled: effectiveLeadSettings.contactCapture === "sitezy",
+        newsletterCaptureEnabled: effectiveLeadSettings.newsletterCapture === "sitezy",
+        submitEndpoint: "/api/leads/submit",
+      },
+      null,
+      null,
+      navigationLinks
+    );
     doc.open(); doc.write(full); doc.close();
-  }, [project?.blueprint, page?.name]);
+  }, [effectiveLeadSettings.contactCapture, effectiveLeadSettings.newsletterCapture, page?.name, project?.blueprint, project.id, project.pages]);
 
   const prevPreviewMode = useRef(previewMode);
   useEffect(() => {
@@ -317,7 +351,12 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     if (!iframe || !iframeReady) return;
     if (!page?.html) {
       const doc = iframe.contentDocument;
-      if (doc) { doc.open(); doc.write(emptyState(showGeneratingState, page?.status === "error", generatingLabel)); doc.close(); }
+      if (doc) {
+        const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+        doc.open();
+        doc.write(emptyState(showGeneratingState, page?.status === "error", generatingLabel, theme));
+        doc.close();
+      }
       return;
     }
     // Skip rewrite if the HTML change originated from the iframe itself
@@ -386,15 +425,8 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
             ? payload.path
             : [payload?.sectionName, payload?.label].filter(Boolean)
         );
-        // Auto-switch panel: section root → Properties (content editing),
-        // inner elements → Style (CSS controls).
         if (!rightSidebarOpen) toggleRightSidebar();
-        const clickedRole = (payload as { role?: string } | null)?.role;
-        if (clickedRole === "section") {
-          setRightPanel("properties");
-        } else {
-          setRightPanel("style");
-        }
+        setRightPanel("style");
       }
       if (type === "deselect") {
         setIsIframeEditing(false);
@@ -404,6 +436,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
         clearLiveLayer();
       }
       if (type === "toggle-edit-mode") {
+        if (isGlobalGenerating) return;
         const nextEnabled = !visualEditModeRef.current;
         setVisualEditMode(nextEnabled);
         if (nextEnabled) {
@@ -468,7 +501,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
         pendingHtmlRef.current = null;
       }
     };
-  }, [activePageId, clearCanvasSelection, clearLiveLayer, fetchAISuggestions, selectSection, setCanvasSelection, updateFileContent]);
+  }, [activePageId, clearCanvasSelection, clearLiveLayer, fetchAISuggestions, isGlobalGenerating, selectSection, setCanvasSelection, updateFileContent]);
 
   useEffect(() => {
     if (htmlSyncTimerRef.current) {
@@ -485,12 +518,27 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     clearLiveLayer();
   }, [activePageId, clearCanvasSelection, clearLiveLayer, selectSection]);
 
+  useEffect(() => {
+    if (!showGeneratingState) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [showGeneratingState]);
+
 
   function sendToIframe(type: string, payload?: Record<string, unknown>) {
     internalIframeRef.current?.contentWindow?.postMessage(
       { target: "sitezy-iframe", type, ...(payload ?? {}) }, "*"
     );
   }
+
+  useEffect(() => {
+    if (!iframeReady || !visualEditMode || previewMode === "code" || isIframeEditing) return;
+    if (!selectedNode?.nodeId) return;
+    const timer = window.setTimeout(() => {
+      sendToIframe("select-node", { nodeId: selectedNode.nodeId });
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [iframeReady, isIframeEditing, page?.html, page?.id, previewMode, selectedNode?.nodeId, visualEditMode]);
 
   useEffect(() => {
     if (!iframeReady || !visualEditMode || previewMode === "code") return;
@@ -532,6 +580,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
       const mod = e.metaKey || e.ctrlKey;
 
       if (mod && visualEditMode && previewMode !== "code") {
+        if (isGlobalGenerating) return;
         if (isIframeEditing) return;
         if ((e.key === "c" || e.key === "C") && selectedNode?.nodeId) {
           e.preventDefault();
@@ -566,6 +615,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
 
       // E — toggle visual edit mode (smart: won't fire while typing inside iframe)
       if ((e.key === "e" || e.key === "E") && previewMode !== "code") {
+        if (isGlobalGenerating) return;
         if (isIframeEditing) return; // user is mid-edit inside iframe, leave them alone
         e.preventDefault();
         const nextEnabled = !visualEditMode;
@@ -579,6 +629,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
 
       // I — trigger Live Intelligence analysis (only when already in edit mode)
       if ((e.key === "i" || e.key === "I") && visualEditMode && previewMode === "preview") {
+        if (isGlobalGenerating) return;
         if (isIframeEditing) return;
         e.preventDefault();
         triggerAnalysis();
@@ -587,7 +638,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visualEditMode, previewMode, isIframeEditing, rightSidebarOpen, selectedNode?.nodeId]);
+  }, [visualEditMode, previewMode, isGlobalGenerating, isIframeEditing, rightSidebarOpen, selectedNode?.nodeId]);
 
   // Close context menu on any click/keydown outside
   useEffect(() => {
@@ -601,18 +652,18 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
     };
   }, [contextMenu]);
 
-  function handleUndo() { if (visualEditMode) sendToIframe("undo"); else undo(); }
-  function handleRedo() { if (visualEditMode) sendToIframe("redo"); else redo(); }
-  function handleCopy() { if (visualEditMode && selectedNode?.nodeId) sendToIframe("copy"); }
-  function handleCut() { if (visualEditMode && selectedNode?.nodeId) sendToIframe("cut"); }
-  function handlePaste() { if (visualEditMode) sendToIframe("paste"); }
-  function handleDuplicate() { if (visualEditMode && selectedNode?.nodeId) sendToIframe("duplicate"); }
-  function handleDelete() { if (visualEditMode && selectedNode?.nodeId) sendToIframe("delete"); }
-  function handleSelectParent() { if (visualEditMode && selectedNode?.parentNodeId) sendToIframe("select-parent"); }
+  function handleUndo() { if (isGlobalGenerating) return; if (visualEditMode) sendToIframe("undo"); else undo(); }
+  function handleRedo() { if (isGlobalGenerating) return; if (visualEditMode) sendToIframe("redo"); else redo(); }
+  function handleCopy() { if (isGlobalGenerating) return; if (visualEditMode && selectedNode?.nodeId) sendToIframe("copy"); }
+  function handleCut() { if (isGlobalGenerating) return; if (visualEditMode && selectedNode?.nodeId) sendToIframe("cut"); }
+  function handlePaste() { if (isGlobalGenerating) return; if (visualEditMode) sendToIframe("paste"); }
+  function handleDuplicate() { if (isGlobalGenerating) return; if (visualEditMode && selectedNode?.nodeId) sendToIframe("duplicate"); }
+  function handleDelete() { if (isGlobalGenerating) return; if (visualEditMode && selectedNode?.nodeId) sendToIframe("delete"); }
+  function handleSelectParent() { if (isGlobalGenerating) return; if (visualEditMode && selectedNode?.parentNodeId) sendToIframe("select-parent"); }
 
-  const canUndo = visualEditMode ? iframeCanUndo : undoStack.length > 0;
-  const canRedo = visualEditMode ? iframeCanRedo : redoStack.length > 0;
-  const canEditSelection = visualEditMode && !!selectedNode?.nodeId;
+  const canUndo = !isGlobalGenerating && (visualEditMode ? iframeCanUndo : undoStack.length > 0);
+  const canRedo = !isGlobalGenerating && (visualEditMode ? iframeCanRedo : redoStack.length > 0);
+  const canEditSelection = !isGlobalGenerating && visualEditMode && !!selectedNode?.nodeId;
   const isConstrained = devicePreview !== "desktop";
   const deviceWidth   = DEVICE_WIDTHS[devicePreview] ?? "100%";
   const isCodeOnly = previewMode === "code";
@@ -760,20 +811,22 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
           {visualEditMode && previewMode === "preview" && (
             <button
               onClick={triggerAnalysis}
+              disabled={isGlobalGenerating}
               className={`group relative flex h-7 w-7 items-center justify-center rounded-md transition-all ${
                 liveIsAI
                   ? "text-teal-300 bg-teal-400/10"
                   : "text-white/30 hover:bg-white/[0.05] hover:text-white/55"
-              }`}
+              } disabled:pointer-events-none disabled:opacity-15`}
             >
               {liveLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              <ToolbarTooltip label="Analyze" shortcut="I" />
+              <ToolbarTooltip label={`Analyze · ${intelligenceCostLabel}`} shortcut="I" />
             </button>
           )}
 
           {/* Edit mode toggle */}
           <button
             onClick={() => {
+              if (isGlobalGenerating) return;
               const nextEnabled = !visualEditMode;
               setVisualEditMode(nextEnabled);
               if (nextEnabled) {
@@ -785,7 +838,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
               visualEditMode
                 ? "bg-[#5B8CFF]/12 text-[#5B8CFF] ring-1 ring-[#5B8CFF]/20"
                 : "text-white/35 hover:bg-white/[0.05] hover:text-white/60"
-            }`}
+            } ${isGlobalGenerating ? "pointer-events-none opacity-30" : ""}`}
           >
             <MousePointer2 size={12} />
             <span className="hidden sm:inline">{visualEditMode ? "Editing" : "Edit"}</span>
@@ -821,7 +874,7 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
             </span>
             {liveIsAI && !liveLoading && (
               <span className="rounded-full border border-teal-300/18 bg-teal-400/10 px-1.5 py-px text-[7px] font-bold uppercase tracking-[0.14em] text-teal-100/80">
-                AI
+                {intelligenceCostLabel}
               </span>
             )}
           </div>
@@ -908,29 +961,34 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                 )}
                 {showGeneratingState && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-5"
-                    style={{ background: "linear-gradient(180deg, rgba(7,9,13,0.92) 0%, rgba(5,7,11,0.96) 100%)", backdropFilter: "blur(2px)" }}
+                    style={{ background: "var(--surface-overlay)", backdropFilter: "blur(6px)" }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div className="h-14 w-14 rounded-full border-2 border-white/[0.06]" />
-                      <div className="absolute h-14 w-14 rounded-full border-2 border-transparent border-t-[#5B8CFF] animate-spin" style={{ animationDuration: "1s" }} />
-                      <div className="absolute h-8 w-8 rounded-full border border-[#5B8CFF]/30 animate-ping" style={{ animationDuration: "1.8s" }} />
-                      <Loader2 size={16} className="absolute text-[#5B8CFF]/60 animate-spin" style={{ animationDuration: "2s", animationDirection: "reverse" }} />
+                      <div className="h-14 w-14 rounded-full border-2 border-[var(--border-soft)]" />
+                      <div className="absolute h-14 w-14 animate-spin rounded-full border-2 border-transparent border-t-[var(--accent-default)]" style={{ animationDuration: "1s" }} />
+                      <div className="absolute h-8 w-8 animate-ping rounded-full border border-[var(--border-focus)]" style={{ animationDuration: "1.8s" }} />
+                      <Loader2 size={16} className="absolute animate-spin text-[var(--text-accent)]" style={{ animationDuration: "2s", animationDirection: "reverse" }} />
                     </div>
                     <div className="text-center">
-                      <p className="text-[13px] font-semibold text-white/80">
+                      <p className="text-[13px] font-semibold text-[var(--text-primary)]">
                         {generatingLabel}
                       </p>
                       {generationProgress && generationProgress.trim() !== generatingLabel && (
-                        <p className="mt-1 text-[11px] text-white/36 tabular-nums">
+                        <p className="mt-1 text-[11px] tabular-nums text-[var(--text-tertiary)]">
                           {generationProgress}
                         </p>
                       )}
+                      {generationEtaLabel ? (
+                        <p className="mt-1 text-[11px] font-medium text-[var(--text-secondary)]">
+                          Estimated completion {generationEtaLabel}
+                        </p>
+                      ) : null}
                     </div>
-                    <div className="flex w-64 flex-col gap-2 opacity-40">
+                    <div className="flex w-64 flex-col gap-2 opacity-70">
                       {[80, 60, 72, 48].map((w, i) => (
                         <div
                           key={i}
-                          className="h-2 rounded-full bg-white/[0.08] animate-pulse"
+                          className="h-2 animate-pulse rounded-full bg-[var(--surface-4)]"
                           style={{ width: `${w}%`, animationDelay: `${i * 150}ms` }}
                         />
                       ))}
@@ -938,32 +996,32 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                   </div>
                 )}
                 {page?.status === "error" && !page?.html && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[#080809]">
+                  <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-code)]">
                     <div className="text-center">
                       <button
                         onClick={() => setShowErrorLog((v) => !v)}
-                        className="group flex flex-col items-center gap-3 rounded-2xl border border-red-500/15 bg-red-500/[0.04] px-6 py-5 transition-all hover:border-red-500/25 hover:bg-red-500/[0.08]"
+                        className="group flex flex-col items-center gap-3 rounded-2xl border border-[rgba(240,106,116,0.18)] bg-[rgba(240,106,116,0.08)] px-6 py-5 transition-all hover:border-[rgba(240,106,116,0.28)] hover:bg-[rgba(240,106,116,0.12)]"
                       >
                         <span className="text-3xl">⚠️</span>
                         <div>
-                          <p className="text-[13px] font-medium text-red-400">Generation failed</p>
-                          <p className="mt-1 text-[11px] text-white/30 transition-colors group-hover:text-white/50">Click to view error details</p>
+                          <p className="text-[13px] font-medium text-[var(--danger-fg)]">Generation failed</p>
+                          <p className="mt-1 text-[11px] text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-secondary)]">Click to view error details</p>
                         </div>
                       </button>
                       {showErrorLog && (
-                        <div className="mt-3 w-80 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0f0f14] text-left shadow-2xl">
-                          <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Error Log</span>
-                            <button onClick={() => setShowErrorLog(false)} className="text-[11px] text-white/25 transition-colors hover:text-white/60">✕</button>
+                        <div className="mt-3 w-80 overflow-hidden rounded-xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] text-left shadow-[var(--shadow-xl)]">
+                          <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-3 py-2">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-tertiary)]">Error Log</span>
+                            <button onClick={() => setShowErrorLog(false)} className="text-[11px] text-[var(--text-disabled)] transition-colors hover:text-[var(--text-secondary)]">✕</button>
                           </div>
                           <div className="max-h-64 space-y-1.5 overflow-auto p-3">
                             {generationLog.length === 0
-                              ? <p className="text-[11px] text-white/25">No log entries.</p>
+                              ? <p className="text-[11px] text-[var(--text-disabled)]">No log entries.</p>
                               : generationLog.slice().reverse().map((entry, i) => (
                                 <div key={i} className={`text-[11px] font-mono leading-relaxed ${
-                                  entry.type === "error" ? "text-red-400" :
-                                  entry.type === "success" ? "text-emerald-400" :
-                                  "text-white/40"
+                                  entry.type === "error" ? "text-[var(--danger-fg)]" :
+                                  entry.type === "success" ? "text-[var(--success-fg)]" :
+                                  "text-[var(--text-tertiary)]"
                                 }`}>
                                   {entry.msg}
                                 </div>
@@ -980,10 +1038,10 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
 
             {/* Breadcrumb bar */}
             {visualEditMode && breadcrumb.length > 0 && (
-              <div className="absolute bottom-0 left-0 right-0 z-50 flex items-center gap-0.5 border-t border-white/[0.04] bg-[#0e1117]/80 px-3 py-1 backdrop-blur-md">
+              <div className="absolute bottom-0 left-0 right-0 z-50 flex items-center gap-0.5 border-t border-[var(--border-soft)] bg-[var(--bg-frost)] px-3 py-1 backdrop-blur-md">
                 {breadcrumb.map((seg, i) => (
                   <span key={i} className="flex items-center gap-0.5">
-                    {i > 0 && <ChevronRight size={8} className="flex-shrink-0 text-white/12" />}
+                    {i > 0 && <ChevronRight size={8} className="flex-shrink-0 text-[var(--text-disabled)]" />}
                     <button
                       onClick={() => {
                         const stepsUp = breadcrumb.length - 1 - i;
@@ -991,8 +1049,8 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
                       }}
                       className={`rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors ${
                         i === breadcrumb.length - 1
-                          ? "bg-[#5B8CFF]/8 text-[#5B8CFF]"
-                          : "text-white/30 hover:bg-white/[0.04] hover:text-white/55"
+                          ? "bg-[var(--accent-subtle)] text-[var(--text-accent)]"
+                          : "text-[var(--text-tertiary)] hover:bg-[var(--surface-4)] hover:text-[var(--text-secondary)]"
                       }`}
                     >
                       {seg}
@@ -1016,18 +1074,25 @@ export function PreviewCanvas({ project, iframeRef }: Props) {
               <span className="truncate font-mono text-[10px] uppercase tracking-widest text-white/25">{codeLanguage}</span>
               <span className="truncate font-mono text-[11px] text-white/58">{codeFileName}</span>
               <div className="flex-1" />
+              {isGlobalGenerating && (
+                <span className="rounded-full bg-[#5B8CFF]/10 px-2 py-0.5 text-[9px] font-medium text-[#5B8CFF]">
+                  Read only while generating
+                </span>
+              )}
               <span className="font-mono text-[10px] text-white/15">{localCode.length.toLocaleString()} chars</span>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               <textarea
                 value={localCode}
+                readOnly={isGlobalGenerating}
                 onChange={(e) => {
+                  if (isGlobalGenerating) return;
                   setLocalCode(e.target.value);
                   if (selectedFileId && leftPanelTab === "files") updateFileContent(selectedFileId, e.target.value);
                   else if (activePageId) updateFileContent(activePageId, e.target.value);
                 }}
                 spellCheck={false}
-                className="editor-code-area h-full w-full flex-1 resize-none p-4 font-mono text-[12px] leading-relaxed text-emerald-300/80 focus:outline-none"
+                className={`editor-code-area h-full w-full flex-1 resize-none p-4 font-mono text-[12px] leading-relaxed text-[var(--text-secondary)] focus:outline-none ${isGlobalGenerating ? "cursor-not-allowed opacity-80" : ""}`}
                 style={{ tabSize: 2 }}
               />
             </div>
@@ -1113,11 +1178,11 @@ function ContextMenu({ x, y, node, hasClipboard, onAction }: ContextMenuProps) {
     <div
       onMouseDown={(e) => e.stopPropagation()} // prevent backdrop from catching clicks inside menu
       style={{ position: "fixed", left: clampedX, top: clampedY, zIndex: 99999 }}
-      className="w-[200px] rounded-xl border border-white/[0.09] bg-[#12141a] p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl"
+      className="editor-dialog editor-preview-surface w-[200px] rounded-xl border border-[var(--border-softer)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-xl)] backdrop-blur-xl"
     >
       {/* Header: element label */}
-      <div className="mb-1 border-b border-white/[0.06] px-2.5 pb-1.5 pt-0.5">
-        <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-white/25">
+      <div className="mb-1 border-b border-[var(--border-soft)] px-2.5 pb-1.5 pt-0.5">
+        <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
           {node.label || node.tag}
         </p>
       </div>
@@ -1129,7 +1194,7 @@ function ContextMenu({ x, y, node, hasClipboard, onAction }: ContextMenuProps) {
       {canSelectParent && item(<ChevronUp size={11} />, "Select Parent", "select-parent")}
 
       {(canEditText || canSelectParent) && (
-        <div className="my-1 h-px bg-white/[0.06]" />
+        <div className="my-1 h-px bg-[var(--border-soft)]" />
       )}
 
       {/* Clipboard */}
@@ -1141,13 +1206,13 @@ function ContextMenu({ x, y, node, hasClipboard, onAction }: ContextMenuProps) {
       {/* Section-specific: move up/down */}
       {isSection && (
         <>
-          <div className="my-1 h-px bg-white/[0.06]" />
+          <div className="my-1 h-px bg-[var(--border-soft)]" />
           {item(<ChevronUp size={11} />, "Move Section Up", "move-up")}
           {item(<ChevronRight size={11} className="rotate-90" />, "Move Section Down", "move-down")}
         </>
       )}
 
-      <div className="my-1 h-px bg-white/[0.06]" />
+      <div className="my-1 h-px bg-[var(--border-soft)]" />
       {item(<Trash2 size={11} />, "Delete", "delete", false, true)}
     </div>
   );
@@ -1162,16 +1227,32 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function emptyState(isGenerating: boolean, isError: boolean, label?: string): string {
+function emptyState(isGenerating: boolean, isError: boolean, label?: string, theme: "dark" | "light" = "dark"): string {
+  const palette =
+    theme === "light"
+      ? {
+          bg: "#f6f9ff",
+          spinnerTrack: "rgba(13,17,28,0.08)",
+          spinnerAccent: "#5e69f4",
+          generatingText: "rgba(13,17,28,0.58)",
+          idleText: "rgba(13,17,28,0.5)",
+        }
+      : {
+          bg: "#08080a",
+          spinnerTrack: "#1e1e2a",
+          spinnerAccent: "#7c3aed",
+          generatingText: "#666",
+          idleText: "#333",
+        };
   const body = isGenerating
-    ? `<div class="sp"></div><p style="font-size:13px;color:#666;margin-top:14px;font-family:system-ui,sans-serif">${escapeHtml(label || "Generating page…")}</p>`
+    ? `<div class="sp"></div><p style="font-size:13px;color:${palette.generatingText};margin-top:14px;font-family:system-ui,sans-serif">${escapeHtml(label || "Generating page…")}</p>`
     : isError
     ? `<span style="font-size:28px">⚠️</span><p style="font-size:13px;color:#ef4444;margin-top:10px;font-family:system-ui,sans-serif">Generation failed</p>`
-    : `<p style="font-size:13px;color:#333;font-family:system-ui,sans-serif">Select a page to preview</p>`;
+    : `<p style="font-size:13px;color:${palette.idleText};font-family:system-ui,sans-serif">Select a page to preview</p>`;
   return `<!DOCTYPE html><html><head><style>
     body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;
-    background:#08080a;flex-direction:column;gap:4px}
-    .sp{width:28px;height:28px;border:2px solid #1e1e2a;border-top-color:#7c3aed;
+    background:${palette.bg};flex-direction:column;gap:4px}
+    .sp{width:28px;height:28px;border:2px solid ${palette.spinnerTrack};border-top-color:${palette.spinnerAccent};
     border-radius:50%;animation:spin 0.9s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style></head><body>${body}</body></html>`;

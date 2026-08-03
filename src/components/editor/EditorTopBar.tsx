@@ -1,14 +1,23 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  buildStudioCmsHref,
+  buildStudioEditorHref,
+  buildStudioLeadsHref,
+} from "@/lib/app-navigation";
 import { useAppStore } from "@/lib/store";
+import { getJobGenerationEtaLabel, getTimingEtaLabel } from "@/lib/generation-eta";
 import { downloadBlob } from "@/lib/utils";
 import { resolvePublishedHref } from "@/lib/publishing";
 import {
   ArrowLeft, Download, Maximize2,
   Loader2, CheckCircle2, AlertCircle,
-  Pencil, Check, X, Save, Layers3, SlidersHorizontal, Rocket, Globe2, Database,
+  Pencil, Check, X, Save, Rocket, Globe2, Database, Inbox,
+  Layers3, Link2, SlidersHorizontal,
 } from "lucide-react";
 import { API_UNKNOWN_001, createAppError, logAppError, normalizeError, SAVE_SERIALIZE_001, type ErrorCode } from "@/lib/errors";
+import { AdaptiveFeedbackPrompt } from "@/components/editor/AdaptiveFeedbackPrompt";
 import { SitezyBadge, SitezyButton } from "@/components/ui/sitezy";
 import { UserAvatarMenu } from "@/components/ui/UserAvatarMenu";
 import type { Project, UserAccountProfile } from "@/types";
@@ -25,7 +34,7 @@ interface Props {
 
 function TopBarTooltip({ label, shortcut }: { label: string; shortcut?: string }) {
   return (
-    <span className="sz-tooltip pointer-events-none absolute left-1/2 top-full z-[220] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] px-2.5 py-1 text-[10px] font-medium opacity-0 transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+    <span className="sz-tooltip pointer-events-none absolute left-1/2 top-full z-[220] mt-2 -translate-x-1/2 whitespace-nowrap rounded-[10px] px-2.5 py-1 text-[10px] font-medium opacity-0 transition-all duration-150 group-hover:opacity-100">
       {label}
       {shortcut ? <span className="ml-1 text-[9px] font-normal text-[var(--fg-muted)]">({shortcut})</span> : null}
     </span>
@@ -41,12 +50,15 @@ export function EditorTopBar({
   onToggleRight,
   iframeRef,
 }: Props) {
+  const router = useRouter();
   const closeProject    = useAppStore((s) => s.closeProject);
   const undo            = useAppStore((s) => s.undo);
   const redo            = useAppStore((s) => s.redo);
   const isSaved         = useAppStore((s) => s.isSaved);
   const genStatus       = useAppStore((s) => s.generationStatus);
   const genProgress     = useAppStore((s) => s.generationProgress);
+  const generationStartedAt = useAppStore((s) => s.generationStartedAt);
+  const generationEstimateMs = useAppStore((s) => s.generationEstimateMs);
   const renameProject         = useAppStore((s) => s.renameProject);
   const setApiError           = useAppStore((s) => s.setApiError);
   const saveCurrentProject    = useAppStore((s) => s.saveCurrentProject);
@@ -58,8 +70,11 @@ export function EditorTopBar({
 
   const [exporting, setExporting]   = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [sharingPreview, setSharingPreview] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal]         = useState(project.name);
+  const [now, setNow] = useState(() => Date.now());
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const derivedGeneratingPage = project.pages.find((page) => page.status === "generating") ?? null;
@@ -88,9 +103,35 @@ export function EditorTopBar({
       : hasPendingPages
       ? `Preparing next page (${completedPages}/${project.pages.length})...`
       : "Building your site...");
+  const generationEtaLabel = backgroundJob
+    ? getJobGenerationEtaLabel(project.generationJob ?? null, now)
+    : getTimingEtaLabel(generationStartedAt, generationEstimateMs, now);
   const isPublished = project.publishedSite?.status === "published";
+  const editorHref = buildStudioEditorHref(project.id);
+  const cmsHref = buildStudioCmsHref(project.id, editorHref);
+  const leadsHref = buildStudioLeadsHref(project.id, editorHref);
+  const showAdaptiveFeedbackPrompt =
+    !isGenerating &&
+    Boolean(project.brief.siteName.trim() && (project.blueprint || project.pages.length > 0));
 
   useEffect(() => { setNameVal(project.name); }, [project.name]);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [isGenerating]);
+
+  useEffect(() => {
+    router.prefetch(cmsHref);
+    router.prefetch(leadsHref);
+  }, [cmsHref, leadsHref, router]);
+
+  useEffect(() => {
+    if (!shareCopied) return;
+    const timeoutId = window.setTimeout(() => setShareCopied(false), 2200);
+    return () => window.clearTimeout(timeoutId);
+  }, [shareCopied]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -107,6 +148,7 @@ export function EditorTopBar({
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key === "z" && !e.shiftKey) {
+        if (isGenerating) return;
         e.preventDefault();
         if (visualEditMode) {
           if (!postToPreviewFrame("undo")) undo();
@@ -115,10 +157,12 @@ export function EditorTopBar({
         }
       }
       if (e.key === "s") {
+        if (isGenerating) return;
         e.preventDefault();
         saveCurrentProject({ manual: true });
       }
       if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+        if (isGenerating) return;
         e.preventDefault();
         if (visualEditMode) {
           if (!postToPreviewFrame("redo")) redo();
@@ -129,7 +173,7 @@ export function EditorTopBar({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [iframeRef, undo, redo, visualEditMode, saveCurrentProject]);
+  }, [iframeRef, isGenerating, undo, redo, visualEditMode, saveCurrentProject]);
 
   function handleNameSave() {
     if (nameVal.trim() && nameVal !== project.name) renameProject(project.id, nameVal.trim());
@@ -213,6 +257,61 @@ export function EditorTopBar({
     window.open(previewUrl, "_blank", "noopener");
   }
 
+  async function handleCreatePreviewShare() {
+    if (!project || sharingPreview || isGenerating) return;
+    const activePageId = selectedPageId ?? project.pages[0]?.id ?? null;
+    const activePage = activePageId
+      ? project.pages.find((page) => page.id === activePageId) ?? null
+      : null;
+
+    const saved = await saveCurrentProject({ manual: true });
+    if (!saved) return;
+
+    setSharingPreview(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/preview/share`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId: activePageId,
+          label: activePage ? `${activePage.name} review` : "Project review",
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        share?: { shareUrl?: string | null };
+        error?: string;
+        code?: string;
+      };
+      if (!res.ok || !data.share?.shareUrl) {
+        throw createAppError({
+          code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
+          devMessage: `Preview share failed for ${project.id} (${res.status})`,
+          userMessage: data.error ?? "We couldn't create a preview share link right now.",
+          severity: "error",
+          metadata: { projectId: project.id, pageId: activePageId, status: res.status, code: data.code ?? null },
+        });
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.share.shareUrl);
+      } else {
+        window.prompt("Copy preview share URL", data.share.shareUrl);
+      }
+      setShareCopied(true);
+    } catch (error) {
+      const appErr = normalizeError(error, API_UNKNOWN_001, { action: "createPreviewShare", projectId: project.id });
+      logAppError(appErr);
+      setApiError({
+        message: appErr.userMessage,
+        requestId: typeof appErr.metadata?.requestId === "string" ? appErr.metadata.requestId : null,
+        code: appErr.code,
+      });
+    } finally {
+      setSharingPreview(false);
+    }
+  }
+
   async function handlePublish() {
     if (!project || publishing || isGenerating) return;
 
@@ -265,29 +364,39 @@ export function EditorTopBar({
       const saved = await saveCurrentProject({ manual: true });
       if (!saved) return;
     }
-    window.location.assign(`/studio/cms/${project.id}`);
+    router.push(cmsHref);
+  }
+
+  async function handleOpenLeads() {
+    if (!isSaved) {
+      const saved = await saveCurrentProject({ manual: true });
+      if (!saved) return;
+    }
+    router.push(leadsHref);
   }
 
   return (
-    <header className="sz-topbar relative z-[140] flex h-[60px] flex-shrink-0 items-center gap-3 overflow-visible px-3 md:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <div className="group relative">
-          <SitezyButton variant="ghost" size="sm" onClick={() => closeProject()} className="h-9 min-h-[36px] px-3">
+    <header className="sz-topbar relative z-[140] flex h-[60px] flex-shrink-0 items-center gap-2 overflow-visible px-3 md:gap-3 md:px-4">
+      <div className="flex min-w-0 flex-[1_1_320px] items-center gap-2.5">
+        <div className="group relative shrink-0">
+          <button
+            type="button"
+            onClick={() => closeProject()}
+            className="inline-flex h-9 items-center gap-2 px-1.5 text-[13px] font-medium text-[var(--text-secondary)] transition-all hover:text-[var(--text-primary)]"
+          >
             <ArrowLeft size={14} />
             <span className="hidden lg:inline">Workspace</span>
-          </SitezyButton>
+          </button>
           <div className="lg:hidden">
             <TopBarTooltip label="Workspace" />
           </div>
         </div>
-
-        <div className="hidden h-6 w-px bg-[var(--border-soft)] lg:block" />
-
-        <div className="hidden items-center gap-1 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] p-1 lg:flex">
+        <div className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] p-1">
           <div className="group relative">
             <button
+              type="button"
               onClick={onToggleLeft}
-              aria-label="Toggle structure panel"
+              aria-pressed={leftOpen}
               className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-all ${
                 leftOpen
                   ? "bg-[rgba(107,119,255,0.14)] text-[var(--text-primary)]"
@@ -296,12 +405,13 @@ export function EditorTopBar({
             >
               <Layers3 size={14} />
             </button>
-            <TopBarTooltip label="Structure" shortcut="⌘\" />
+            <TopBarTooltip label={leftOpen ? "Hide structure" : "Show structure"} shortcut="⌘\\" />
           </div>
           <div className="group relative">
             <button
+              type="button"
               onClick={onToggleRight}
-              aria-label="Toggle inspector panel"
+              aria-pressed={rightOpen}
               className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-all ${
                 rightOpen
                   ? "bg-[rgba(107,119,255,0.14)] text-[var(--text-primary)]"
@@ -310,11 +420,10 @@ export function EditorTopBar({
             >
               <SlidersHorizontal size={14} />
             </button>
-            <TopBarTooltip label="Inspector" shortcut="⌘⇧\" />
+            <TopBarTooltip label={rightOpen ? "Hide inspector" : "Show inspector"} shortcut="⌘⇧\\" />
           </div>
         </div>
-
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {editingName ? (
             <div className="flex items-center gap-2">
               <input
@@ -351,7 +460,7 @@ export function EditorTopBar({
                 setEditingName(true);
                 setTimeout(() => nameInputRef.current?.select(), 50);
               }}
-              className="group flex min-w-0 items-center gap-2 rounded-[14px] border border-transparent px-2.5 py-1.5 transition-all duration-200 hover:border-[var(--border-soft)] hover:bg-[var(--surface-3)]"
+              className="group flex max-w-full min-w-0 items-center gap-2 rounded-[14px] border border-transparent px-2.5 py-1.5 transition-all duration-200 hover:border-[var(--border-soft)] hover:bg-[var(--surface-3)]"
             >
               <div className="min-w-0 text-left">
                 <p className="truncate text-[14px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">{project.name}</p>
@@ -362,11 +471,14 @@ export function EditorTopBar({
         </div>
       </div>
 
-      <div className="hidden items-center gap-2 xl:flex">
+      <div className="hidden min-w-0 flex-[0_1_auto] items-center gap-2 2xl:flex">
         {isGenerating ? (
-          <SitezyBadge className="sz-status-info">
+          <SitezyBadge className="sz-status-info min-w-0 max-w-[380px] gap-1.5">
             <Loader2 size={11} className="spin" />
-            {derivedProgress.slice(0, 34) + (derivedProgress.length > 34 ? "…" : "")}
+            <span className="truncate">{derivedProgress}</span>
+            {generationEtaLabel ? (
+              <span className="flex-shrink-0 text-[var(--text-tertiary)]">· {generationEtaLabel}</span>
+            ) : null}
           </SitezyBadge>
         ) : isSaved ? (
           <SitezyBadge className="sz-status-success">
@@ -381,9 +493,17 @@ export function EditorTopBar({
         )}
       </div>
 
-      <div className="relative z-[150] flex items-center gap-1.5">
+      {showAdaptiveFeedbackPrompt ? (
+        <AdaptiveFeedbackPrompt
+          projectId={project.id}
+          brief={project.brief}
+          className="max-w-[520px] flex-[0_1_520px]"
+        />
+      ) : null}
+
+      <div className="relative z-[150] flex min-w-max shrink-0 items-center gap-1.5">
         {/* Secondary action group */}
-        <div className="hidden items-center gap-1 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] p-1 xl:flex">
+        <div className="hidden items-center gap-1 rounded-full border border-[var(--border-soft)] bg-[var(--surface-3)] p-1 2xl:flex">
           <div className="group relative">
             <button
               onClick={() => saveCurrentProject({ manual: true })}
@@ -411,6 +531,14 @@ export function EditorTopBar({
           </div>
 
           <div className="group relative">
+            <button onClick={() => void handleOpenLeads()} title="Leads"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold text-[var(--fg-muted)] transition-all hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)]">
+              <Inbox size={12} />
+              <span>Leads</span>
+            </button>
+          </div>
+
+          <div className="group relative">
             <button onClick={handleExport} disabled={exporting || isGenerating} title="Export"
               className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold text-[var(--fg-muted)] transition-all hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)] disabled:opacity-50">
               {exporting ? <Loader2 size={12} className="spin" /> : <Download size={12} />}
@@ -420,7 +548,7 @@ export function EditorTopBar({
         </div>
 
         {/* Mobile: condensed save */}
-        <div className="group relative xl:hidden">
+        <div className="group relative 2xl:hidden">
           <SitezyButton
             variant={isSaved || saveState === "saved" ? "secondary" : "primary"}
             size="sm"
@@ -443,9 +571,9 @@ export function EditorTopBar({
             className="h-9 min-h-[36px] px-3"
           >
             {publishing ? <Loader2 size={14} className="spin" /> : <Rocket size={14} />}
-            <span className="hidden xl:inline">{isPublished ? "Republish" : "Publish"}</span>
+            <span className="hidden 2xl:inline">{isPublished ? "Republish" : "Publish"}</span>
           </SitezyButton>
-          <div className="xl:hidden">
+          <div className="2xl:hidden">
             <TopBarTooltip label={isPublished ? "Republish" : "Publish"} />
           </div>
         </div>
@@ -454,25 +582,46 @@ export function EditorTopBar({
           <div className="group relative">
             <SitezyButton variant="secondary" size="sm" onClick={handleOpenLive} className="h-9 min-h-[36px] px-3">
               <Globe2 size={14} />
-              <span className="hidden xl:inline">Live</span>
+              <span className="hidden 2xl:inline">Live</span>
             </SitezyButton>
-            <div className="xl:hidden">
+            <div className="2xl:hidden">
               <TopBarTooltip label="Open live site" />
             </div>
           </div>
         ) : null}
 
         <div className="group relative">
+          <SitezyButton
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleCreatePreviewShare()}
+            disabled={sharingPreview || isGenerating}
+            className="h-9 min-h-[36px] px-3"
+          >
+            {sharingPreview ? <Loader2 size={14} className="spin" /> : shareCopied ? <CheckCircle2 size={14} /> : <Link2 size={14} />}
+            <span className="hidden 2xl:inline">{shareCopied ? "Copied" : "Share"}</span>
+          </SitezyButton>
+          <div className="2xl:hidden">
+            <TopBarTooltip label={shareCopied ? "Preview link copied" : "Copy preview link"} />
+          </div>
+        </div>
+
+        <div className="group relative">
           <SitezyButton variant="primary" size="sm" onClick={() => void handleOpenPreview()} disabled={isGenerating} className="h-9 min-h-[36px] px-3">
             <Maximize2 size={14} />
-            <span className="hidden xl:inline">Preview</span>
+            <span className="hidden 2xl:inline">Preview</span>
           </SitezyButton>
-          <div className="xl:hidden">
+          <div className="2xl:hidden">
             <TopBarTooltip label="Preview" />
           </div>
         </div>
 
-        <UserAvatarMenu initialAccount={initialAccount} compact showStudioShortcut={false} />
+        <UserAvatarMenu
+          initialAccount={initialAccount}
+          compact
+          showStudioShortcut={false}
+          settingsReturnHref={editorHref}
+        />
       </div>
     </header>
   );

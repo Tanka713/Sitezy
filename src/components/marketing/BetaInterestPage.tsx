@@ -74,8 +74,8 @@ export function BetaInterestPage({
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden">
-      <header className="sz-topbar z-40 shrink-0">
+    <div className="sz-page-shell">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-5">
           <Link href="/" className="text-[15px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
             Sitezy
@@ -87,8 +87,9 @@ export function BetaInterestPage({
         </div>
       </header>
 
-      <main className="sz-grid-shell flex-1 min-h-0 py-4 md:py-5">
-        <div className="mx-auto flex h-full w-full max-w-[1040px] min-h-0 flex-col gap-5">
+      <main className="sz-page-scroll">
+        <div className="sz-grid-shell py-4 md:py-5">
+          <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col gap-5">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <SitezyBadge>Private beta</SitezyBadge>
@@ -183,6 +184,7 @@ export function BetaInterestPage({
                 </div>
               </div>
             </SitezyCard>
+          </div>
           </div>
         </div>
       </main>

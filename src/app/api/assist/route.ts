@@ -13,7 +13,7 @@ import {
   API_UNKNOWN_001,
 } from "@/lib/errors";
 import { logServerError } from "@/lib/errors/logger";
-import type { SiteBlueprint } from "@/types";
+import type { SiteBlueprint, SiteBrief, AIEditScope } from "@/types";
 
 export const runtime   = "nodejs";
 export const maxDuration = 60;
@@ -36,9 +36,19 @@ export async function POST(req: NextRequest) {
       context?: {
         projectName: string;
         blueprint?: SiteBlueprint | null;
+        brief?: SiteBrief | null;
         pageName?: string;
         pageHtml?: string;
         siteType?: string;
+        selectedSectionId?: string | null;
+        selectedElement?: {
+          nodeId: string;
+          tagName: string;
+          textContent?: string;
+          sectionId?: string;
+        } | null;
+        history?: Array<{ role: "user" | "assistant"; content: string }>;
+        scope?: AIEditScope;
       };
     }>(req);
 

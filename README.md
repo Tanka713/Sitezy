@@ -42,8 +42,15 @@ Optional variables:
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 SITEZY_WORKER_SECRET=replace-with-a-long-random-secret
 SITEZY_INTERNAL_BASE_URL=http://127.0.0.1:3000
+SITEZY_AI_PROVIDER=anthropic
 SITEZY_SPARK_KEY=your-sitezy-spark-key
 SITEZY_SPARK_MODEL=claude-sonnet-4-20250514
+DEEPSEEK_API_KEY=your-deepseek-api-key
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+SITEZY_GENERATION_MODE=efficient
+SITEZY_STREAM_MAX_TOKENS=9000
+SITEZY_JSON_MAX_TOKENS=3000
 SITEZY_BETA_MODE=invite-only
 SITEZY_BETA_ALLOWLIST=founder@example.com,designer@example.com
 SITEZY_BETA_DENIED_MESSAGE=This private beta is currently limited to invited accounts.
@@ -55,8 +62,9 @@ SITEZY_SUPPORT_FROM_EMAIL=support@updates.sitezy.app
 Notes:
 
 - `SUPABASE_SERVICE_ROLE_KEY` is required for admin and customer-service internal dashboards, beta invite management, and permanent account deletion.
-- `SITEZY_WORKER_SECRET` plus `npm run worker:project-generation` enable refresh/sign-out-safe background full-site generation.
-- `SITEZY_INTERNAL_BASE_URL` should point the worker at the running app server. For local dev, `http://127.0.0.1:3000` is the default.
+- `SUPABASE_SERVICE_ROLE_KEY` also enables the built-in server-side generation daemon so full-site generation keeps running after refresh, tab close, or sign-out.
+- `SITEZY_WORKER_SECRET` plus `npm run worker:project-generation` are optional when you want a separate dedicated worker process.
+- `SITEZY_INTERNAL_BASE_URL` should point the standalone worker at the running app server. For local dev, `http://127.0.0.1:3000` is the default.
 - `SITEZY_SPARK_*` is an alias supported by the AI service layer.
 - `SITEZY_BETA_*` and `SITEZY_SUPPORT_EMAIL` are optional launch controls for invite-only beta access and support messaging.
 - `RESEND_API_KEY` plus `SITEZY_SUPPORT_FROM_EMAIL` enable customer-service reply emails from the internal support dashboard.
@@ -107,7 +115,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Run the background worker in a second terminal if you want full-site generation to survive refresh, tab close, or sign-out:
+If `SUPABASE_SERVICE_ROLE_KEY` is present, the app server now drains full-site generation jobs on its own.
+
+Run the background worker in a second terminal only if you want a separate dedicated worker process:
 
 ```bash
 npm run worker:project-generation

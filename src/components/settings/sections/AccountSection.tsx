@@ -7,6 +7,7 @@ import { resetSignedOutUserSettings } from "@/lib/settings";
 import { useAppStore } from "@/lib/store";
 import type { UserAccountProfile } from "@/types";
 import { normalizeError, logAppError, API_AUTH_001, API_UNKNOWN_001 } from "@/lib/errors";
+import { AccountTwoFactorSection } from "./AccountTwoFactorSection";
 import {
   SettingsActionRow,
   SettingsField,
@@ -19,6 +20,19 @@ import {
   SettingsStack,
   SettingsStatus,
 } from "../ui";
+
+type StoredAvatar = {
+  url: string | null;
+  bucket: string | null;
+  path: string | null;
+};
+
+function sameStoredAvatar(
+  left: Pick<StoredAvatar, "bucket" | "path"> | null | undefined,
+  right: Pick<StoredAvatar, "bucket" | "path"> | null | undefined
+) {
+  return (left?.bucket ?? null) === (right?.bucket ?? null) && (left?.path ?? null) === (right?.path ?? null);
+}
 
 export function AccountSection({
   account,
@@ -42,6 +56,12 @@ export function AccountSection({
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const persistedAvatarRef = useRef<StoredAvatar>({
+    url: account.profileImageUrl,
+    bucket: account.profileImageStorageBucket,
+    path: account.profileImageStoragePath,
+  });
+  const uploadedDraftAvatarRef = useRef<Pick<StoredAvatar, "bucket" | "path"> | null>(null);
 
   useEffect(() => {
     setName(account.name);
@@ -49,7 +69,66 @@ export function AccountSection({
     setProfileImageUrl(account.profileImageUrl);
     setProfileBucket(account.profileImageStorageBucket);
     setProfilePath(account.profileImageStoragePath);
+
+    const nextPersistedAvatar = {
+      url: account.profileImageUrl,
+      bucket: account.profileImageStorageBucket,
+      path: account.profileImageStoragePath,
+    };
+    persistedAvatarRef.current = nextPersistedAvatar;
+    if (sameStoredAvatar(uploadedDraftAvatarRef.current, nextPersistedAvatar)) {
+      uploadedDraftAvatarRef.current = null;
+    }
   }, [account]);
+
+  useEffect(() => {
+    return () => {
+      const draftAvatar = uploadedDraftAvatarRef.current;
+      if (!draftAvatar?.bucket || !draftAvatar.path) return;
+
+      const supabase = getSupabaseBrowserClient();
+      void supabase.storage.from(draftAvatar.bucket).remove([draftAvatar.path]);
+      uploadedDraftAvatarRef.current = null;
+    };
+  }, []);
+
+  async function removeStoredAvatar(target: Pick<StoredAvatar, "bucket" | "path"> | null | undefined) {
+    if (!target?.bucket || !target.path) return;
+    const supabase = getSupabaseBrowserClient();
+    await supabase.storage.from(target.bucket).remove([target.path]);
+  }
+
+  async function removeUploadedDraftAvatar() {
+    const draftAvatar = uploadedDraftAvatarRef.current;
+    if (!draftAvatar) return;
+    uploadedDraftAvatarRef.current = null;
+    await removeStoredAvatar(draftAvatar);
+  }
+
+  async function commitSavedAccount(nextAccount: UserAccountProfile) {
+    const previousPersistedAvatar = persistedAvatarRef.current;
+    const nextPersistedAvatar = {
+      url: nextAccount.profileImageUrl,
+      bucket: nextAccount.profileImageStorageBucket,
+      path: nextAccount.profileImageStoragePath,
+    };
+
+    if (sameStoredAvatar(uploadedDraftAvatarRef.current, nextPersistedAvatar)) {
+      uploadedDraftAvatarRef.current = null;
+    }
+
+    persistedAvatarRef.current = nextPersistedAvatar;
+    onAccountChange(nextAccount);
+
+    if (!sameStoredAvatar(previousPersistedAvatar, nextPersistedAvatar)) {
+      try {
+        await removeStoredAvatar(previousPersistedAvatar);
+      } catch (error) {
+        const appErr = normalizeError(error, API_UNKNOWN_001, { action: "cleanupPreviousProfileImage" });
+        logAppError(appErr);
+      }
+    }
+  }
 
   async function handleAvatarUpload(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -60,10 +139,7 @@ export function AccountSection({
       const supabase = getSupabaseBrowserClient();
       const extension = (file.name.split(".").pop() || "png").toLowerCase();
       const path = `${account.id}/profile/avatar-${Date.now()}.${extension}`;
-
-      if (profileBucket && profilePath) {
-        await supabase.storage.from(profileBucket).remove([profilePath]);
-      }
+      const previousDraftAvatar = uploadedDraftAvatarRef.current;
 
       const { error: uploadError } = await supabase.storage
         .from("sitezy-media")
@@ -71,7 +147,17 @@ export function AccountSection({
 
       if (uploadError) throw uploadError;
 
+      if (previousDraftAvatar) {
+        try {
+          await removeStoredAvatar(previousDraftAvatar);
+        } catch (error) {
+          const appErr = normalizeError(error, API_UNKNOWN_001, { action: "cleanupUploadedProfileImageDraft" });
+          logAppError(appErr);
+        }
+      }
+
       const { data } = supabase.storage.from("sitezy-media").getPublicUrl(path);
+      uploadedDraftAvatarRef.current = { bucket: "sitezy-media", path };
       setProfileImageUrl(data.publicUrl);
       setProfileBucket("sitezy-media");
       setProfilePath(path);
@@ -89,33 +175,21 @@ export function AccountSection({
   async function saveAccount() {
     setSaving(true);
     setStatus(null);
+    let profileSaved = false;
     try {
       const supabase = getSupabaseBrowserClient();
       const trimmedName = name.trim();
       const trimmedEmail = email.trim();
+      const wantsEmailUpdate = Boolean(trimmedEmail && trimmedEmail !== account.email);
+      const wantsPasswordUpdate = Boolean(password || confirmPassword);
 
-      const { error: profileError } = await supabase.auth.updateUser({
-        ...(trimmedEmail && trimmedEmail !== account.email ? { email: trimmedEmail } : {}),
-        data: {
-          full_name: trimmedName || account.name,
-          avatar_url: profileImageUrl,
-          avatar_storage_bucket: profileBucket,
-          avatar_storage_path: profilePath,
-        },
-      });
-
-      if (profileError) throw profileError;
-
-      if (password || confirmPassword) {
+      if (wantsPasswordUpdate) {
         if (password.length < 8) {
           throw new Error("Use at least 8 characters for your new password.");
         }
         if (password !== confirmPassword) {
           throw new Error("Your passwords do not match.");
         }
-
-        const { error: passwordError } = await supabase.auth.updateUser({ password });
-        if (passwordError) throw passwordError;
       }
 
       const nextAccount: UserAccountProfile = {
@@ -126,13 +200,32 @@ export function AccountSection({
         profileImageStorageBucket: profileBucket,
         profileImageStoragePath: profilePath,
       };
-      onAccountChange(nextAccount);
+
+      const { error: profileError } = await supabase.auth.updateUser({
+        ...(wantsEmailUpdate ? { email: trimmedEmail } : {}),
+        data: {
+          full_name: trimmedName || account.name,
+          avatar_url: profileImageUrl,
+          avatar_storage_bucket: profileBucket,
+          avatar_storage_path: profilePath,
+        },
+      });
+
+      if (profileError) throw profileError;
+      await commitSavedAccount(nextAccount);
+      profileSaved = true;
+
+      if (wantsPasswordUpdate) {
+        const { error: passwordError } = await supabase.auth.updateUser({ password });
+        if (passwordError) throw passwordError;
+      }
+
       setPassword("");
       setConfirmPassword("");
       setStatus({
         tone: "success",
         message:
-          trimmedEmail !== account.email
+          wantsEmailUpdate
             ? "Account updated. Check your inbox to confirm the new email address."
             : "Account details saved.",
       });
@@ -140,7 +233,10 @@ export function AccountSection({
       const appErr = normalizeError(error, API_AUTH_001, { action: "saveAccount" });
       logAppError(appErr);
       setApiError({ message: appErr.userMessage, requestId: null, code: appErr.code });
-      setStatus({ tone: "error", message: appErr.userMessage });
+      setStatus({
+        tone: "error",
+        message: profileSaved ? `Profile details saved, but ${appErr.userMessage.toLowerCase()}` : appErr.userMessage,
+      });
     } finally {
       setSaving(false);
     }
@@ -150,9 +246,11 @@ export function AccountSection({
     setUploading(true);
     setStatus(null);
     try {
-      const supabase = getSupabaseBrowserClient();
-      if (profileBucket && profilePath) {
-        await supabase.storage.from(profileBucket).remove([profilePath]);
+      if (
+        uploadedDraftAvatarRef.current &&
+        sameStoredAvatar(uploadedDraftAvatarRef.current, { bucket: profileBucket, path: profilePath })
+      ) {
+        await removeUploadedDraftAvatar();
       }
 
       setProfileImageUrl(null);
@@ -201,6 +299,7 @@ export function AccountSection({
       <SettingsStack>
         {status ? <SettingsStatus tone={status.tone}>{status.message}</SettingsStatus> : null}
 
+        <div data-settings-anchor="account-profile">
         <SettingsGroup title="Profile" body="Update your visible account details and profile image.">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
             <div className="flex items-center gap-4">
@@ -253,11 +352,14 @@ export function AccountSection({
             </SettingsGrid>
           </div>
         </SettingsGroup>
+        </div>
 
+        <div data-settings-anchor="change-password">
         <SettingsGroup title="Password" body="Change your password without leaving the app.">
           <SettingsGrid>
             <SettingsField label="New password">
               <SettingsInput
+                id="account-new-password"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -274,7 +376,11 @@ export function AccountSection({
             </SettingsField>
           </SettingsGrid>
         </SettingsGroup>
+        </div>
 
+        <AccountTwoFactorSection account={account} onAccountChange={onAccountChange} />
+
+        <div data-settings-anchor="delete-account">
         <SettingsActionRow className="justify-between">
           <SettingsSecondaryAction type="button" onClick={() => setDeleteOpen(true)}>
             <Trash2 size={14} />
@@ -285,6 +391,7 @@ export function AccountSection({
             Save account
           </SettingsPrimaryAction>
         </SettingsActionRow>
+        </div>
       </SettingsStack>
 
       <SettingsModal

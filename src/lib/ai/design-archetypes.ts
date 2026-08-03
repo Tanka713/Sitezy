@@ -19,7 +19,7 @@ export interface DesignArchetype {
 
 // ─── Design Archetypes ───────────────────────────────────────────────────────
 
-export const DESIGN_ARCHETYPES: Record<AIDesignStyle, DesignArchetype> = {
+export const DESIGN_ARCHETYPES: Partial<Record<AIDesignStyle, DesignArchetype>> = {
   minimal: {
     name: "Minimal",
     description:
@@ -504,7 +504,8 @@ export function buildDesignGuidance(brief: SiteBrief): string {
   const layoutSpacing = brief.defaultLayoutSpacing ?? "balanced";
   const isCreative = brief.creativeMode?.surpriseMe === true;
 
-  const archetype = DESIGN_ARCHETYPES[designStyle];
+  const archetype =
+    DESIGN_ARCHETYPES[designStyle] ?? DESIGN_ARCHETYPES["minimal"]!;
   const spacing = SPACING_SCALES[layoutSpacing] ?? SPACING_SCALES["balanced"];
   const fonts = selectFontPairingForBrief(brief);
 

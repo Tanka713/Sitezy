@@ -104,6 +104,8 @@ export function AuthScreen({
       ? "Your email has been verified. You can log in now."
       : initialReason === "verify-email"
         ? "Check your inbox and verify your email before logging in."
+        : initialReason === "auth-failed"
+          ? "We could not finish that sign-in. Try again, or check your Supabase auth keys and redirect URL."
         : null;
 
   function handleAuthError(error: unknown, fallbackCode = AUTH_TOKEN_001) {

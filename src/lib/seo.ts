@@ -94,26 +94,45 @@ export function buildProjectPagePath(page: ProjectPage): string {
 export function resolveProjectPageSeo(
   project: Project,
   page: ProjectPage,
-  liveUrl?: string | null
+  liveUrl?: string | null,
+  overrides?: Partial<ResolvedSeoMeta> | null
 ): ResolvedSeoMeta {
   const siteTitle = String(project.seo?.siteTitle ?? "").trim() || project.name || project.brief.siteName || "Sitezy Site";
-  const pageTitle =
+  const pageOverrides = page.meta?.seo ?? null;
+  const defaultPageTitle =
     page.name.trim().toLowerCase() === "home" || buildProjectPagePath(page) === "/"
       ? siteTitle
       : `${page.name} — ${siteTitle}`;
-  const description =
-    normalizeDescription(project.seo?.siteDescription) ||
-    normalizeDescription(project.brief.description) ||
-    `Explore ${siteTitle}.`;
+  const pageTitle = String(
+    overrides?.title ??
+      pageOverrides?.title ??
+      defaultPageTitle
+  ).trim() || defaultPageTitle;
+  const description = normalizeDescription(
+    overrides?.description ??
+      pageOverrides?.description ??
+      project.seo?.siteDescription ??
+      project.brief.description ??
+      `Explore ${siteTitle}.`
+  );
   const baseUrl = buildSeoBaseUrl(project, liveUrl);
-  const canonicalUrl = `${baseUrl}${buildProjectPagePath(page) === "/" ? "" : buildProjectPagePath(page)}`;
+  const defaultCanonicalUrl = `${baseUrl}${buildProjectPagePath(page) === "/" ? "" : buildProjectPagePath(page)}`;
+  const canonicalUrl = normalizeAbsoluteUrl(
+    overrides?.canonicalUrl ??
+      pageOverrides?.canonicalUrl ??
+      defaultCanonicalUrl
+  ) || defaultCanonicalUrl;
 
   return {
     title: pageTitle,
     description,
     canonicalUrl,
-    ogImageUrl: normalizeAbsoluteUrl(project.seo?.ogImageUrl) || null,
-    noindex: Boolean(project.seo?.noindex),
+    ogImageUrl:
+      normalizeAbsoluteUrl(
+        overrides?.ogImageUrl ??
+          pageOverrides?.ogImageUrl ??
+          project.seo?.ogImageUrl
+      ) || null,
+    noindex: Boolean(overrides?.noindex ?? pageOverrides?.noindex ?? project.seo?.noindex),
   };
 }
-

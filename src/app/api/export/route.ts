@@ -1,10 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { posix as pathPosix } from "node:path";
 import JSZip from "jszip";
-import type { Project, SiteBlueprint, UserSettings } from "@/types";
+import type { CmsCollection, Project, SiteBlueprint, UserSettings } from "@/types";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
 import { buildSeoBaseUrl, resolveProjectPageSeo } from "@/lib/seo";
+import { listCmsCollectionsForProject } from "@/lib/server/project-cms";
+import {
+  buildPreviewPageRuntime,
+  findBoundCollection,
+  publishedEntries,
+  resolveProjectPagePublicPath,
+} from "@/lib/server/project-page-runtime";
+import { readUserSettings } from "@/lib/server/user-settings";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
-import { buildFullPageHtml } from "@/lib/utils";
+import { buildFullPageHtml, buildProjectPageNavigationLinks } from "@/lib/utils";
 import {
   AUTH_REQUIRED_001,
   handleRouteError,
@@ -15,6 +24,18 @@ import {
 } from "@/lib/errors";
 
 export const runtime = "nodejs";
+
+type PreviewRuntime = ReturnType<typeof buildPreviewPageRuntime>;
+
+type ExportPageArtifact = {
+  id: string;
+  page: Project["pages"][number];
+  publicPath: string;
+  outputPath: string;
+  html: string;
+  seoOverrides: PreviewRuntime["seoOverrides"];
+  cmsRuntimeConfig: PreviewRuntime["cmsRuntimeConfig"];
+};
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
@@ -32,6 +53,7 @@ export async function POST(req: NextRequest) {
       project?: Project;
       options?: Partial<UserSettings["exportDeployment"]>;
     }>(req);
+    const settings = await readUserSettings(user.id);
     const project = body.project;
     const options = {
       exportFormat: body.options?.exportFormat ?? "sitezy-zip",
@@ -48,6 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     const zip = new JSZip();
+    const cmsCollections = project ? (await listCmsCollectionsForProject(project.id, user.id)).collections : [];
 
     const shouldIncludePackage = options.exportFormat !== "html-package";
     const shouldIncludeReadme = options.exportFormat !== "html-package";
@@ -114,8 +137,6 @@ img { max-width: 100%; height: auto; }
       );
     }
 
-    // Pages
-    const pagesFolder = zip.folder("pages");
     const normalizedPages = project.pages.map((page) => {
       const derived = derivePageStateFromHtml(page.html, page.sections);
       return {
@@ -124,27 +145,64 @@ img { max-width: 100%; height: auto; }
         sections: derived.sections,
       };
     });
+    const exportProject = {
+      ...project,
+      pages: normalizedPages,
+    };
+    const artifacts = buildExportArtifacts(exportProject, cmsCollections);
+    const artifactMap = new Map<string, ExportPageArtifact>();
+    const artifactByPageId = new Map<string, ExportPageArtifact>();
+    for (const artifact of artifacts) {
+      artifactMap.set(artifact.publicPath, artifact);
+      if (!artifactByPageId.has(artifact.page.id)) {
+        artifactByPageId.set(artifact.page.id, artifact);
+      }
+    }
 
-    normalizedPages.forEach((page) => {
-      if (!page.html) return;
-      const slug = page.slug || page.name.toLowerCase().replace(/\s+/g, "-");
-      const exportedHtml = rewriteExportInternalLinks(page.html, normalizedPages, slug);
+    for (const artifact of artifacts) {
+      const exportedHtml = rewriteExportInternalLinks(artifact.html, artifact, artifactMap);
+      const cmsRuntimeConfig = rewriteExportCmsRuntimeConfig(
+        artifact.cmsRuntimeConfig,
+        artifact.outputPath
+      );
+      const navigationLinks = buildProjectPageNavigationLinks(exportProject.pages, (target) => {
+        const targetArtifact = artifactByPageId.get(target.id);
+        return targetArtifact
+          ? relativeHrefForOutputPaths(artifact.outputPath, targetArtifact.outputPath)
+          : "";
+      });
       const fullHtml = buildFullPageHtml(
         exportedHtml,
         (project.blueprint ?? null) as SiteBlueprint | null,
-        page.name,
+        artifact.page.name,
         "",
         "",
-        resolveProjectPageSeo(project, page)
+        resolveProjectPageSeo(exportProject, artifact.page, null, artifact.seoOverrides),
+        {
+          mode: "disabled",
+          projectId: null,
+          contactCaptureEnabled: false,
+          newsletterCaptureEnabled: false,
+          submitEndpoint: "/api/leads/submit",
+        },
+        {
+          projectId: null,
+          endpoint: null,
+          enableSitezyAnalytics: false,
+          ga4MeasurementId:
+            settings.integrations.analytics.ga4.enabled
+              ? settings.integrations.analytics.ga4.measurementId
+              : null,
+          metaPixelId:
+            settings.integrations.analytics.metaPixel.enabled
+              ? settings.integrations.analytics.metaPixel.pixelId
+              : null,
+        },
+        cmsRuntimeConfig,
+        navigationLinks,
       );
-      const filename = slug === "home" ? "index.html" : `${slug}.html`;
-      // Home goes in root, others in pages/
-      if (slug === "home" || page.name.toLowerCase() === "home") {
-        zip.file("index.html", fullHtml);
-      } else {
-        pagesFolder?.file(`${slug}.html`, fullHtml);
-      }
-    });
+      zip.file(artifact.outputPath, fullHtml);
+    }
 
     if (shouldIncludeAssets) {
       const assetsFolder = zip.folder("assets");
@@ -156,7 +214,7 @@ img { max-width: 100%; height: auto; }
 
     if (options.includeSeoFiles) {
       zip.file("robots.txt", buildRobotsTxt(project));
-      zip.file("sitemap.xml", buildSitemap(project, normalizedPages));
+      zip.file("sitemap.xml", buildSitemap(project, artifacts));
     }
 
     // Blueprint JSON for reference
@@ -223,6 +281,12 @@ npm run dev
 
 Or simply open \`index.html\` directly in your browser.
 
+## Lead Capture
+
+- Contact forms and newsletter signup in this export are static.
+- Sitezy-managed lead capture only works when the project is published on Sitezy.
+- If you need submissions stored and emailed to you, publish the project instead of relying on the ZIP alone.
+
 ## File Structure
 
 \`\`\`
@@ -241,61 +305,150 @@ Or simply open \`index.html\` directly in your browser.
 `;
 }
 
-function pageSlug(page: Project["pages"][number]): string {
-  return (page.slug || page.name.toLowerCase().replace(/\s+/g, "-")).replace(/^\/+|\/+$/g, "") || "home";
-}
-
-function isHomeSlug(slug: string): boolean {
-  return slug === "" || slug === "home" || slug === "index";
-}
-
-function resolveProjectPageSlug(rawHref: string, pages: Project["pages"]): string | null {
-  const trimmed = rawHref.trim();
-  if (!trimmed) return null;
+function normalizePublicPath(pathname: string): string {
+  const trimmed = String(pathname || "/").trim();
+  if (!trimmed) return "/";
+  const base = trimmed.split("#")[0]?.split("?")[0] ?? trimmed;
+  const withLeadingSlash = base.startsWith("/") ? base : `/${base}`;
+  const withoutTrailingSlash =
+    withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, "") : withLeadingSlash;
   if (
+    withoutTrailingSlash === "/home" ||
+    withoutTrailingSlash === "/index" ||
+    withoutTrailingSlash === "/index.html"
+  ) {
+    return "/";
+  }
+  if (withoutTrailingSlash !== "/" && withoutTrailingSlash.endsWith(".html")) {
+    return withoutTrailingSlash.slice(0, -5) || "/";
+  }
+  return withoutTrailingSlash || "/";
+}
+
+function outputPathForPublicPath(publicPath: string, options?: { forceDirectoryIndex?: boolean }) {
+  const normalized = normalizePublicPath(publicPath);
+  if (normalized === "/") return "index.html";
+  const segments = normalized.slice(1).split("/").filter(Boolean);
+  if (!segments.length) return "index.html";
+  if (options?.forceDirectoryIndex || segments.length > 1) {
+    return pathPosix.join("pages", ...segments, "index.html");
+  }
+  return pathPosix.join("pages", `${segments[0]}.html`);
+}
+
+function buildCmsDetailPublicPath(basePublicPath: string, entrySlug: string) {
+  const normalizedBase = normalizePublicPath(basePublicPath);
+  const safeEntrySlug = String(entrySlug || "").replace(/^\/+|\/+$/g, "");
+  if (!safeEntrySlug) return normalizedBase;
+  return `${normalizedBase === "/" ? "" : normalizedBase}/${safeEntrySlug}`;
+}
+
+function buildExportArtifacts(project: Project, cmsCollections: CmsCollection[]): ExportPageArtifact[] {
+  const artifacts: ExportPageArtifact[] = [];
+
+  for (const page of project.pages) {
+    if (!page.html) continue;
+
+    if (page.meta?.pageKind === "cms_detail") {
+      const collection = findBoundCollection(page, cmsCollections);
+      if (!collection) continue;
+      const basePublicPath = resolveProjectPagePublicPath(project, page, cmsCollections);
+      for (const entry of publishedEntries(collection)) {
+        const previewRuntime = buildPreviewPageRuntime(project, page, cmsCollections, entry.slug);
+        const publicPath = buildCmsDetailPublicPath(basePublicPath, entry.slug);
+        artifacts.push({
+          id: `${page.id}:${entry.id}`,
+          page,
+          publicPath: normalizePublicPath(publicPath),
+          outputPath: outputPathForPublicPath(publicPath, { forceDirectoryIndex: true }),
+          html: page.html,
+          seoOverrides: previewRuntime.seoOverrides,
+          cmsRuntimeConfig: previewRuntime.cmsRuntimeConfig,
+        });
+      }
+      continue;
+    }
+
+    const previewRuntime = buildPreviewPageRuntime(project, page, cmsCollections);
+    const publicPath = resolveProjectPagePublicPath(project, page, cmsCollections);
+    artifacts.push({
+      id: page.id,
+      page,
+      publicPath: normalizePublicPath(publicPath),
+      outputPath: outputPathForPublicPath(publicPath),
+      html: page.html,
+      seoOverrides: previewRuntime.seoOverrides,
+      cmsRuntimeConfig: previewRuntime.cmsRuntimeConfig,
+    });
+  }
+
+  return artifacts;
+}
+
+function relativeHrefForOutputPaths(currentOutputPath: string, targetOutputPath: string) {
+  const fromDir = pathPosix.dirname(currentOutputPath);
+  return pathPosix.relative(fromDir, targetOutputPath) || pathPosix.basename(targetOutputPath);
+}
+
+function resolveExportArtifactHref(
+  rawHref: string,
+  currentArtifact: ExportPageArtifact,
+  artifacts: Map<string, ExportPageArtifact>
+) {
+  const trimmed = rawHref.trim();
+  if (
+    !trimmed ||
     trimmed.startsWith("#") ||
     trimmed.startsWith("mailto:") ||
     trimmed.startsWith("tel:") ||
     trimmed.startsWith("javascript:")
-  ) return null;
+  ) {
+    return null;
+  }
 
-  let candidate = trimmed;
+  const candidates = new Set<string>();
+  const addCandidate = (candidate: string | null | undefined) => {
+    if (!candidate) return;
+    const normalized = normalizePublicPath(candidate);
+    candidates.add(normalized);
+  };
+
   if (/^https?:\/\//i.test(trimmed)) {
     try {
-      const url = new URL(trimmed);
-      candidate = url.pathname || "/";
+      addCandidate(new URL(trimmed).pathname || "/");
     } catch {
       return null;
     }
-  }
-
-  candidate = candidate.split("#")[0]?.split("?")[0] ?? candidate;
-  if (!candidate) return null;
-
-  if (candidate.startsWith("/")) {
-    candidate = candidate.replace(/^\/+|\/+$/g, "") || "home";
+  } else if (trimmed.startsWith("/")) {
+    addCandidate(trimmed);
   } else {
-    candidate = candidate.replace(/^\.?\/*/, "").replace(/\/+$/g, "") || "home";
+    addCandidate(`/${trimmed.replace(/^\.?\/*/, "")}`);
+    try {
+      addCandidate(
+        new URL(trimmed, `https://sitezy.local${currentArtifact.publicPath === "/" ? "/" : `${currentArtifact.publicPath}/`}`)
+          .pathname
+      );
+    } catch {}
   }
 
-  const match = pages.find((page) => pageSlug(page) === candidate || (candidate === "" && isHomeSlug(pageSlug(page))));
-  return match ? pageSlug(match) : null;
-}
-
-function exportHrefForSlug(currentSlug: string, targetSlug: string): string {
-  const fromHome = isHomeSlug(currentSlug);
-  const toHome = isHomeSlug(targetSlug);
-
-  if (fromHome) {
-    return toHome ? "index.html" : `pages/${targetSlug}.html`;
+  for (const candidate of candidates) {
+    const match = artifacts.get(candidate);
+    if (match) return match;
   }
-  return toHome ? "../index.html" : `${targetSlug}.html`;
+
+  return null;
 }
 
-function rewriteExportInternalLinks(html: string, pages: Project["pages"], currentSlug: string): string {
+function rewriteExportInternalLinks(
+  html: string,
+  currentArtifact: ExportPageArtifact,
+  artifacts: Map<string, ExportPageArtifact>
+): string {
   const rewriteHref = (rawHref: string): string => {
-    const targetSlug = resolveProjectPageSlug(rawHref, pages);
-    return targetSlug ? exportHrefForSlug(currentSlug, targetSlug) : rawHref;
+    const targetArtifact = resolveExportArtifactHref(rawHref, currentArtifact, artifacts);
+    return targetArtifact
+      ? relativeHrefForOutputPaths(currentArtifact.outputPath, targetArtifact.outputPath)
+      : rawHref;
   };
 
   let next = html.replace(
@@ -319,6 +472,29 @@ function rewriteExportInternalLinks(html: string, pages: Project["pages"], curre
   return next;
 }
 
+function rewriteExportCmsRuntimeConfig(
+  config: PreviewRuntime["cmsRuntimeConfig"],
+  currentOutputPath: string
+): PreviewRuntime["cmsRuntimeConfig"] {
+  if (!config) return null;
+  if (!config.detailPathTemplate || !config.detailPathTemplate.includes(":slug")) {
+    return config;
+  }
+
+  const placeholder = "__SITEZY_ENTRY_SLUG__";
+  const templatePublicPath = config.detailPathTemplate.replace(":slug", placeholder);
+  const templateOutputPath = outputPathForPublicPath(templatePublicPath, { forceDirectoryIndex: true });
+  const relativeTemplate = relativeHrefForOutputPaths(currentOutputPath, templateOutputPath).replace(
+    placeholder,
+    ":slug"
+  );
+
+  return {
+    ...config,
+    detailPathTemplate: relativeTemplate,
+  };
+}
+
 function buildRobotsTxt(project: Project) {
   const disallow = project.seo?.noindex ? "Disallow: /" : "Allow: /";
   return `User-agent: *
@@ -328,12 +504,12 @@ Sitemap: /sitemap.xml
 `;
 }
 
-function buildSitemap(project: Project, pages: Project["pages"]) {
+function buildSitemap(project: Project, artifacts: ExportPageArtifact[]) {
   const base = buildSeoBaseUrl(project);
-
-  const urls = pages.map((page) => {
-    const seo = resolveProjectPageSeo(project, page);
-    return `  <url><loc>${seo.canonicalUrl || base}</loc></url>`;
+  const urls = artifacts.map((artifact) => {
+    const seo = resolveProjectPageSeo(project, artifact.page, null, artifact.seoOverrides);
+    const fallbackUrl = artifact.publicPath === "/" ? base : `${base}${artifact.publicPath}`;
+    return `  <url><loc>${seo.canonicalUrl || fallbackUrl}</loc></url>`;
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>

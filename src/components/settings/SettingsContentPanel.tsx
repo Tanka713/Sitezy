@@ -12,7 +12,7 @@ export function SettingsContentPanel({
   return (
     <div
       className={cn(
-        "sz-scroll-hidden relative min-h-0 overflow-y-auto px-1 pb-2 pr-2",
+        "sz-scroll-hidden relative min-h-0 overflow-y-auto overscroll-y-contain px-1 pb-2 pr-2",
         className
       )}
     >

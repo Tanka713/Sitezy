@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProject, getProjectSnapshot, saveProjectSnapshot } from "@/lib/server/project-db";
+import { ensureProjectGenerationDaemon } from "@/lib/server/project-generation-daemon";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
   API_REQUEST_002,
@@ -44,6 +45,11 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
         metadata: { projectId: params.id, userId: user.id },
       });
     }
+
+    if (snapshot.project.generationJob?.status === "queued" || snapshot.project.generationJob?.status === "running") {
+      ensureProjectGenerationDaemon();
+    }
+
     return NextResponse.json(snapshot);
   } catch (error) {
     return handleRouteError(error, requestId, DB_READ_001);

@@ -46,7 +46,7 @@ export function ErrorToast() {
   }
 
   const isBilling = apiError.code === "API_BILLING_001";
-  const isAuth    = apiError.code === "API_AUTH_001";
+  const isAuth    = apiError.code === "API_AUTH_001" || apiError.code === "AUTH_REQUIRED_001";
 
   return (
     <div
@@ -67,13 +67,13 @@ export function ErrorToast() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-semibold leading-snug text-[var(--text-primary)]">
-              {isBilling ? "Billing limit reached" : isAuth ? "Authentication failed" : "Something went wrong"}
+              {isBilling ? "Billing limit reached" : isAuth ? "Sign-in required" : "Something went wrong"}
             </p>
             <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-[var(--fg-muted)]">
               {isBilling
                 ? "API credit balance is too low. Please upgrade or add credits to continue."
                 : isAuth
-                ? "Your API key is invalid or expired. Please check your settings."
+                ? apiError.message || "Your session expired. Please sign in again to continue."
                 : apiError.message}
             </p>
           </div>

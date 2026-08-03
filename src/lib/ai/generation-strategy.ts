@@ -12,27 +12,6 @@ export interface CreativeDirection {
   motionStory: string;
 }
 
-export interface PageSectionPlan {
-  type: string;
-  name: string;
-  purpose: string;
-  layoutIdea: string;
-  emphasis: string;
-  visualHook: string;
-  interactionHint: string;
-  content: string[];
-  imageBrief?: string;
-}
-
-export interface PagePlan {
-  pageName: string;
-  storyArc: string;
-  conversionGoal: string;
-  navbarConcept: string;
-  signatureMoment: string;
-  sections: PageSectionPlan[];
-}
-
 export interface SectionRefreshPlan {
   purpose: string;
   layoutIdea: string;
@@ -49,14 +28,6 @@ export interface BlockPlan {
   visualHook: string;
   interactionHint: string;
   contentMoves: string[];
-}
-
-export interface PageCritique {
-  score: number;
-  strengths: string[];
-  issues: string[];
-  genericSignals: string[];
-  revisionBrief: string;
 }
 
 interface IndustryProfile {
@@ -206,8 +177,12 @@ function detectIndustryProfile(brief: SiteBrief): IndustryProfile | null {
 }
 
 export function buildBusinessContextBlock(brief: SiteBrief): string {
-  const offerings = cleanMultiline(brief.smartBrief?.offeringsText).slice(0, 10);
-  const contactDetails = brief.smartBrief?.contactDetails;
+  const offerings = (
+    brief.businessBrief?.services.length
+      ? brief.businessBrief.services
+      : cleanMultiline(brief.smartBrief?.offeringsText)
+  ).slice(0, 10);
+  const contactDetails = brief.businessBrief?.contactInfo ?? brief.smartBrief?.contactDetails;
   const contactLines = [
     contactDetails?.phone ? `Phone: ${contactDetails.phone}` : "",
     contactDetails?.email ? `Email: ${contactDetails.email}` : "",
@@ -216,22 +191,27 @@ export function buildBusinessContextBlock(brief: SiteBrief): string {
   ].filter(Boolean);
 
   return [
-    `Site name: ${brief.siteName}`,
-    `Business summary: ${brief.description}`,
-    `Business type: ${brief.siteType || "not specified"}`,
-    `Tone: ${brief.tone || "not specified"}`,
-    `Target audience: ${brief.targetAudience || "not specified"}`,
+    `Site name: ${brief.businessBrief?.businessName || brief.siteName}`,
+    `Business summary: ${brief.businessBrief?.businessDescription || brief.description}`,
+    `Business type: ${brief.businessBrief?.industry || brief.siteType || "not specified"}`,
+    `Tone: ${brief.businessBrief?.tone || brief.tone || "not specified"}`,
+    `Target audience: ${brief.businessBrief?.audience || brief.targetAudience || "not specified"}`,
     `Competitors / references: ${brief.competitors || "none provided"}`,
-    `Special features: ${brief.features || "none provided"}`,
-    `Requested pages: ${brief.pages.join(", ") || "none provided"}`,
+    `Special features: ${brief.features || brief.businessBrief?.differentiators.join(", ") || "none provided"}`,
+    `Requested pages: ${brief.businessBrief?.pages.join(", ") || brief.pages.join(", ") || "none provided"}`,
     `Image style: ${brief.imageStyle || "photos"}`,
     `Color preference: ${brief.colorPreference || "none provided"}`,
     brief.colorPalette && brief.colorPalette.length > 0
       ? `Color palette: ${brief.colorPalette.join(", ")}`
       : "Color palette: AI-selected",
     brief.currency ? `Currency: ${brief.currency}` : "",
-    brief.smartBrief?.stylePreference
-      ? `User style preference: ${brief.smartBrief.stylePreference}`
+    (brief.businessBrief?.styleDirection.length || brief.smartBrief?.stylePreference)
+      ? `User style preference: ${
+          brief.businessBrief?.styleDirection.join(", ") || brief.smartBrief?.stylePreference
+        }`
+      : "",
+    brief.businessBrief?.assets.logo.status
+      ? `Logo status: ${brief.businessBrief.assets.logo.status}`
       : "",
     formatList("Offerings / menu / products", offerings),
     formatList("Contact details", contactLines),
@@ -254,43 +234,6 @@ export function buildIndustryPromptHints(brief: SiteBrief): string {
     ...profile.promptHints.map((hint) => `- ${hint}`),
     `- Home page should strongly consider these sections when relevant: ${profile.homepageSections.join(", ")}`,
   ].join("\n");
-}
-
-export function buildCreativeDirectionSystemPrompt(): string {
-  return [
-    "You are a world-class creative director and brand strategist for premium websites.",
-    "Return JSON only.",
-    "Your job is to define a website direction that feels specific, memorable, and difficult to confuse with a generic template.",
-    "Ban phrases like 'clean modern', 'sleek design', or 'professional layout' unless you turn them into concrete visual decisions.",
-  ].join("\n");
-}
-
-export function buildCreativeDirectionUserPrompt(
-  brief: SiteBrief,
-  archetypeName: string,
-  archetypeDescription: string
-): string {
-  return `Create a creative direction for this website.
-
-${buildBusinessContextBlock(brief)}
-
-Preferred archetype: ${archetypeName}
-Archetype description: ${archetypeDescription}
-
-${buildIndustryPromptHints(brief)}
-
-Return JSON:
-{
-  "conceptName": "short memorable name",
-  "brandCore": "2-3 sentences about brand point of view and audience promise",
-  "visualSignature": "2-3 sentences describing the thing users will remember instantly",
-  "experiencePrinciples": ["principle 1", "principle 2", "principle 3"],
-  "memorableMoments": ["hero moment", "layout moment", "interaction moment"],
-  "antiGenericRules": ["rule 1", "rule 2", "rule 3"],
-  "colorStory": "how color should behave",
-  "typographyStory": "how typography should create personality",
-  "motionStory": "how motion should feel"
-}`;
 }
 
 export function normalizeCreativeDirection(input: Partial<CreativeDirection> | null | undefined): CreativeDirection {
@@ -330,123 +273,6 @@ export function formatCreativeDirection(direction: CreativeDirection): string {
     formatList("Experience principles", direction.experiencePrinciples),
     formatList("Memorable moments", direction.memorableMoments),
     formatList("Anti-generic rules", direction.antiGenericRules),
-  ].join("\n");
-}
-
-export function buildPagePlanSystemPrompt(): string {
-  return [
-    "You are a creative lead and information architect planning one premium website page.",
-    "Return JSON only.",
-    "The page plan must be specific enough that a frontend engineer can build it without falling back to generic sections.",
-    "Every requested section must receive its own distinct purpose, layout idea, and content angle.",
-  ].join("\n");
-}
-
-export function buildPagePlanUserPrompt(
-  blueprint: SiteBlueprint,
-  page: BlueprintPage,
-  brief: SiteBrief,
-  creativeDirection: CreativeDirection,
-  navLinks: string,
-  instruction?: string | null
-): string {
-  return `Plan the "${page.name}" page for ${blueprint.siteName}.
-
-${buildBusinessContextBlock(brief)}
-
-Blueprint direction:
-- Brand personality: ${blueprint.brandPersonality}
-- Layout style: ${blueprint.layoutStyle}
-- Design direction: ${blueprint.designDirection}
-- Navigation style: ${blueprint.navigationStyle || "not specified"}
-- Footer style: ${blueprint.footerStyle || "not specified"}
-
-Creative direction:
-${formatCreativeDirection(creativeDirection)}
-
-Navigation links: ${navLinks}
-Page purpose: ${page.purpose}
-Requested ordered sections: ${page.sections.join(", ")}
-
-${buildIndustryPromptHints(brief)}
-${instruction ? `Additional direction: ${instruction}` : ""}
-
-Return JSON:
-{
-  "pageName": "${page.name}",
-  "storyArc": "how the page should unfold from top to bottom",
-  "conversionGoal": "the main action or outcome this page should drive",
-  "navbarConcept": "how the navbar should feel on this page",
-  "signatureMoment": "the single most memorable moment on the page",
-  "sections": [
-    {
-      "type": "hero",
-      "name": "Hero",
-      "purpose": "why this section exists",
-      "layoutIdea": "specific composition",
-      "emphasis": "what must stand out",
-      "visualHook": "a distinctive visual decision",
-      "interactionHint": "motion or hover behavior",
-      "content": ["real content item 1", "real content item 2"],
-      "imageBrief": "optional image direction"
-    }
-  ]
-}
-
-Rules:
-- Return exactly ${page.sections.length} sections, in the same order as requested.
-- Use the actual section types from the requested list.
-- Replace vague copy with business-specific facts, offers, services, menu items, differentiators, or trust signals when available.
-- If a requested section type is generic (for example "section"), turn it into a very specific content job in the plan.`;
-}
-
-export function normalizePagePlan(input: Partial<PagePlan> | null | undefined, page: BlueprintPage): PagePlan {
-  const sections = Array.isArray(input?.sections) ? input.sections : [];
-
-  const normalizedSections = page.sections.map((sectionType, index) => {
-    const candidate = sections[index] ?? sections.find((entry) => normalizeSectionType(String(entry?.type ?? "")) === normalizeSectionType(sectionType));
-    return {
-      type: normalizeSectionType(candidate?.type || sectionType) || sectionType,
-      name: toSentence(candidate?.name, sectionType.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())),
-      purpose: toSentence(candidate?.purpose, `Make the ${sectionType} section feel useful and specific to this business.`),
-      layoutIdea: toSentence(candidate?.layoutIdea, "Use a composition that clearly differs from neighboring sections."),
-      emphasis: toSentence(candidate?.emphasis, "Lead with the highest-value content in this section."),
-      visualHook: toSentence(candidate?.visualHook, "Give this section a visual move that prevents it from feeling templated."),
-      interactionHint: toSentence(candidate?.interactionHint, "Use restrained, meaningful hover or entrance motion."),
-      content: normalizeList(candidate?.content, [`Specific content for ${sectionType}`]),
-      imageBrief: candidate?.imageBrief ? toSentence(candidate.imageBrief, "") : undefined,
-    };
-  });
-
-  return {
-    pageName: toSentence(input?.pageName, page.name),
-    storyArc: toSentence(input?.storyArc, page.purpose),
-    conversionGoal: toSentence(input?.conversionGoal, `Help the user achieve the main goal of the ${page.name} page.`),
-    navbarConcept: toSentence(input?.navbarConcept, "The navbar should feel like part of the same design system, not a default header."),
-    signatureMoment: toSentence(input?.signatureMoment, "Create one section that people will remember after leaving the page."),
-    sections: normalizedSections,
-  };
-}
-
-export function formatPagePlan(plan: PagePlan): string {
-  return [
-    `Page story arc: ${plan.storyArc}`,
-    `Conversion goal: ${plan.conversionGoal}`,
-    `Navbar concept: ${plan.navbarConcept}`,
-    `Signature moment: ${plan.signatureMoment}`,
-    "Section plan:",
-    plan.sections
-      .map(
-        (section, index) =>
-          `${index + 1}. ${section.name} [${section.type}]
-- Purpose: ${section.purpose}
-- Layout idea: ${section.layoutIdea}
-- Emphasis: ${section.emphasis}
-- Visual hook: ${section.visualHook}
-- Interaction hint: ${section.interactionHint}
-- Content moves: ${section.content.map((entry) => `"${entry}"`).join(", ")}${section.imageBrief ? `\n- Image brief: ${section.imageBrief}` : ""}`
-      )
-      .join("\n"),
   ].join("\n");
 }
 
@@ -604,73 +430,6 @@ export function formatBlockPlan(plan: BlockPlan): string {
   ].join("\n");
 }
 
-export function buildPageCritiqueSystemPrompt(): string {
-  return [
-    "You are a strict design critic reviewing generated website HTML.",
-    "Return JSON only.",
-    "Score the page harshly if it feels generic, repetitive, or weakly connected to the business.",
-    "Do not praise basic competence. Flag sameness, safe layouts, and shallow content.",
-  ].join("\n");
-}
-
-export function buildPageCritiqueUserPrompt(
-  blueprint: SiteBlueprint,
-  page: BlueprintPage,
-  brief: SiteBrief,
-  creativeDirection: CreativeDirection,
-  pagePlan: PagePlan,
-  html: string
-): string {
-  return `Review this generated HTML for the "${page.name}" page.
-
-${buildBusinessContextBlock(brief)}
-
-Blueprint direction:
-- Brand personality: ${blueprint.brandPersonality}
-- Layout style: ${blueprint.layoutStyle}
-- Design direction: ${blueprint.designDirection}
-
-Creative direction:
-${formatCreativeDirection(creativeDirection)}
-
-Planned page:
-${formatPagePlan(pagePlan)}
-
-Generated HTML:
-${html.slice(0, 12000)}
-${html.length > 12000 ? "\n<!-- HTML truncated -->" : ""}
-
-Return JSON:
-{
-  "score": 0,
-  "strengths": ["strength 1"],
-  "issues": ["issue 1"],
-  "genericSignals": ["generic signal 1"],
-  "revisionBrief": "precise instructions to improve the page"
-}
-
-Scoring guide:
-- 9-10: distinctive, memorable, specific to the business, strong hierarchy, believable copy
-- 7-8: solid but still has some safe or repeated moves
-- 0-6: generic, templated, weak copy, repetitive layout, or poor section differentiation`;
-}
-
-export function normalizePageCritique(input: Partial<PageCritique> | null | undefined): PageCritique {
-  const rawScore = Number(input?.score);
-  const score = Number.isFinite(rawScore) ? Math.min(10, Math.max(0, rawScore)) : 0;
-
-  return {
-    score,
-    strengths: normalizeList(input?.strengths, ["The page is functional, but it still needs stronger differentiation."]),
-    issues: normalizeList(input?.issues, ["The page needs more business-specific content and stronger visual variety."]),
-    genericSignals: normalizeList(input?.genericSignals, []),
-    revisionBrief: toSentence(
-      input?.revisionBrief,
-      "Increase specificity, create clearer contrast between sections, and remove generic marketing language."
-    ),
-  };
-}
-
 export function shouldForceHomepageDiversification(page: BlueprintPage, brief: SiteBrief): boolean {
   const isHome = /^(home|index)$/i.test(page.slug) || /home/i.test(page.name);
   if (!isHome) return false;
@@ -714,27 +473,4 @@ export function enrichBlueprintPageSections(page: BlueprintPage, brief: SiteBrie
   }
 
   return deduped.slice(0, 8);
-}
-
-export function detectLocalGenericSignals(html: string): string[] {
-  const signals: string[] = [];
-  const lower = html.toLowerCase();
-
-  if (/lorem ipsum|placeholder|picsum|feature 1|feature 2|feature 3/.test(lower)) {
-    signals.push("placeholder copy or placeholder assets detected");
-  }
-  if ((lower.match(/learn more/g) ?? []).length >= 3) {
-    signals.push('repeated "Learn more" CTA language');
-  }
-  if ((lower.match(/our services|why choose us|what we do/g) ?? []).length >= 2) {
-    signals.push("generic section naming detected");
-  }
-  if ((lower.match(/grid-cols-3/g) ?? []).length >= 3) {
-    signals.push("repeated three-column grid pattern");
-  }
-  if ((lower.match(/rounded-2xl/g) ?? []).length >= 10 && (lower.match(/shadow-xl/g) ?? []).length >= 5) {
-    signals.push("same card styling repeated too often");
-  }
-
-  return signals;
 }

@@ -381,7 +381,7 @@ export function MediaLibraryModal({
       onClose={onClose}
       titleId={modalTitleId}
       containerClassName="p-4 md:p-8"
-      panelClassName="relative flex h-[min(880px,calc(100vh-48px))] w-full max-w-[1320px] flex-col overflow-hidden rounded-[20px] border border-white/[0.06] bg-[#0B0D12] shadow-[0_60px_140px_-20px_rgba(0,0,0,0.85)]"
+      panelClassName="editor-dialog editor-preview-surface relative flex h-[min(880px,calc(100vh-48px))] w-full max-w-[1320px] flex-col overflow-hidden rounded-[20px] border border-[var(--border-softer)] bg-[var(--bg-elevated)] shadow-[var(--shadow-xl)]"
     >
       {/* Atmosphere */}
       <div className="pointer-events-none absolute inset-0 opacity-[0.5]">

@@ -3,6 +3,8 @@ import {
   enqueueFullSiteGenerationJob,
   getActiveGenerationJobForProject,
 } from "@/lib/server/project-generation-jobs";
+import { ensureProjectGenerationDaemon } from "@/lib/server/project-generation-daemon";
+import { recordAdaptiveLearningEvent } from "@/lib/server/ai-learning";
 import { getProjectSnapshot, saveProjectSnapshot } from "@/lib/server/project-db";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
@@ -68,7 +70,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const existingJob = await getActiveGenerationJobForProject(params.id);
     if (existingJob) {
+      ensureProjectGenerationDaemon();
       return NextResponse.json({ job: existingJob });
+    }
+
+    if (snapshot.project.blueprint || snapshot.project.pages.length > 0) {
+      await recordAdaptiveLearningEvent({
+        userId: user.id,
+        projectId: params.id,
+        eventType: "site_regenerated",
+        brief: body.brief,
+        metadata: {
+          previousStatus: snapshot.project.status,
+          previousPageCount: snapshot.project.pages.length,
+        },
+      });
     }
 
     const now = new Date().toISOString();
@@ -91,6 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
 
     const job = await enqueueFullSiteGenerationJob(params.id, user.id, body.brief);
+    ensureProjectGenerationDaemon();
     return NextResponse.json({ job }, { status: 201 });
   } catch (error) {
     return handleRouteError(error, requestId, DB_WRITE_001);
@@ -118,6 +135,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         severity: "warn",
         metadata: { projectId: params.id, userId: user.id },
       });
+    }
+
+    if (snapshot.project.generationJob?.status === "queued" || snapshot.project.generationJob?.status === "running") {
+      ensureProjectGenerationDaemon();
     }
 
     return NextResponse.json({ job: snapshot.project.generationJob ?? null });

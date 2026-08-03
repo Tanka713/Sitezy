@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, Lock, Mail, ShieldCheck } from "lucide-react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
@@ -24,6 +24,7 @@ type ScreenMode = "request" | "update";
 
 export function ResetPasswordScreen({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [screenMode, setScreenMode] = useState<ScreenMode>("request");
   const [submitting, setSubmitting] = useState(false);
@@ -58,9 +59,21 @@ export function ResetPasswordScreen({ initialEmail = "" }: { initialEmail?: stri
 
     async function checkSession() {
       try {
+        const code = searchParams.get("code");
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw exchangeError;
+          router.replace("/reset-password", { scroll: false });
+        }
+
         const { data } = await supabase.auth.getUser();
         if (cancelled) return;
         setScreenMode(data.user ? "update" : "request");
+      } catch (sessionError) {
+        if (!cancelled) {
+          handleAuthError(sessionError);
+          setScreenMode("request");
+        }
       } finally {
         if (!cancelled) {
           setCheckingSession(false);
@@ -88,7 +101,7 @@ export function ResetPasswordScreen({ initialEmail = "" }: { initialEmail?: stri
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router, searchParams]);
 
   function handleAuthError(authError: unknown) {
     const appErr = normalizeError(authError, AUTH_TOKEN_001, { screen: "reset-password", mode: screenMode });
@@ -118,7 +131,7 @@ export function ResetPasswordScreen({ initialEmail = "" }: { initialEmail?: stri
 
         const redirectTo =
           typeof window !== "undefined"
-            ? `${window.location.origin}/auth/callback?next=/reset-password`
+            ? `${window.location.origin}/reset-password`
             : undefined;
 
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {

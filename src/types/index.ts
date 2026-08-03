@@ -13,6 +13,18 @@ export type LayoutStyle =
   | "magazine"
   | "sidebar-led";
 
+export type SiteFormat =
+  | "editorial-feature"
+  | "campaign-poster"
+  | "menu-first-catalog"
+  | "club-community"
+  | "showroom-split"
+  | "story-journey"
+  | "magazine-rail"
+  | "product-showroom"
+  | "gallery-showcase"
+  | "trust-proof";
+
 export type AnimationStyle = "none" | "subtle" | "moderate" | "expressive";
 
 export interface ColorScheme {
@@ -41,11 +53,30 @@ export interface SiteBlueprint {
   colorScheme: ColorScheme;
   typography: Typography;
   layoutStyle: LayoutStyle;
+  siteFormat?: SiteFormat;
+  signatureShell?: string;
+  heroApproach?: string;
+  sectionRhythm?: string;
   pages: BlueprintPage[];
   designDirection: string;
   animationStyle: AnimationStyle;
   navigationStyle?: "minimal" | "full" | "sidebar" | "floating";
   footerStyle?: "simple" | "detailed" | "bold" | "minimal";
+  generationPlan?: unknown;
+  creativeDirection?: {
+    conceptName?: string;
+    brandCore?: string;
+    brandWorld?: string;
+    audienceFantasy?: string;
+    visualSignature?: string;
+    layoutDna?: string;
+    experiencePrinciples?: string[];
+    memorableMoments?: string[];
+    antiGenericRules?: string[];
+    colorStory?: string;
+    typographyStory?: string;
+    motionStory?: string;
+  };
 }
 
 export interface BlueprintPage {
@@ -74,6 +105,8 @@ export interface ProjectPage {
   html: string;
   status: "pending" | "generating" | "done" | "error";
   error?: string;
+  revision?: number;
+  meta?: ProjectPageMeta;
 }
 
 export interface ProjectSeoSettings {
@@ -82,6 +115,42 @@ export interface ProjectSeoSettings {
   ogImageUrl: string;
   canonicalUrl: string;
   noindex: boolean;
+}
+
+export type ProjectPageKind = "static" | "cms_listing" | "cms_detail";
+export type ProjectPageApprovalStatus = "draft" | "in_review" | "approved";
+
+export interface ProjectPageSeoSettings {
+  title: string;
+  description: string;
+  ogImageUrl: string;
+  canonicalUrl: string;
+  noindex: boolean;
+}
+
+export interface ProjectPageCmsSeoFieldMapping {
+  title: string | null;
+  description: string | null;
+  ogImageUrl: string | null;
+}
+
+export interface ProjectPageCmsBinding {
+  collectionId: string;
+  collectionSlug: string | null;
+  itemLimit: number | null;
+  targetNodeId: string | null;
+  detailPageId: string | null;
+  detailSlugParam: string;
+  fieldMapping: Record<string, string>;
+  seoFieldMapping: ProjectPageCmsSeoFieldMapping;
+}
+
+export interface ProjectPageMeta {
+  pageKind: ProjectPageKind;
+  seo: ProjectPageSeoSettings | null;
+  cmsBinding: ProjectPageCmsBinding | null;
+  approvalStatus: ProjectPageApprovalStatus;
+  shareTitle: string | null;
 }
 
 export interface VirtualFile {
@@ -205,7 +274,7 @@ export interface CustomerServiceSupportRequest extends SupportRequest {
 export type WorkspaceTheme = "dark" | "light" | "system";
 export type EditorDensityPreference = "compact" | "comfortable";
 export type FontPreference = "default" | "system" | "geometric";
-export type AIDesignStyle = "minimal" | "luxury" | "playful" | "brutalist" | "editorial" | "futuristic";
+export type AIDesignStyle = "ai-pick" | "minimal" | "luxury" | "playful" | "brutalist" | "editorial" | "futuristic" | "organic" | "neo-retro" | "corporate" | "artisan" | "geometric" | "dark-modern";
 export type AIStructurePreference = "clean" | "grid-heavy" | "asymmetric";
 export type AIContentDensity = "short" | "balanced" | "detailed";
 export type ProjectTypographyStyle = "modern-sans" | "editorial-serif" | "product-sans";
@@ -239,6 +308,7 @@ export interface AIGenerationPreferences {
   creativityLevel: number;
   structurePreference: AIStructurePreference;
   contentDensity: AIContentDensity;
+  adaptiveGenerationEnabled: boolean;
 }
 
 export interface ProjectDefaultPreferences {
@@ -255,25 +325,144 @@ export interface ExportDeploymentPreferences {
   includeSeoFiles: boolean;
 }
 
+export type AccountLeadCaptureMode = "sitezy" | "disabled";
+export type ProjectLeadCaptureMode = "inherit" | "sitezy" | "disabled";
+export type LeadSubmissionKind = "contact" | "newsletter";
+export type LeadNotificationDeliveryStatus = "sent" | "failed" | "not_requested";
+export type LeadCaptureExportKind = "submissions" | "subscribers";
+export type LeadCaptureRuntimeMode = "preview" | "published" | "disabled";
+
+export interface IntegrationAnalyticsProviderSettings {
+  enabled: boolean;
+  measurementId: string;
+}
+
+export interface IntegrationMetaPixelSettings {
+  enabled: boolean;
+  pixelId: string;
+}
+
+export interface IntegrationAnalyticsSettings {
+  enableSitezyAnalytics: boolean;
+  ga4: IntegrationAnalyticsProviderSettings;
+  metaPixel: IntegrationMetaPixelSettings;
+}
+
+export interface IntegrationWebhookDefaults {
+  deliveryTimeoutSeconds: number;
+}
+
 export interface IntegrationPreferences {
   analyticsId: string;
+  analytics: IntegrationAnalyticsSettings;
+  webhooks: IntegrationWebhookDefaults;
   notificationEmail: string;
-  formsProvider: "email" | "none";
+  contactCaptureDefault: AccountLeadCaptureMode;
+  newsletterCaptureDefault: AccountLeadCaptureMode;
   primaryDomain: string;
+}
+
+export interface ProjectIntegrationSettings {
+  notificationEmail: string | null;
+  contactCapture: ProjectLeadCaptureMode;
+  newsletterCapture: ProjectLeadCaptureMode;
+}
+
+export interface EffectiveProjectLeadCaptureSettings {
+  notificationEmail: string | null;
+  contactCapture: AccountLeadCaptureMode;
+  newsletterCapture: AccountLeadCaptureMode;
+}
+
+export interface BillingHistoryEntry {
+  id: string;
+  label: string;
+  date: string;
+  amount: string;
+  status: BillingInvoiceStatus;
+  invoiceUrl: string | null;
+}
+
+export type BillingSubscriptionStatus =
+  | "inactive"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid";
+export type BillingInvoiceStatus = "draft" | "open" | "paid" | "void" | "uncollectible" | "pending";
+
+export interface LeadSubmission {
+  id: string;
+  projectId: string;
+  kind: LeadSubmissionKind;
+  pagePath: string;
+  formId: string | null;
+  name: string | null;
+  email: string | null;
+  message: string | null;
+  fields: Record<string, string>;
+  notificationEmail: string | null;
+  notificationDeliveryStatus: LeadNotificationDeliveryStatus;
+  notificationError: string | null;
+  notifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NewsletterSubscriber {
+  id: string;
+  projectId: string;
+  email: string;
+  name: string | null;
+  sourceSubmissionId: string | null;
+  subscribedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectLeadSummary {
+  totalSubmissions: number;
+  totalContactSubmissions: number;
+  totalNewsletterSubmissions: number;
+  totalSubscribers: number;
+  latestSubmissionAt: string | null;
+}
+
+export interface LeadCaptureSubmitRequest {
+  kind: LeadSubmissionKind;
+  projectId?: string;
+  pagePath: string;
+  formId?: string;
+  fields: Record<string, string>;
+  honeypot?: string;
+}
+
+export interface LeadCaptureRuntimeConfig {
+  mode: LeadCaptureRuntimeMode;
+  projectId: string | null;
+  contactCaptureEnabled: boolean;
+  newsletterCaptureEnabled: boolean;
+  submitEndpoint: string;
 }
 
 export interface BillingPreferences {
   planName: string;
+  planId: string | null;
+  planStatus: BillingSubscriptionStatus;
   tokenUsage: number;
   tokenLimit: number;
+  allowanceCredits: number;
+  manualGrantCredits: number;
+  remainingCredits: number;
   paymentMethodLabel: string | null;
-  billingHistory: Array<{
-    id: string;
-    label: string;
-    date: string;
-    amount: string;
-    status: "paid" | "pending";
-  }>;
+  customerId: string | null;
+  subscriptionId: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  checkoutEnabled: boolean;
+  portalEnabled: boolean;
+  billingHistory: BillingHistoryEntry[];
 }
 
 export interface ExperimentalPreferences {
@@ -281,6 +470,8 @@ export interface ExperimentalPreferences {
   smartLayoutRegeneration: boolean;
   advancedEditor: boolean;
   chatBasedEditing: boolean;
+  selfLearningGenerator: boolean;
+  trainingMode: boolean;
 }
 
 export type PhoneOtpStatus = "not_provided" | "pending_setup" | "enabled" | "disabled";
@@ -340,8 +531,111 @@ export type Tone =
 
 // ─── Smart Setup (Phase 2: advanced generator mode) ───────────────────────────
 // These fields are collected in Phase 1 and wired into generation in Phase 2.
+export type BusinessBriefStage =
+  | "identity"
+  | "offer"
+  | "goal"
+  | "style"
+  | "content"
+  | "logo"
+  | "finalize"
+  | "ready";
+
+export type BusinessBriefFieldId =
+  | "businessName"
+  | "industry"
+  | "location"
+  | "businessDescription"
+  | "offerSummary"
+  | "audience"
+  | "differentiators"
+  | "websiteGoals"
+  | "tone"
+  | "styleDirection"
+  | "brandColors"
+  | "pages"
+  | "services"
+  | "testimonials"
+  | "socialProof"
+  | "story"
+  | "contactInfo"
+  | "leadCapture"
+  | "logo";
+
+export interface BriefLogoAsset {
+  status: "uploaded" | "url" | "missing" | "unknown";
+  assetId?: string;
+  fileUrl?: string;
+  fileName?: string;
+  sourceUrl?: string;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  altText?: string;
+  notes?: string;
+}
+
+export interface BriefImageAsset {
+  assetId?: string;
+  url: string;
+  name?: string;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  altText?: string;
+  notes?: string;
+}
+
+export interface BusinessContactInfo {
+  email?: string;
+  phone?: string;
+  address?: string;
+  hours?: string;
+  cta?: string;
+  bookingEnabled?: boolean;
+  leadCaptureEnabled?: boolean;
+}
+
+export interface BusinessBrief {
+  version: 2;
+  businessName: string;
+  industry: string;
+  location: string;
+  businessDescription: string;
+  offerSummary: string;
+  audience: string;
+  differentiators: string[];
+  websiteGoals: string[];
+  tone: string;
+  styleDirection: string[];
+  brandColors: string[];
+  pages: string[];
+  services: string[];
+  testimonials: string[];
+  socialProof: string[];
+  story: string;
+  references: string[];
+  contactInfo: BusinessContactInfo;
+  brand: {
+    hasExistingStyle: boolean | null;
+    mood: string[];
+    references: string[];
+  };
+  assets: {
+    logo: BriefLogoAsset;
+    images: BriefImageAsset[];
+  };
+  intelligence: {
+    stage: BusinessBriefStage;
+    missingFields: BusinessBriefFieldId[];
+    knownFields: BusinessBriefFieldId[];
+    readinessScore: number;
+    recommendedNextPrompt?: string | null;
+    lastUpdatedAt?: string;
+  };
+}
+
 export interface SmartBrief {
   logoUrl?: string;
+  logo?: BriefLogoAsset;
   industry?: string;
   offeringsType?: string;   // "services" | "products" | "menu" | "portfolio" | "courses"
   offeringsText?: string;   // free-text list of offerings (parsed/used in Phase 2)
@@ -367,8 +661,9 @@ export interface SiteBrief {
   colorPalette?: string[];    // optional pre-picked hex colors
   imageStyle?: "photos" | "illustrations" | "minimal" | "none";
   // ── Generator mode (Phase 1+) ──────────────────────────────────────────────
-  generatorMode?: "quick" | "smart"; // defaults to "quick" when absent
+  generatorMode?: "quick" | "smart" | "conversation"; // defaults to "quick" when absent
   smartBrief?: SmartBrief;           // only populated in "smart" mode
+  businessBrief?: BusinessBrief;     // structured conversational brief
   // ── Enriched context ───────────────────────────────────────────────────────
   hasLogo?: boolean;   // logo image was uploaded — AI should use __LOGO__ placeholder in navbar
   currency?: string;   // detected currency, e.g. "AED (د.إ)", "GBP (£)"
@@ -407,6 +702,7 @@ export interface ProjectDeployment {
   status: ProjectDeploymentStatus;
   publishedUrl: string;
   pageCount: number;
+  sourceDeploymentId?: string | null;
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
@@ -473,12 +769,207 @@ export interface CmsCollection {
   updatedAt: string;
 }
 
+export type ProjectAnalyticsEventType =
+  | "session"
+  | "page_view"
+  | "lead_conversion"
+  | "subscriber_conversion"
+  | "deployment_published";
+
+export interface ProjectAnalyticsEvent {
+  id: string;
+  projectId: string;
+  eventType: ProjectAnalyticsEventType;
+  pagePath: string;
+  sessionId: string | null;
+  visitorId: string | null;
+  referrer: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ProjectAnalyticsTopPage {
+  pagePath: string;
+  views: number;
+}
+
+export interface ProjectAnalyticsSummary {
+  sessions: number;
+  pageViews: number;
+  leadConversions: number;
+  subscriberConversions: number;
+  deploymentsPublished: number;
+  topPages: ProjectAnalyticsTopPage[];
+  daily: Array<{
+    date: string;
+    sessions: number;
+    pageViews: number;
+    leadConversions: number;
+    subscriberConversions: number;
+  }>;
+}
+
+export type ProjectWebhookEventType = "lead.created" | "subscriber.created" | "deployment.published";
+export type ProjectWebhookDeliveryStatus = "pending" | "delivered" | "failed";
+
+export interface ProjectWebhook {
+  id: string;
+  projectId: string;
+  label: string;
+  targetUrl: string;
+  secret: string | null;
+  events: ProjectWebhookEventType[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectWebhookDelivery {
+  id: string;
+  webhookId: string;
+  projectId: string;
+  eventType: ProjectWebhookEventType;
+  status: ProjectWebhookDeliveryStatus;
+  attemptCount: number;
+  responseStatus: number | null;
+  responseBody: string | null;
+  nextAttemptAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingAccount {
+  userId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  stripePriceId: string | null;
+  planName: string;
+  planStatus: BillingSubscriptionStatus;
+  allowanceCredits: number;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  paymentMethodLabel: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingInvoiceRecord {
+  id: string;
+  userId: string;
+  stripeInvoiceId: string | null;
+  status: BillingInvoiceStatus;
+  amountCents: number;
+  currency: string;
+  invoiceUrl: string | null;
+  hostedInvoiceUrl: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingCreditGrant {
+  id: string;
+  userId: string;
+  grantedBy: string | null;
+  credits: number;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingSummary {
+  account: BillingAccount | null;
+  invoices: BillingInvoiceRecord[];
+  manualGrants: BillingCreditGrant[];
+  snapshot: BillingPreferences;
+}
+
+export type ProjectCommentStatus = "open" | "resolved";
+
+export interface ProjectComment {
+  id: string;
+  projectId: string;
+  pageId: string | null;
+  sectionId: string | null;
+  authorUserId: string;
+  authorName: string | null;
+  body: string;
+  status: ProjectCommentStatus;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+export type ProjectPageOperationType =
+  | "replace_html"
+  | "replace_sections"
+  | "visual_edit"
+  | "style_edit"
+  | "structure_edit";
+
+export interface ProjectPageOperation {
+  id: string;
+  projectId: string;
+  pageId: string;
+  revision: number;
+  expectedRevision: number;
+  operationType: ProjectPageOperationType;
+  payload: Record<string, unknown>;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface ProjectPageLock {
+  id: string;
+  projectId: string;
+  pageId: string;
+  userId: string;
+  mode: "code" | "transform";
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface ProjectCollaborationPresence {
+  userId: string;
+  name: string;
+  email: string | null;
+  color: string;
+  pageId: string | null;
+  sectionId: string | null;
+  nodeLabel: string | null;
+  mode: "visual" | "code" | "preview";
+  lastActiveAt: string;
+}
+
+export interface ProjectPreviewShare {
+  id: string;
+  projectId: string;
+  pageId: string | null;
+  token: string;
+  label: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  createdBy: string;
+  shareUrl: string;
+}
+
+export interface ProjectCollaborationBootstrap {
+  comments: ProjectComment[];
+  locks: ProjectPageLock[];
+  previewShares: ProjectPreviewShare[];
+}
+
 export interface Project {
   id: string;
   name: string;
   brief: SiteBrief;
   blueprint: SiteBlueprint | null;
   seo?: ProjectSeoSettings;
+  integrationSettings?: ProjectIntegrationSettings | null;
   pages: ProjectPage[];
   files: Record<string, VirtualFile>;
   media: ProjectMediaAsset[];
@@ -542,7 +1033,7 @@ export interface GenerationLogEntry {
 // ─── Editor Types ─────────────────────────────────────────────────────────────
 
 export type LeftPanelTab = "pages" | "navigator" | "add" | "files";
-export type RightPanelTab = "ai" | "properties" | "blocks" | "style" | "theme";
+export type RightPanelTab = "ai" | "blocks" | "style" | "theme" | "page";
 export type PreviewMode = "preview" | "code" | "split";
 export type DevicePreview = "desktop" | "tablet" | "mobile";
 
@@ -584,7 +1075,7 @@ export interface CanvasCollectionItem {
 export interface CanvasWidgetField {
   key: string;
   label: string;
-  type: "text" | "textarea" | "number" | "datetime-local";
+  type: "text" | "textarea" | "number" | "datetime-local" | "image";
   placeholder?: string;
   min?: number;
   max?: number;
@@ -615,6 +1106,7 @@ export interface CanvasNodeInfo {
   collectionFields: CanvasCollectionField[];
   collectionItems: CanvasCollectionItem[];
   linkTargetNodeId: string | null;
+  buttonSurfaceNodeId: string | null;
   listTargetNodeId: string | null;
   parentNodeId: string | null;
   sectionId: string | null;
@@ -678,6 +1170,7 @@ export interface CanvasNodeInfo {
   columnCount: string;
   color: string | null;
   backgroundColor: string | null;
+  buttonSurfaceBackgroundColor?: string | null;
   backgroundImage: string;
   hasBgImage: boolean;
   bgImageSrc: string | null;
@@ -703,8 +1196,11 @@ export interface CanvasNodeInfo {
   borderRadius: string;
   border: string;
   borderWidth: string;
+  buttonSurfaceBorderWidth?: string;
   borderStyle: string;
+  buttonSurfaceBorderStyle?: string;
   borderColor: string | null;
+  buttonSurfaceBorderColor?: string | null;
   position: string;
   zIndex: string;
   top: string;
@@ -811,6 +1307,67 @@ export interface AIEditRequest {
 export interface AIEditResponse {
   result: string;
   type: "html" | "text" | "suggestion";
+}
+
+// ─── Structured AI Edit Operations ────────────────────────────────────────────
+
+export type AIEditOperationType =
+  | "replaceSection"
+  | "updateStyle"
+  | "rewriteCopy"
+  | "restructure"
+  | "globalStyleChange"
+  | "addSection"
+  | "removeSection"
+  | "reorderSections";
+
+export interface AIEditOperation {
+  type: AIEditOperationType;
+  /** Target section ID (for section-scoped operations) */
+  sectionId?: string;
+  /** New HTML for replaceSection / addSection */
+  html?: string;
+  /** Design token overrides for updateStyle / globalStyleChange */
+  tokenOverrides?: Record<string, string>;
+  /** Copy replacements for rewriteCopy: { selectorOrId: newText } */
+  copyUpdates?: Record<string, string>;
+  /** New layout variant name for restructure */
+  variant?: string;
+  /** Position hint for addSection / reorderSections */
+  position?: "before" | "after";
+  /** Reference section ID for positioning */
+  relativeTo?: string;
+}
+
+export interface AIAssistResult {
+  /** Friendly message to display in chat */
+  message: string;
+  /** Structured edit operations to apply */
+  operations: AIEditOperation[];
+}
+
+export type AIEditScope = "element" | "section" | "page" | "site";
+
+export interface AIAssistContext {
+  projectName: string;
+  blueprint?: SiteBlueprint | null;
+  brief?: SiteBrief | null;
+  pageName?: string;
+  pageHtml?: string;
+  siteType?: string;
+  /** Currently selected section ID in editor */
+  selectedSectionId?: string | null;
+  /** Currently selected element info */
+  selectedElement?: {
+    nodeId: string;
+    tagName: string;
+    textContent?: string;
+    sectionId?: string;
+  } | null;
+  /** Conversation history for multi-turn */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Scope the user is editing at */
+  scope?: AIEditScope;
 }
 
 export interface ExportRequest {

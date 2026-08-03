@@ -14,6 +14,8 @@ import {
   extractMediaLibraryFromFileList,
   normalizeMediaAssets,
 } from "@/lib/media/library";
+import { normalizeProjectIntegrationSettings } from "@/lib/lead-capture";
+import { normalizeProjectPageMeta } from "@/lib/project-pages";
 import {
   getActiveGenerationJobForProject,
   listLatestActiveGenerationJobs,
@@ -44,6 +46,7 @@ type ProjectRow = {
   brief_json: SiteBrief;
   blueprint_json: SiteBlueprint | null;
   seo_json: Project["seo"] | null;
+  integration_settings_json: Project["integrationSettings"] | null;
   status: Project["status"];
   created_at: string;
   updated_at: string;
@@ -59,6 +62,8 @@ type PageRow = {
   purpose: string;
   html: string;
   sections_json: ProjectPage["sections"];
+  meta_json: ProjectPage["meta"] | null;
+  revision: number | null;
   status: ProjectPage["status"];
   error: string | null;
   sort_order: number;
@@ -93,6 +98,18 @@ function isSeoSchemaMissing(error: unknown) {
     maybe.message?.includes("seo_json") ||
     maybe.details?.includes("seo_json") ||
     maybe.hint?.includes("seo_json")
+  );
+}
+
+function isPageExpansionSchemaMissing(error: unknown) {
+  const maybe = (error ?? {}) as SupabaseErrorLike;
+  const message = `${maybe.message ?? ""} ${maybe.details ?? ""} ${maybe.hint ?? ""}`;
+  return (
+    maybe.code === "42703" ||
+    maybe.code === "PGRST204" ||
+    message.includes("meta_json") ||
+    message.includes("revision") ||
+    message.includes("pages")
   );
 }
 
@@ -177,6 +194,12 @@ const defaultEditorState: EditorState = {
   canvasGridVisible: false,
 };
 
+function normalizeRightPanelTab(tab: EditorState["rightPanelTab"] | "properties" | undefined): EditorState["rightPanelTab"] {
+  if (tab === "properties") return "style";
+  if (tab === "ai" || tab === "blocks" || tab === "style" || tab === "theme") return tab;
+  return defaultEditorState.rightPanelTab;
+}
+
 function normalizeProject(project: Partial<Project>): Project {
   return {
     id: project.id ?? crypto.randomUUID(),
@@ -191,6 +214,7 @@ function normalizeProject(project: Partial<Project>): Project {
     },
     blueprint: project.blueprint ?? null,
     seo: normalizeProjectSeo(project.seo, project),
+    integrationSettings: normalizeProjectIntegrationSettings(project.integrationSettings),
     pages: Array.isArray(project.pages) ? project.pages : [],
     files: project.files && typeof project.files === "object" ? project.files : {},
     media: normalizeMediaAssets(project.media),
@@ -268,6 +292,8 @@ function normalizePage(row: PageRow): ProjectPage {
     sections: Array.isArray(row.sections_json) ? row.sections_json : [],
     status: (["pending", "generating", "done", "error"].includes(row.status) ? row.status : "done") as ProjectPage["status"],
     error: row.error ?? undefined,
+    revision: typeof row.revision === "number" && Number.isFinite(row.revision) ? Math.max(1, Math.trunc(row.revision)) : 1,
+    meta: normalizeProjectPageMeta(row.meta_json, { id: row.id, name, slug, purpose: row.purpose }),
   };
 }
 
@@ -284,6 +310,8 @@ function canonicalizeProjectPages(projectId: string, pages: ProjectPage[]): Proj
       purpose: page.purpose,
       html: page.html,
       sections_json: page.sections,
+      meta_json: page.meta,
+      revision: page.revision ?? 1,
       status: page.status,
       error: page.error ?? null,
       sort_order: index,
@@ -391,6 +419,7 @@ function rowToSnapshot(
       brief: projectRow.brief_json,
       blueprint: projectRow.blueprint_json,
       seo: projectRow.seo_json ?? undefined,
+      integrationSettings: projectRow.integration_settings_json ?? undefined,
       pages,
       files,
       media: extracted.media,
@@ -424,6 +453,7 @@ async function saveProjectSnapshotLegacy(
     brief_json: project.brief,
     blueprint_json: project.blueprint,
     seo_json: project.seo,
+    integration_settings_json: project.integrationSettings,
     status: project.status,
     created_at: project.createdAt,
     updated_at: project.updatedAt,
@@ -464,21 +494,27 @@ async function saveProjectSnapshotLegacy(
   }
 
   if (project.pages.length) {
-    const { error: pagesError } = await supabase.from("pages").insert(
-      project.pages.map((page, index) => ({
-        id: page.id,
-        project_id: project.id,
-        name: page.name,
-        slug: page.slug,
-        purpose: page.purpose,
-        html: page.html,
-        sections_json: page.sections ?? [],
-        status: page.status,
-        error: page.error ?? null,
-        sort_order: index,
-        updated_at: project.updatedAt,
-      }))
-    );
+    const pageValues = project.pages.map((page, index) => ({
+      id: page.id,
+      project_id: project.id,
+      name: page.name,
+      slug: page.slug,
+      purpose: page.purpose,
+      html: page.html,
+      sections_json: page.sections ?? [],
+      meta_json: page.meta,
+      revision: page.revision ?? 1,
+      status: page.status,
+      error: page.error ?? null,
+      sort_order: index,
+      updated_at: project.updatedAt,
+    }));
+    const legacyPageValues = pageValues.map(({ meta_json: _metaJson, revision: _revision, ...page }) => page);
+    let { error: pagesError } = await supabase.from("pages").insert(pageValues);
+
+    if (pagesError && isPageExpansionSchemaMissing(pagesError)) {
+      ({ error: pagesError } = await supabase.from("pages").insert(legacyPageValues));
+    }
 
     if (pagesError) {
       throw buildDbError(pagesError, DB_WRITE_003, `Legacy save failed while inserting pages for ${project.id}`, {
@@ -534,17 +570,31 @@ export async function listProjects(userId: string): Promise<Project[]> {
   if (!projects.length) return [];
 
   const projectIds = projects.map((project) => project.id);
-  const { data: pageRows, error: pagesError } = await supabase
+  const pagesWithExpansionResult = await supabase
     .from("pages")
-    .select("id, project_id, name, slug, purpose, status")
+    .select("id, project_id, name, slug, purpose, status, revision, meta_json")
     .in("project_id", projectIds)
     .order("sort_order", { ascending: true });
+  let pageRows = pagesWithExpansionResult.data as unknown[] | null;
+  let pagesError = pagesWithExpansionResult.error;
+
+  if (pagesError && isPageExpansionSchemaMissing(pagesError)) {
+    const legacyPagesResult = await supabase
+      .from("pages")
+      .select("id, project_id, name, slug, purpose, status")
+      .in("project_id", projectIds)
+      .order("sort_order", { ascending: true });
+    pageRows = legacyPagesResult.data as unknown[] | null;
+    pagesError = legacyPagesResult.error;
+  }
 
   if (pagesError) {
     throw buildDbError(pagesError, DB_READ_001, `Failed to load pages for listed projects`, { userId, projectIds });
   }
 
-  const pages = (pageRows ?? []) as Array<Pick<PageRow, "id" | "project_id" | "name" | "slug" | "purpose" | "status">>;
+  const pages = (pageRows ?? []) as Array<
+    Pick<PageRow, "id" | "project_id" | "name" | "slug" | "purpose" | "status" | "revision" | "meta_json">
+  >;
   const activeJobs = await listLatestActiveGenerationJobs(projectIds);
   const publishedSites = await safeListPublishedSitesForProjects(projectIds, userId);
 
@@ -555,6 +605,7 @@ export async function listProjects(userId: string): Promise<Project[]> {
       brief: projectRow.brief_json,
       blueprint: projectRow.blueprint_json,
       seo: projectRow.seo_json ?? undefined,
+      integrationSettings: projectRow.integration_settings_json ?? undefined,
       pages: pages
         .filter((page) => page.project_id === projectRow.id)
         .map((page) => ({
@@ -566,6 +617,13 @@ export async function listProjects(userId: string): Promise<Project[]> {
           sections: [],
           status: (["pending", "generating", "done", "error"].includes(page.status) ? page.status : "done") as ProjectPage["status"],
           error: undefined,
+          revision: typeof page.revision === "number" && Number.isFinite(page.revision) ? Math.max(1, Math.trunc(page.revision)) : 1,
+          meta: normalizeProjectPageMeta(page.meta_json, {
+            id: page.id,
+            name: page.name,
+            slug: page.slug,
+            purpose: page.purpose,
+          }),
         })),
       files: {},
       media: [],
@@ -644,6 +702,7 @@ export async function createDraftProject(
     brief_json: normalized.brief,
     blueprint_json: normalized.blueprint,
     seo_json: normalized.seo,
+    integration_settings_json: normalized.integrationSettings,
     status: normalized.status,
     created_at: normalized.createdAt,
     updated_at: normalized.updatedAt,
@@ -684,7 +743,11 @@ export async function saveProjectSnapshot(
     pages,
     files: canonicalizeProjectFiles(baseProject, pages),
   });
-  const editorState = { ...defaultEditorState, ...snapshot.editorState };
+  const mergedEditorState = { ...defaultEditorState, ...snapshot.editorState };
+  const editorState = {
+    ...mergedEditorState,
+    rightPanelTab: normalizeRightPanelTab((snapshot.editorState as { rightPanelTab?: EditorState["rightPanelTab"] | "properties" } | undefined)?.rightPanelTab),
+  };
   const aiChats = Array.isArray(snapshot.aiChats) ? snapshot.aiChats : [];
   const mediaFile = createMediaLibraryFile(project.media);
 
@@ -704,6 +767,7 @@ export async function saveProjectSnapshot(
       brief_json: project.brief,
       blueprint_json: project.blueprint,
       seo_json: project.seo,
+      integration_settings_json: project.integrationSettings,
       status: project.status,
       created_at: project.createdAt,
       updated_at: project.updatedAt,
@@ -717,6 +781,8 @@ export async function saveProjectSnapshot(
       purpose: page.purpose,
       html: page.html,
       sections_json: page.sections ?? [],
+      meta_json: page.meta,
+      revision: page.revision ?? 1,
       status: page.status,
       error: page.error ?? null,
       sort_order: index,

@@ -1,5 +1,5 @@
 import type { Project, ProjectPage } from "@/types";
-import { uid } from "@/lib/utils";
+import { buildProjectPageNavigationLinks, uid } from "@/lib/utils";
 import { resolveBlockAlias } from "./aliases";
 
 interface DesignTokens {
@@ -90,7 +90,7 @@ interface SmartFormSpec {
 }
 
 type CollectionFieldType = "text" | "textarea" | "image" | "list";
-type WidgetFieldType = "text" | "textarea" | "number" | "datetime-local";
+type WidgetFieldType = "text" | "textarea" | "number" | "datetime-local" | "image";
 
 interface CollectionFieldDef {
   key: string;
@@ -305,6 +305,21 @@ function renderFormField(field: SmartFormField, tokens: DesignTokens): string {
   return `<div style="${shellStyle}">${label}<input type="${field.type ?? "text"}" name="${field.name}" placeholder="${field.placeholder ?? ""}" style="${controlStyle}" /></div>`;
 }
 
+function renderLeadCaptureHoneypotField(tokens: DesignTokens): string {
+  return `<div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;"><label style="display:block;font-size:11px;color:${tokens.muted};">Leave this field empty<input data-sz-capture-honeypot="1" type="text" name="website" tabindex="-1" autocomplete="off" style="display:block;width:1px;height:1px;opacity:0;" /></label></div>`;
+}
+
+function renderLeadCaptureFeedback(tokens: DesignTokens, extraStyle = ""): string {
+  return `<p data-sz-capture-feedback="1" data-sz-capture-feedback-state="idle" style="margin:0;font-size:12px;line-height:1.6;color:${tokens.muted};${extraStyle}"></p>`;
+}
+
+function projectPageNavLinks(project: Project, fallback: Array<[string, string]>): Array<[string, string]> {
+  const links = buildProjectPageNavigationLinks(project.pages ?? [], (_page, _index, slug) =>
+    slug === "home" ? "/" : `/${slug}`
+  );
+  return links.length ? links.map((link) => [link.label, link.href]) : fallback;
+}
+
 export function buildBlockHtml(blockId: string, project: Project): string {
   const resolvedBlockId = resolveBlockAlias(blockId);
   const tokens = inferTokens(project);
@@ -317,12 +332,16 @@ export function buildBlockHtml(blockId: string, project: Project): string {
     case "navbar": {
       const navbarState = {
         brand: siteName,
+        brandImage: "",
+        brandAlt: siteName,
         ctaLabel: "Book a call",
         ctaUrl: "#",
       };
-      const navbarLinks = [["Home", "#"], ["About", "#"], ["Services", "#"]] as const;
+      const navbarLinks = projectPageNavLinks(project, [["Home", "/"]]);
       return `<nav data-sz-section-id="${id}" data-sz-section-type="navbar" data-sz-section-name="Navbar" ${widgetAttrs("navbar", "Navbar", [
         { key: "brand", label: "Brand", type: "text", placeholder: siteName },
+        { key: "brandImage", label: "Brand Image", type: "image", placeholder: "https://example.com/logo.svg" },
+        { key: "brandAlt", label: "Brand Alt", type: "text", placeholder: `${siteName} logo` },
         { key: "ctaLabel", label: "CTA Label", type: "text", placeholder: "Book a call" },
         { key: "ctaUrl", label: "CTA URL", type: "text", placeholder: "#" },
       ], navbarState)} style="position:sticky;top:0;z-index:40;padding:18px 32px;border-bottom:1px solid ${tokens.border};background:color-mix(in srgb, ${tokens.bg} 92%, white 8%);backdrop-filter:blur(18px);font-family:'${tokens.bodyFont}',system-ui,sans-serif;"><div style="width:min(100%,${tokens.containerWidth});margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:20px;"><a href="#" ${widgetPartAttr("brand")} style="font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:22px;font-weight:800;color:${tokens.text};text-decoration:none;">${navbarState.brand}</a><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;"><div ${collectionAttrs("nav-links", "Navigation Links", [
@@ -333,12 +352,16 @@ export function buildBlockHtml(blockId: string, project: Project): string {
     case "navbar-center": {
       const navbarCenterState = {
         brand: siteName,
+        brandImage: "",
+        brandAlt: siteName,
         ctaLabel: "Get started",
         ctaUrl: "#",
       };
-      const navbarCenterLinks = [["Home", "#"], ["Work", "#"], ["About", "#"]] as const;
+      const navbarCenterLinks = projectPageNavLinks(project, [["Home", "/"]]);
       return `<nav data-sz-section-id="${id}" data-sz-section-type="navbar" data-sz-section-name="Navbar Center" ${widgetAttrs("navbar-center", "Navbar Center", [
         { key: "brand", label: "Brand", type: "text", placeholder: siteName },
+        { key: "brandImage", label: "Brand Image", type: "image", placeholder: "https://example.com/logo.svg" },
+        { key: "brandAlt", label: "Brand Alt", type: "text", placeholder: `${siteName} logo` },
         { key: "ctaLabel", label: "CTA Label", type: "text", placeholder: "Get started" },
         { key: "ctaUrl", label: "CTA URL", type: "text", placeholder: "#" },
       ], navbarCenterState)} style="position:sticky;top:0;z-index:40;padding:16px 32px;border-bottom:1px solid ${tokens.border};background:${tokens.bg};font-family:'${tokens.bodyFont}',system-ui,sans-serif;"><div style="width:min(100%,${tokens.containerWidth});margin:0 auto;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;"><div ${collectionAttrs("nav-links", "Navigation Links", [
@@ -349,6 +372,8 @@ export function buildBlockHtml(blockId: string, project: Project): string {
     case "navbar-minimal": {
       const navbarMinimalState = {
         brand: siteName,
+        brandImage: "",
+        brandAlt: siteName,
       };
       const navbarMinimalActions = [
         ["Book a call", "#"],
@@ -356,6 +381,8 @@ export function buildBlockHtml(blockId: string, project: Project): string {
       ] as const;
       return `<nav data-sz-section-id="${id}" data-sz-section-type="navbar" data-sz-section-name="Navbar Minimal" ${widgetAttrs("navbar-minimal", "Navbar Minimal", [
         { key: "brand", label: "Brand", type: "text", placeholder: siteName },
+        { key: "brandImage", label: "Brand Image", type: "image", placeholder: "https://example.com/logo.svg" },
+        { key: "brandAlt", label: "Brand Alt", type: "text", placeholder: `${siteName} logo` },
       ], navbarMinimalState)} style="position:sticky;top:0;z-index:40;padding:18px 32px;background:${tokens.bg};font-family:'${tokens.bodyFont}',system-ui,sans-serif;"><div style="width:min(100%,${tokens.containerWidth});margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;"><a href="#" ${widgetPartAttr("brand")} style="font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:22px;font-weight:800;color:${tokens.text};text-decoration:none;">${navbarMinimalState.brand}</a><div ${collectionAttrs("navbar-actions", "Action Buttons", [
         { key: "label", label: "Label", type: "text", placeholder: "Book a call" },
         { key: "url", label: "URL", type: "text", placeholder: "#" },
@@ -539,22 +566,25 @@ export function buildBlockHtml(blockId: string, project: Project): string {
       );
     }
     case "cta": {
+      const ctaFormId = `${id}-cta-capture`;
       const ctaState = {
         title: "Ready to move faster?",
         body: "A focused next step for visitors who are ready to take action.",
-        primaryLabel: "Start now",
-        primaryUrl: "#",
+        placeholder: "Enter your work email",
+        primaryLabel: "Get updates",
+        note: "Occasional updates and product notes. Your email stays private.",
         secondaryLabel: "Talk to sales",
         secondaryUrl: "#",
       };
       return shell(id, "cta", "Call To Action", tokens, `<div ${widgetAttrs("cta", "Call To Action", [
         { key: "title", label: "Title", type: "text", placeholder: "Ready to move faster?" },
         { key: "body", label: "Body", type: "textarea", placeholder: "A focused next step for visitors who are ready to take action." },
-        { key: "primaryLabel", label: "Primary Button", type: "text", placeholder: "Start now" },
-        { key: "primaryUrl", label: "Primary URL", type: "text", placeholder: "#" },
+        { key: "placeholder", label: "Email Placeholder", type: "text", placeholder: "Enter your work email" },
+        { key: "primaryLabel", label: "Submit Label", type: "text", placeholder: "Get updates" },
+        { key: "note", label: "Helper Note", type: "text", placeholder: "Occasional updates and product notes. Your email stays private." },
         { key: "secondaryLabel", label: "Secondary Button", type: "text", placeholder: "Talk to sales" },
         { key: "secondaryUrl", label: "Secondary URL", type: "text", placeholder: "#" },
-      ], ctaState)} style="padding:44px;border-radius:${tokens.radius};background:${tokens.strongBg};box-shadow:${tokens.shadow};text-align:center;"><h2 ${widgetPartAttr("title")} style="margin:0 0 14px;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:clamp(30px,5vw,48px);color:${tokens.bg};">${ctaState.title}</h2><p ${widgetPartAttr("body")} style="margin:0 auto 24px;max-width:620px;font-size:17px;line-height:1.75;color:rgba(255,255,255,0.76);">${ctaState.body}</p><div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;"><a data-sz-cta-primary="1" ${widgetPartAttr("primary-url")} href="${ctaState.primaryUrl}" style="padding:16px 24px;border-radius:${tokens.buttonRadius};background:${tokens.bg};color:${tokens.strongBg};text-decoration:none;font-size:15px;font-weight:700;"><span ${widgetPartAttr("primary-label")}>${ctaState.primaryLabel}</span></a><a data-sz-cta-secondary="1" ${widgetPartAttr("secondary-url")} href="${ctaState.secondaryUrl}" style="padding:16px 24px;border-radius:${tokens.buttonRadius};border:1px solid rgba(255,255,255,0.18);color:${tokens.bg};text-decoration:none;font-size:15px;font-weight:600;"><span ${widgetPartAttr("secondary-label")}>${ctaState.secondaryLabel}</span></a></div></div>`);
+      ], ctaState)} style="padding:44px;border-radius:${tokens.radius};background:${tokens.strongBg};box-shadow:${tokens.shadow};text-align:center;"><h2 ${widgetPartAttr("title")} style="margin:0 0 14px;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:clamp(30px,5vw,48px);color:${tokens.bg};">${ctaState.title}</h2><p ${widgetPartAttr("body")} style="margin:0 auto 24px;max-width:620px;font-size:17px;line-height:1.75;color:rgba(255,255,255,0.76);">${ctaState.body}</p><form data-sz-capture-kind="newsletter" data-sz-capture-form-id="${ctaFormId}" style="position:relative;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;max-width:680px;margin:0 auto;"><input ${widgetPartAttr("placeholder")} type="email" name="email" required autocomplete="email" inputmode="email" placeholder="${ctaState.placeholder}" style="flex:1 1 320px;min-width:240px;padding:16px 18px;border-radius:${tokens.buttonRadius};border:1px solid rgba(255,255,255,0.14);background:${tokens.bg};color:${tokens.strongBg};font-size:15px;outline:none;font-family:'${tokens.bodyFont}',system-ui,sans-serif;" />${renderLeadCaptureHoneypotField(tokens)}<button type="submit" ${widgetPartAttr("primary-label")} style="padding:16px 24px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:15px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;box-shadow:0 14px 32px ${primaryGlow};">${ctaState.primaryLabel}</button>${renderLeadCaptureFeedback(tokens, "width:100%;color:rgba(255,255,255,0.72);")}</form><p ${widgetPartAttr("note")} style="margin:14px auto 0;max-width:520px;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.54);">${ctaState.note}</p><div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:22px;"><a data-sz-cta-secondary="1" ${widgetPartAttr("secondary-url")} href="${ctaState.secondaryUrl}" style="padding:16px 24px;border-radius:${tokens.buttonRadius};border:1px solid rgba(255,255,255,0.18);color:${tokens.bg};text-decoration:none;font-size:15px;font-weight:600;"><span ${widgetPartAttr("secondary-label")}>${ctaState.secondaryLabel}</span></a></div></div>`);
     }
     case "split-image": {
       const splitImageState = {
@@ -796,11 +826,13 @@ export function buildBlockHtml(blockId: string, project: Project): string {
       ])}><div style="text-align:center;margin-bottom:24px;"><p ${widgetPartAttr("eyebrow")} style="margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${tokens.muted};">Seen in the workflows of modern teams</p></div><div data-sz-logo-scroller="1" style="position:relative;overflow:hidden;border-radius:${tokens.radius};border:1px solid ${tokens.border};background:${tokens.softBg};padding:18px 0;"><div data-sz-logo-track="1" data-sz-collection-items="1">${chips}</div></div></div>`, tokens.softBg);
     }
     case "cta-strip": {
+      const ctaStripFormId = `${id}-cta-strip-capture`;
       const ctaStripState = {
         title: "Ready to get started?",
         body: `Join thousands of teams already using ${siteName}.`,
-        buttonLabel: "Start free →",
-        buttonUrl: "#",
+        placeholder: "Enter your email",
+        buttonLabel: "Join now",
+        note: "Occasional updates and launch notes. Your email stays private.",
       };
       return shell(
         id,
@@ -810,18 +842,20 @@ export function buildBlockHtml(blockId: string, project: Project): string {
         `<div ${widgetAttrs("cta-strip", "CTA Strip", [
           { key: "title", label: "Title", type: "text", placeholder: "Ready to get started?" },
           { key: "body", label: "Body", type: "textarea", placeholder: "Join thousands of teams already using Sitezy." },
-          { key: "buttonLabel", label: "Button Label", type: "text", placeholder: "Start free →" },
-          { key: "buttonUrl", label: "Button URL", type: "text", placeholder: "#" },
-        ], ctaStripState)} style="display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:28px 32px;border-radius:${tokens.radius};background:${tokens.softBg};border:1px solid ${primaryGlow};"><div><h3 ${widgetPartAttr("title")} style="margin:0 0 4px;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:22px;color:${tokens.text};">${ctaStripState.title}</h3><p ${widgetPartAttr("body")} style="margin:0;font-size:14px;line-height:1.75;color:${tokens.muted};">${ctaStripState.body}</p></div><a ${widgetPartAttr("button-url")} href="${ctaStripState.buttonUrl}" style="padding:14px 24px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;text-decoration:none;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 12px 28px ${primaryGlow};"><span ${widgetPartAttr("button-label")}>${ctaStripState.buttonLabel}</span></a></div>`,
+          { key: "placeholder", label: "Email Placeholder", type: "text", placeholder: "Enter your email" },
+          { key: "buttonLabel", label: "Submit Label", type: "text", placeholder: "Join now" },
+          { key: "note", label: "Helper Note", type: "text", placeholder: "Occasional updates and launch notes. Your email stays private." },
+        ], ctaStripState)} style="display:grid;gap:18px;padding:28px 32px;border-radius:${tokens.radius};background:${tokens.softBg};border:1px solid ${primaryGlow};"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;"><div style="min-width:220px;flex:1 1 260px;"><h3 ${widgetPartAttr("title")} style="margin:0 0 4px;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:22px;color:${tokens.text};">${ctaStripState.title}</h3><p ${widgetPartAttr("body")} style="margin:0;font-size:14px;line-height:1.75;color:${tokens.muted};">${ctaStripState.body}</p></div><form data-sz-capture-kind="newsletter" data-sz-capture-form-id="${ctaStripFormId}" style="position:relative;display:flex;gap:12px;flex:1 1 420px;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end;"><input ${widgetPartAttr("placeholder")} type="email" name="email" required autocomplete="email" inputmode="email" placeholder="${ctaStripState.placeholder}" style="flex:1 1 260px;min-width:220px;padding:14px 18px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;font-family:'${tokens.bodyFont}',system-ui,sans-serif;" />${renderLeadCaptureHoneypotField(tokens)}<button type="submit" ${widgetPartAttr("button-label")} style="padding:14px 24px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;box-shadow:0 12px 28px ${primaryGlow};">${ctaStripState.buttonLabel}</button>${renderLeadCaptureFeedback(tokens, "width:100%;text-align:right;")}</form></div><p ${widgetPartAttr("note")} style="margin:0;font-size:12px;line-height:1.7;color:${tokens.muted};">${ctaStripState.note}</p></div>`,
       );
     }
     case "newsletter": {
+      const newsletterFormId = `${id}-newsletter`;
       const newsletterState = {
         title: "Stay in the loop",
         body: "Get insights, product updates, and resources delivered to your inbox.",
         placeholder: "Your email address",
         buttonLabel: "Subscribe",
-        note: "No spam. Unsubscribe any time.",
+        note: "Occasional updates and product notes. Your email stays private.",
       };
       return shell(
         id,
@@ -833,8 +867,8 @@ export function buildBlockHtml(blockId: string, project: Project): string {
           { key: "body", label: "Body", type: "textarea", placeholder: "Get insights, product updates, and resources delivered to your inbox." },
           { key: "placeholder", label: "Input Placeholder", type: "text", placeholder: "Your email address" },
           { key: "buttonLabel", label: "Button Label", type: "text", placeholder: "Subscribe" },
-          { key: "note", label: "Note", type: "text", placeholder: "No spam. Unsubscribe any time." },
-        ], newsletterState)} style="text-align:center;max-width:560px;margin:0 auto;display:grid;gap:20px;"><h2 ${widgetPartAttr("title")} style="margin:0;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:clamp(28px,4vw,44px);color:${tokens.text};">${newsletterState.title}</h2><p ${widgetPartAttr("body")} style="margin:0;font-size:16px;line-height:1.8;color:${tokens.muted};">${newsletterState.body}</p><form style="display:flex;gap:10px;" onsubmit="return false;"><input ${widgetPartAttr("placeholder")} type="email" placeholder="${newsletterState.placeholder}" style="flex:1;padding:14px 18px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;font-family:'${tokens.bodyFont}',system-ui,sans-serif;" /><button type="submit" ${widgetPartAttr("button-label")} style="padding:14px 22px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;box-shadow:0 10px 24px ${primaryGlow};">${newsletterState.buttonLabel}</button></form><p ${widgetPartAttr("note")} style="margin:0;font-size:12px;color:${tokens.muted};">${newsletterState.note}</p></div>`,
+          { key: "note", label: "Note", type: "text", placeholder: "Occasional updates and product notes. Your email stays private." },
+        ], newsletterState)} style="text-align:center;max-width:560px;margin:0 auto;display:grid;gap:20px;"><h2 ${widgetPartAttr("title")} style="margin:0;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:clamp(28px,4vw,44px);color:${tokens.text};">${newsletterState.title}</h2><p ${widgetPartAttr("body")} style="margin:0;font-size:16px;line-height:1.8;color:${tokens.muted};">${newsletterState.body}</p><form data-sz-capture-kind="newsletter" data-sz-capture-form-id="${newsletterFormId}" style="position:relative;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;"><input ${widgetPartAttr("placeholder")} type="email" name="email" placeholder="${newsletterState.placeholder}" style="flex:1;min-width:240px;padding:14px 18px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;font-family:'${tokens.bodyFont}',system-ui,sans-serif;" />${renderLeadCaptureHoneypotField(tokens)}<button type="submit" ${widgetPartAttr("button-label")} style="padding:14px 22px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;white-space:nowrap;box-shadow:0 10px 24px ${primaryGlow};">${newsletterState.buttonLabel}</button>${renderLeadCaptureFeedback(tokens, "width:100%;")}</form><p ${widgetPartAttr("note")} style="margin:0;font-size:12px;color:${tokens.muted};">${newsletterState.note}</p></div>`,
       );
     }
     case "footer": {
@@ -927,6 +961,7 @@ export function buildBlockHtml(blockId: string, project: Project): string {
       );
     }
     case "contact": {
+      const contactFormId = `${id}-contact`;
       const contactState = {
         title: "Get in touch",
         body: "We'd love to hear from you. Fill out the form or reach us directly.",
@@ -946,7 +981,7 @@ export function buildBlockHtml(blockId: string, project: Project): string {
         { key: "label", label: "Label", type: "text", placeholder: "Address" },
         { key: "value", label: "Value", type: "textarea", placeholder: "123 Main Street" },
         { key: "icon", label: "Icon", type: "text", placeholder: "📍" },
-      ], { fixed: true })} data-sz-collection-items="1" style="display:grid;gap:16px;">${contactItems.map(([icon, label, value], index) => `<div ${collectionItemAttr(`contact-detail-${index + 1}`)} style="display:flex;gap:12px;"><span ${collectionFieldAttr("icon")} style="font-size:18px;line-height:1;">${icon}</span><div><p ${collectionFieldAttr("label")} style="margin:0 0 2px;font-size:13px;font-weight:700;color:${tokens.text};">${label}</p><p ${collectionFieldAttr("value", "textarea")} style="margin:0;font-size:13px;color:${tokens.muted};white-space:pre-line;">${value}</p></div></div>`).join("")}</div></div><div style="padding:28px;border-radius:${tokens.radius};background:${tokens.bg};border:1px solid ${tokens.border};box-shadow:${tokens.shadow};"><form style="display:grid;gap:14px;" onsubmit="return false;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">First name</label><input placeholder="Alex" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Last name</label><input placeholder="Johnson" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Email</label><input type="email" placeholder="alex@example.com" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Message</label><textarea rows="4" placeholder="Tell us how we can help…" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;resize:vertical;box-sizing:border-box;font-family:inherit;"></textarea></div><button type="submit" ${widgetPartAttr("button-label")} style="padding:14px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 10px 24px ${primaryGlow};">${contactState.buttonLabel}</button></form></div></div>`);
+      ], { fixed: true })} data-sz-collection-items="1" style="display:grid;gap:16px;">${contactItems.map(([icon, label, value], index) => `<div ${collectionItemAttr(`contact-detail-${index + 1}`)} style="display:flex;gap:12px;"><span ${collectionFieldAttr("icon")} style="font-size:18px;line-height:1;">${icon}</span><div><p ${collectionFieldAttr("label")} style="margin:0 0 2px;font-size:13px;font-weight:700;color:${tokens.text};">${label}</p><p ${collectionFieldAttr("value", "textarea")} style="margin:0;font-size:13px;color:${tokens.muted};white-space:pre-line;">${value}</p></div></div>`).join("")}</div></div><div style="padding:28px;border-radius:${tokens.radius};background:${tokens.bg};border:1px solid ${tokens.border};box-shadow:${tokens.shadow};"><form data-sz-capture-kind="contact" data-sz-capture-form-id="${contactFormId}" style="position:relative;display:grid;gap:14px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">First name</label><input name="first_name" placeholder="Alex" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Last name</label><input name="last_name" placeholder="Johnson" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Email</label><input name="email" type="email" placeholder="alex@example.com" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;box-sizing:border-box;" /></div><div><label style="display:block;font-size:12px;font-weight:700;color:${tokens.text};margin:0 0 6px;">Message</label><textarea name="message" rows="4" placeholder="Tell us how we can help…" style="width:100%;padding:11px 14px;border-radius:${tokens.buttonRadius};border:1px solid ${tokens.border};background:${tokens.bg};color:${tokens.text};font-size:14px;outline:none;resize:vertical;box-sizing:border-box;font-family:inherit;"></textarea></div>${renderLeadCaptureHoneypotField(tokens)}<button type="submit" ${widgetPartAttr("button-label")} style="padding:14px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 10px 24px ${primaryGlow};">${contactState.buttonLabel}</button>${renderLeadCaptureFeedback(tokens)}</form></div></div>`);
     }
     case "comparison": {
       const comparisonState = {
@@ -1165,11 +1200,12 @@ export function buildInlineHtml(blockId: string, project: Project, page?: Projec
     case "contact-form":
       {
         const spec = inferFormSpec(project, page);
+        const formId = `inline-smart-form-${uid()}`;
         return `<div ${widgetAttrs("contact-form", "Contact Form", [
           { key: "title", label: "Title", type: "text", placeholder: spec.title },
           { key: "description", label: "Description", type: "textarea", placeholder: spec.description },
           { key: "submitLabel", label: "Submit Label", type: "text", placeholder: spec.submitLabel },
-        ], { title: spec.title, description: spec.description, submitLabel: spec.submitLabel })} style="margin:0 0 20px;padding:24px;border-radius:${tokens.radius};background:${tokens.bg};border:1px solid ${tokens.border};box-shadow:${tokens.shadow};"><div style="display:grid;gap:8px;margin-bottom:18px;"><h3 ${widgetPartAttr("title")} style="margin:0;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:24px;line-height:1.1;color:${tokens.text};">${spec.title}</h3><p ${widgetPartAttr("description")} style="margin:0;font-size:14px;line-height:1.75;color:${tokens.muted};">${spec.description}</p></div><form style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;" onsubmit="return false;">${spec.fields.map((field) => renderFormField(field, tokens)).join("")}<div style="grid-column:1 / -1;display:flex;justify-content:flex-start;"><button type="submit" style="padding:14px 22px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 10px 24px ${primaryGlow};"><span ${widgetPartAttr("submit-label")}>${spec.submitLabel}</span></button></div></form></div>`;
+        ], { title: spec.title, description: spec.description, submitLabel: spec.submitLabel })} style="margin:0 0 20px;padding:24px;border-radius:${tokens.radius};background:${tokens.bg};border:1px solid ${tokens.border};box-shadow:${tokens.shadow};"><div style="display:grid;gap:8px;margin-bottom:18px;"><h3 ${widgetPartAttr("title")} style="margin:0;font-family:'${tokens.headingFont}',system-ui,sans-serif;font-size:24px;line-height:1.1;color:${tokens.text};">${spec.title}</h3><p ${widgetPartAttr("description")} style="margin:0;font-size:14px;line-height:1.75;color:${tokens.muted};">${spec.description}</p></div><form data-sz-capture-kind="contact" data-sz-capture-form-id="${formId}" style="position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;">${spec.fields.map((field) => renderFormField(field, tokens)).join("")}<div style="grid-column:1 / -1;">${renderLeadCaptureHoneypotField(tokens)}</div><div style="grid-column:1 / -1;display:flex;justify-content:flex-start;"><button type="submit" style="padding:14px 22px;border-radius:${tokens.buttonRadius};background:${tokens.primary};color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 10px 24px ${primaryGlow};"><span ${widgetPartAttr("submit-label")}>${spec.submitLabel}</span></button></div><div style="grid-column:1 / -1;">${renderLeadCaptureFeedback(tokens)}</div></form></div>`;
       }
     // ── Layout containers ──────────────────────────────────────────────────────
     case "container":

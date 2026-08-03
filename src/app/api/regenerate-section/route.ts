@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { regenerateSection } from "@/lib/ai/service";
+import { recordAdaptiveLearningEvent } from "@/lib/server/ai-learning";
 import { consumeAIUsageCredits } from "@/lib/server/launch-usage";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 import {
@@ -15,7 +16,7 @@ import {
 import type { BlueprintPage, SiteBlueprint, SiteBrief } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
@@ -31,9 +32,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await parseRequestBody<{
+      projectId?: string;
       blueprint?: SiteBlueprint;
       brief?: SiteBrief;
-      page?: Pick<BlueprintPage, "name" | "purpose">;
+      page?: Pick<BlueprintPage, "name" | "purpose"> & {
+        id?: string;
+        slug?: string;
+      };
       section?: {
         id?: string;
         type?: string;
@@ -71,7 +76,8 @@ export async function POST(req: NextRequest) {
         previousSectionName: body.section?.previousSectionName ?? null,
         nextSectionName: body.section?.nextSectionName ?? null,
       },
-      body.instruction?.trim() || undefined
+      body.instruction?.trim() || undefined,
+      { userId: user.id, projectId: body.projectId ?? null }
     ).catch((err) => {
       throw createAppError({
         code: API_GENERATE_001,
@@ -90,6 +96,22 @@ export async function POST(req: NextRequest) {
         metadata: { pageName: body.page?.name, sectionName: body.section?.name, hasHtml: !!html },
       });
     }
+
+    await recordAdaptiveLearningEvent({
+      userId: user.id,
+      projectId: body.projectId ?? null,
+      eventType: "section_regenerated",
+      brief: body.brief!,
+      metadata: {
+        pageId: body.page!.id ?? null,
+        pageSlug: body.page!.slug ?? null,
+        pageName: body.page!.name,
+        pagePurpose: body.page!.purpose,
+        sectionId: body.section!.id ?? null,
+        sectionType: body.section!.type!,
+        sectionName: body.section!.name!,
+      },
+    });
 
     return Response.json({ html });
   } catch (err) {

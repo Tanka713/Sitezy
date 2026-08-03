@@ -9,6 +9,8 @@ import type {
   ProjectSnapshot,
   PublishedSite,
 } from "@/types";
+import { normalizeProjectIntegrationSettings } from "@/lib/lead-capture";
+import { normalizeProjectPageMeta } from "@/lib/project-pages";
 import { normalizeProjectSeo } from "@/lib/seo";
 import {
   buildLocalPublishedPath,
@@ -66,6 +68,7 @@ type ProjectDeploymentRow = {
   status: string;
   published_url: string;
   page_count: number;
+  source_deployment_id?: string | null;
   project_json?: unknown;
   published_at: string | null;
   created_at: string;
@@ -159,6 +162,8 @@ function normalizeStoredPage(input: unknown, index: number): ProjectPage {
         ? raw.status
         : "pending",
     error: typeof raw.error === "string" ? raw.error : undefined,
+    revision: typeof raw.revision === "number" && Number.isFinite(raw.revision) ? Math.max(1, Math.trunc(raw.revision)) : 1,
+    meta: normalizeProjectPageMeta(raw.meta, raw),
   };
 }
 
@@ -180,6 +185,7 @@ function normalizeStoredProject(input: unknown): Project {
     },
     blueprint: raw.blueprint ?? null,
     seo: normalizeProjectSeo(raw.seo, raw),
+    integrationSettings: normalizeProjectIntegrationSettings(raw.integrationSettings),
     pages: Array.isArray(raw.pages) ? raw.pages.map(normalizeStoredPage) : [],
     files: raw.files && typeof raw.files === "object" ? raw.files : {},
     media: Array.isArray(raw.media) ? raw.media : [],
@@ -226,6 +232,7 @@ function mapProjectDeployment(row: ProjectDeploymentRow): ProjectDeployment {
     status: normalizeDeploymentStatus(row.status),
     publishedUrl: row.published_url,
     pageCount: row.page_count,
+    sourceDeploymentId: row.source_deployment_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
@@ -589,13 +596,12 @@ export async function getPublishedSiteForProject(
   return result.get(projectId) ?? null;
 }
 
-export async function publishProjectSnapshot(
-  snapshot: ProjectSnapshot,
+async function publishSanitizedProject(
+  project: Project,
   userId: string,
-  options?: DbClientOptions
+  options?: DbClientOptions & { sourceDeploymentId?: string | null }
 ): Promise<PublishedSite> {
   const client = getPublishingDbClient(options);
-  const project = sanitizeDeploymentProject(snapshot.project);
 
   if (project.status === "generating") {
     throw createAppError({
@@ -684,6 +690,7 @@ export async function publishProjectSnapshot(
       status: "publishing",
       published_url: publishedUrl,
       page_count: project.pages.length,
+      source_deployment_id: options?.sourceDeploymentId ?? null,
       project_json: project,
       published_at: null,
       created_at: now,
@@ -776,6 +783,14 @@ export async function publishProjectSnapshot(
   return publishedSite;
 }
 
+export async function publishProjectSnapshot(
+  snapshot: ProjectSnapshot,
+  userId: string,
+  options?: DbClientOptions
+): Promise<PublishedSite> {
+  return publishSanitizedProject(sanitizeDeploymentProject(snapshot.project), userId, options);
+}
+
 export async function listProjectDeployments(
   projectId: string,
   userId: string,
@@ -786,7 +801,7 @@ export async function listProjectDeployments(
 
   const query = client
     .from("project_deployments")
-    .select("id, published_site_id, project_id, user_id, version_number, status, published_url, page_count, published_at, created_at, updated_at")
+    .select("id, published_site_id, project_id, user_id, version_number, status, published_url, page_count, source_deployment_id, published_at, created_at, updated_at")
     .eq("project_id", projectId)
     .order("version_number", { ascending: false });
   if (!options?.admin) {
@@ -802,6 +817,67 @@ export async function listProjectDeployments(
   }
 
   return ((data ?? []) as ProjectDeploymentRow[]).map(mapProjectDeployment);
+}
+
+async function readDeploymentRow(
+  projectId: string,
+  userId: string,
+  deploymentId: string,
+  options?: DbClientOptions
+) {
+  const client = getPublishingDbClient(options);
+  await ensureProjectOwnership(client, projectId, userId, options);
+
+  const query = client
+    .from("project_deployments")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("id", deploymentId);
+  if (!options?.admin) {
+    query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    throw buildPublishingDbError(error, DB_READ_001, `Failed to read deployment ${deploymentId} for project ${projectId}`, {
+      projectId,
+      userId,
+      deploymentId,
+    });
+  }
+  if (!data) {
+    throw createAppError({
+      code: DB_READ_002,
+      devMessage: `Deployment ${deploymentId} not found for project ${projectId}`,
+      severity: "warn",
+      metadata: { projectId, userId, deploymentId },
+    });
+  }
+
+  return data as ProjectDeploymentRow;
+}
+
+export async function readProjectDeploymentProject(
+  projectId: string,
+  userId: string,
+  deploymentId: string,
+  options?: DbClientOptions
+): Promise<Project> {
+  const row = await readDeploymentRow(projectId, userId, deploymentId, options);
+  return normalizeStoredProject(row.project_json);
+}
+
+export async function republishProjectDeployment(
+  projectId: string,
+  userId: string,
+  deploymentId: string,
+  options?: DbClientOptions
+) {
+  const project = await readProjectDeploymentProject(projectId, userId, deploymentId, options);
+  return publishSanitizedProject(project, userId, {
+    ...options,
+    sourceDeploymentId: deploymentId,
+  });
 }
 
 export async function addProjectDomain(
@@ -1033,6 +1109,7 @@ export interface ResolvedPublishedProject {
   site: PublishedSite;
   deployment: ProjectDeployment;
   project: Project;
+  ownerUserId: string;
 }
 
 async function loadResolvedPublishedProject(
@@ -1086,6 +1163,7 @@ async function loadResolvedPublishedProject(
     site,
     deployment: mapProjectDeployment(deploymentRow as ProjectDeploymentRow),
     project: normalizeStoredProject((deploymentRow as ProjectDeploymentRow).project_json),
+    ownerUserId: siteRow.user_id,
   };
 }
 

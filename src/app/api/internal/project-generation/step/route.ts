@@ -9,7 +9,7 @@ import {
 } from "@/lib/errors";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 function assertWorkerSecret(req: NextRequest) {
   const configuredSecret = process.env.SITEZY_WORKER_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;

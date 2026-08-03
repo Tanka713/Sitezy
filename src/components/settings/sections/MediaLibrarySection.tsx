@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ImageIcon, Search, Trash2, Upload, Video, X, Download,
+  ImageIcon, Search, Trash2, Upload, Video,
   Grid2X2, List, MoreHorizontal, Pencil, ExternalLink,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { normalizeMediaAsset, USER_MEDIA_BUCKET } from "@/lib/media/library";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { SettingsGroup, SettingsStack } from "../ui";
+import { SettingsModal, SettingsPrimaryAction, SettingsSecondaryAction, SettingsStack } from "../ui";
 import type { ProjectMediaAsset } from "@/types";
 
 /* ── Image optimization (shared with MediaLibraryModal) ─────────────────── */
@@ -140,6 +140,8 @@ export function MediaLibrarySection() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+  const [pendingDeleteAsset, setPendingDeleteAsset] = useState<ProjectMediaAsset | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const dragDepthRef = useRef(0);
 
   const assets = useMemo(() => {
@@ -257,15 +259,25 @@ export function MediaLibrarySection() {
   }
 
   /* ── Delete ── */
-  async function handleDelete(assetId: string) {
+  function requestDelete(asset: ProjectMediaAsset) {
+    setPendingDeleteAsset(asset);
     setContextMenuId(null);
-    await removeMediaAsset(assetId);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDeleteAsset) return;
+    setIsDeleting(true);
+    try {
+      await removeMediaAsset(pendingDeleteAsset.id);
+      setPendingDeleteAsset(null);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
     <SettingsStack>
-      {/* Upload action */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="space-y-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -274,62 +286,66 @@ export function MediaLibrarySection() {
           className="hidden"
           onChange={(e) => { void handleUpload(e.target.files); }}
         />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-[#5B8CFF]/30 bg-[#5B8CFF]/[0.08] px-4 text-[12px] font-semibold text-[#5B8CFF] transition-all hover:border-[#5B8CFF]/50 hover:bg-[#5B8CFF]/[0.14] disabled:cursor-wait disabled:opacity-60"
-        >
-          <Upload size={14} />
-          {isUploading ? "Uploading..." : "Upload"}
-        </button>
-      </div>
 
-      {/* Stats bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-4 rounded-[14px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-2.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
-            <ImageIcon size={12} className="text-[var(--fg-faint)]" />
-            <span className="font-semibold text-[var(--text-primary)]">{mediaLibrary.filter((a) => a.kind === "image").length}</span>
-            images
+        {/* Stats bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-4 rounded-[14px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-2.5">
+            <div className="flex items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
+              <ImageIcon size={12} className="text-[var(--fg-faint)]" />
+              <span className="font-semibold text-[var(--text-primary)]">{mediaLibrary.filter((a) => a.kind === "image").length}</span>
+              images
+            </div>
+            <div className="h-3.5 w-px bg-[var(--border-soft)]" />
+            <div className="flex items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
+              <Video size={12} className="text-[var(--fg-faint)]" />
+              <span className="font-semibold text-[var(--text-primary)]">{mediaLibrary.filter((a) => a.kind === "video").length}</span>
+              videos
+            </div>
+            <div className="h-3.5 w-px bg-[var(--border-soft)]" />
+            <div className="text-[11px] text-[var(--fg-muted)]">
+              <span className="font-semibold text-[var(--text-primary)]">{formatFileSize(totalSize)}</span> total
+            </div>
           </div>
-          <div className="h-3.5 w-px bg-[var(--border-soft)]" />
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
-            <Video size={12} className="text-[var(--fg-faint)]" />
-            <span className="font-semibold text-[var(--text-primary)]">{mediaLibrary.filter((a) => a.kind === "video").length}</span>
-            videos
+
+          <div className="flex-1" />
+
+          {/* Search */}
+          <div className="relative min-w-[200px] max-w-[320px] flex-1">
+            <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--fg-subtle)]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search assets..."
+              className="h-9 w-full rounded-[12px] border border-[var(--border-softer)] bg-[var(--surface-4)] pl-9 pr-3 text-[12px] text-[var(--fg-soft)] placeholder-[var(--fg-subtle)] focus:border-[var(--accent-primary,#5B8CFF)]/35 focus:outline-none"
+            />
           </div>
-          <div className="h-3.5 w-px bg-[var(--border-soft)]" />
-          <div className="text-[11px] text-[var(--fg-muted)]">
-            <span className="font-semibold text-[var(--text-primary)]">{formatFileSize(totalSize)}</span> total
+
+          {/* View toggle */}
+          <div className="flex items-center gap-0.5 rounded-[10px] border border-[var(--border-soft)] bg-[var(--surface-3)] p-0.5">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`flex h-7 w-7 items-center justify-center rounded-[8px] transition-all ${viewMode === "grid" ? "bg-[var(--surface-4)] text-[var(--text-primary)] shadow-sm" : "text-[var(--fg-faint)] hover:text-[var(--fg-muted)]"}`}
+            >
+              <Grid2X2 size={13} />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex h-7 w-7 items-center justify-center rounded-[8px] transition-all ${viewMode === "list" ? "bg-[var(--surface-4)] text-[var(--text-primary)] shadow-sm" : "text-[var(--fg-faint)] hover:text-[var(--fg-muted)]"}`}
+            >
+              <List size={13} />
+            </button>
           </div>
         </div>
 
-        <div className="flex-1" />
-
-        {/* Search */}
-        <div className="relative min-w-[200px] max-w-[320px] flex-1">
-          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--fg-subtle)]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search assets..."
-            className="h-9 w-full rounded-[12px] border border-[var(--border-softer)] bg-[var(--surface-4)] pl-9 pr-3 text-[12px] text-[var(--fg-soft)] placeholder-[var(--fg-subtle)] focus:border-[var(--accent-primary,#5B8CFF)]/35 focus:outline-none"
-          />
-        </div>
-
-        {/* View toggle */}
-        <div className="flex items-center gap-0.5 rounded-[10px] border border-[var(--border-soft)] bg-[var(--surface-3)] p-0.5">
+        {/* Upload action */}
+        <div className="flex items-center justify-end gap-2">
           <button
-            onClick={() => setViewMode("grid")}
-            className={`flex h-7 w-7 items-center justify-center rounded-[8px] transition-all ${viewMode === "grid" ? "bg-[var(--surface-4)] text-[var(--text-primary)] shadow-sm" : "text-[var(--fg-faint)] hover:text-[var(--fg-muted)]"}`}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-[#5B8CFF]/30 bg-[#5B8CFF]/[0.08] px-4 text-[12px] font-semibold text-[#5B8CFF] transition-all hover:border-[#5B8CFF]/50 hover:bg-[#5B8CFF]/[0.14] disabled:cursor-wait disabled:opacity-60"
           >
-            <Grid2X2 size={13} />
-          </button>
-          <button
-            onClick={() => setViewMode("list")}
-            className={`flex h-7 w-7 items-center justify-center rounded-[8px] transition-all ${viewMode === "list" ? "bg-[var(--surface-4)] text-[var(--text-primary)] shadow-sm" : "text-[var(--fg-faint)] hover:text-[var(--fg-muted)]"}`}
-          >
-            <List size={13} />
+            <Upload size={14} />
+            {isUploading ? "Uploading..." : "Upload"}
           </button>
         </div>
       </div>
@@ -392,7 +408,7 @@ export function MediaLibrarySection() {
                         <ExternalLink size={11} />
                       </a>
                       <button
-                        onClick={(e) => { e.stopPropagation(); void handleDelete(asset.id); }}
+                        onClick={(e) => { e.stopPropagation(); requestDelete(asset); }}
                         className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-softer)] bg-[var(--bg-frost)] text-[var(--fg-soft)] transition-all hover:border-red-400/30 hover:text-red-400"
                       >
                         <Trash2 size={11} />
@@ -401,7 +417,7 @@ export function MediaLibrarySection() {
 
                     {/* Size overlay */}
                     {asset.size ? (
-                      <div className="absolute bottom-2 right-2.5 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-white/70 backdrop-blur-sm">
+                      <div className="absolute bottom-2 right-2.5 rounded-full border border-[var(--border-soft)] bg-[var(--bg-frost)] px-2 py-0.5 text-[9px] font-medium text-[var(--fg-soft)] backdrop-blur-sm">
                         {formatFileSize(asset.size)}
                       </div>
                     ) : null}
@@ -529,7 +545,7 @@ export function MediaLibrarySection() {
                               </a>
                               <div className="mx-2 my-1 h-px bg-[var(--border-soft)]" />
                               <button
-                                onClick={(e) => { e.stopPropagation(); void handleDelete(asset.id); }}
+                                onClick={(e) => { e.stopPropagation(); requestDelete(asset); }}
                                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[12px] text-red-400 transition-colors hover:bg-red-500/10"
                               >
                                 <Trash2 size={12} /> Delete
@@ -571,6 +587,41 @@ export function MediaLibrarySection() {
           </div>
         )}
       </div>
+
+      <SettingsModal
+        open={Boolean(pendingDeleteAsset)}
+        title="Delete media?"
+        onClose={() => {
+          if (isDeleting) return;
+          setPendingDeleteAsset(null);
+        }}
+        body={
+          pendingDeleteAsset ? (
+            <p className="text-[14px] leading-7 text-[var(--text-secondary)]">
+              Delete <span className="font-semibold text-[var(--text-primary)]">{pendingDeleteAsset.name}</span> from your media library? This can’t be undone.
+            </p>
+          ) : null
+        }
+        actions={
+          <>
+            <SettingsSecondaryAction
+              type="button"
+              onClick={() => setPendingDeleteAsset(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </SettingsSecondaryAction>
+            <SettingsPrimaryAction
+              type="button"
+              onClick={() => void confirmDelete()}
+              disabled={isDeleting}
+              className="bg-[linear-gradient(135deg,#eb5e67_0%,#cf4459_100%)] border-red-400/30 shadow-[0_12px_28px_rgba(207,68,89,0.22)] hover:bg-[linear-gradient(135deg,#f06a74_0%,#d14a5e_100%)]"
+            >
+              {isDeleting ? "Deleting..." : "Delete media"}
+            </SettingsPrimaryAction>
+          </>
+        }
+      />
     </SettingsStack>
   );
 }

@@ -8,7 +8,8 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Underline, Strikethrough,
   ChevronDown, MousePointer2, Link, Globe, Mail, Phone, Anchor, FileText, X,
-  Video, FormInput, ToggleLeft, Monitor, Tablet, Smartphone, Plus, Copy, Trash2,
+  Video, FormInput, ToggleLeft, Monitor, Tablet, Smartphone, Plus, Copy, Trash2, Code2,
+  Wand2,
 } from "lucide-react";
 import { EditorSwitch } from "./EditorSwitch";
 import type {
@@ -257,19 +258,103 @@ const RESPONSIVE_DEVICE_OPTIONS = [
   { value: "mobile" as const, label: "Mobile", icon: <Smartphone size={12} />, short: "Mobile" },
 ];
 
-const PANEL_CARD = "rounded-xl border border-white/[0.06] bg-white/[0.02]";
-const PANEL_SUBCARD = "rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-3";
+const PANEL_CARD = "rounded-xl border border-[var(--border-soft)] bg-[var(--surface-3)]";
+const PANEL_SUBCARD = "rounded-lg border border-[var(--border-soft)] bg-[var(--surface-3)] px-3 py-3";
 const PANEL_INPUT =
-  "w-full min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.04] px-3 py-2 text-[11px] text-white/70 placeholder-white/20 focus:outline-none focus:border-[#5B8CFF]/30 focus:bg-white/[0.05] transition-colors";
+  "w-full min-w-0 min-h-[36px] rounded-lg bg-[var(--surface-5)] px-3 py-2 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-colors";
+const PANEL_TEXTAREA = `${PANEL_INPUT} min-h-[84px] resize-y leading-6`;
 const PANEL_SELECT = `${PANEL_INPUT} appearance-none`;
 const PANEL_BUTTON_PRIMARY =
-  "px-2.5 py-1.5 rounded-lg bg-[#5B8CFF]/15 text-[10px] font-medium text-[#5B8CFF] hover:bg-[#5B8CFF]/25 transition-colors";
+  "px-2.5 py-1.5 rounded-md bg-[var(--text-accent)]/15 text-[11px] font-medium text-[var(--text-accent)] hover:bg-[var(--text-accent)]/25 transition-colors";
 const PANEL_BUTTON_SECONDARY =
-  "px-2.5 py-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] text-[10px] font-medium text-white/45 hover:text-white/70 hover:border-white/[0.12] transition-colors";
+  "px-2.5 py-1.5 rounded-md bg-[var(--surface-5)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors";
 const PANEL_BUTTON_ICON =
-  "inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/[0.12] transition-colors";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--surface-5)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors";
+const INSPECTOR_GROUP = "";
+const INSPECTOR_VALUE_FIELD =
+  "flex min-h-[36px] items-center gap-2 rounded-lg bg-[var(--surface-5)] px-3 transition-colors focus-within:ring-1 focus-within:ring-[var(--border-focus)]";
+const INSPECTOR_SEGMENTED =
+  "grid gap-0.5 rounded-lg bg-[var(--surface-5)] p-0.5";
+const INSPECTOR_PRESET_BTN =
+  "min-h-[32px] rounded-md text-[11px] font-semibold tracking-tight transition-colors";
+const INSPECTOR_PRESET_BTN_ON = "bg-[var(--surface-3)] text-[var(--text-accent)]";
+const INSPECTOR_PRESET_BTN_OFF =
+  "text-[var(--text-tertiary)] hover:bg-[var(--surface-5)] hover:text-[var(--text-secondary)]";
+const INSPECTOR_SLIDER_SHELL =
+  "px-1 py-1.5";
+const SECTION_CONTROL_PANEL =
+  "space-y-3.5";
+const SECTION_CONTROL_ITEM =
+  "space-y-3";
+const SECTION_CONTROL_TITLE =
+  "text-[14px] font-semibold leading-5 tracking-[-0.02em] text-[var(--text-primary)]";
+const SECTION_CONTROL_META =
+  "text-[12px] leading-5 text-[var(--text-secondary)]";
+const SECTION_CONTROL_ACTIONS =
+  "flex flex-wrap items-center gap-1.5 shrink-0";
+const SECTION_CONTROL_ACTION_BAR =
+  "inline-flex items-center gap-1 rounded-lg bg-[var(--surface-5)] p-1";
+const SECTION_CONTROL_ACTION_ICON =
+  "inline-flex h-8 w-8 items-center justify-center rounded-[9px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40";
+const SECTION_CONTROL_ACTION_ICON_DANGER =
+  `${SECTION_CONTROL_ACTION_ICON} text-rose-400 hover:bg-rose-500/10 hover:text-rose-300`;
+const SECTION_CONTROL_FIELD_SHELL =
+  "space-y-2";
+const SECTION_CONTROL_PREVIEW =
+  "overflow-hidden rounded-xl bg-[var(--surface-5)]";
+const SECTION_CONTROL_EMPTY_STATE =
+  "flex min-h-[116px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-soft)] px-4 text-center";
+const COLLECTION_ITEM_PANEL =
+  "space-y-4 border-t border-[var(--border-soft)] pt-4 first:border-t-0 first:pt-0";
+const COLLECTION_ITEM_EYEBROW =
+  "text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-disabled)]";
+const COLLECTION_ITEM_HEADING =
+  "truncate text-[13px] font-semibold leading-5 tracking-[-0.02em] text-[var(--text-primary)]";
+const COLLECTION_ADD_BUTTON =
+  "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border-soft)] px-3 py-2.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)]";
+
+type SectionControlTone = "widget" | "collection" | "media" | "neutral";
+
+function sectionControlBadgeClass(tone: SectionControlTone = "neutral"): string {
+  const base =
+    "inline-flex items-center rounded-md px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] whitespace-nowrap";
+
+  if (tone === "widget") {
+    return `${base} bg-[#5B8CFF]/10 text-[#8EA8FF]`;
+  }
+
+  if (tone === "collection") {
+    return `${base} bg-emerald-400/10 text-emerald-200/85`;
+  }
+
+  if (tone === "media") {
+    return `${base} bg-amber-400/10 text-amber-200/85`;
+  }
+
+  return `${base} bg-[var(--surface-5)] text-[var(--text-tertiary)]`;
+}
+
+function sectionControlIconWrapClass(tone: SectionControlTone = "neutral"): string {
+  const base =
+    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg";
+
+  if (tone === "widget") {
+    return `${base} bg-[#5B8CFF]/10 text-[#9DB1FF]`;
+  }
+
+  if (tone === "collection") {
+    return `${base} bg-emerald-400/10 text-emerald-200/90`;
+  }
+
+  if (tone === "media") {
+    return `${base} bg-amber-400/10 text-amber-200/90`;
+  }
+
+  return `${base} bg-[var(--surface-5)] text-[var(--text-secondary)]`;
+}
 
 const createClosedAccordionState = (): Record<string, boolean> => ({
+  sectionControls: false,
   responsive: false,
   widget: false,
   items: false,
@@ -288,11 +373,13 @@ const createClosedAccordionState = (): Record<string, boolean> => ({
   animation: false,
   section: false,
   icon: false,
+  css: false,
 });
 
 /** Decide which accordion(s) to open automatically when a new element is selected. */
 function getDefaultOpenAccordions(node: CanvasNodeInfo): Partial<Record<string, boolean>> {
   const n = node as unknown as Record<string, unknown>;
+  if (node.role === "section")         return { sectionControls: true, background: true };
   // Widget / collection content
   if (n.widgetNodeId || n.widgetKind)  return { widget: true };
   if (n.collectionNodeId)              return { content: true };
@@ -308,8 +395,6 @@ function getDefaultOpenAccordions(node: CanvasNodeInfo): Partial<Record<string, 
   if (node.isBtn || node.href)         return { link: true, typography: true };
   // Pure text
   if (node.isText || node.role === "text") return { typography: true };
-  // Full section → background is the most impactful
-  if (node.role === "section")         return { background: true };
   // Container / layout element
   if (node.role === "container")       return { layout: true };
   // Default: typography covers the most common case
@@ -536,8 +621,142 @@ function createCollectionItem(
   };
 }
 
+interface SectionWidgetControl {
+  id: string;
+  type: "widget";
+  nodeId: string;
+  kind: string;
+  label: string;
+  fields: CanvasWidgetField[];
+  state: Record<string, string>;
+}
+
+interface SectionCollectionControl {
+  id: string;
+  type: "collection";
+  nodeId: string;
+  kind: string;
+  label: string;
+  fields: CanvasCollectionField[];
+  items: CanvasCollectionItem[];
+  fixed: boolean;
+}
+
+interface SectionMediaControl {
+  id: string;
+  type: "media";
+  nodeId: string;
+  kind: "image";
+  label: string;
+  src: string;
+  alt: string;
+}
+
+type SectionStructuredControl = SectionWidgetControl | SectionCollectionControl | SectionMediaControl;
+
+function normalizeSectionStructuredControls(raw: unknown): SectionStructuredControl[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.flatMap((entry): SectionStructuredControl[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const data = entry as Record<string, unknown>;
+    const type = data.type === "widget" || data.type === "collection" || data.type === "media" ? data.type : null;
+    const nodeId = typeof data.nodeId === "string" ? data.nodeId.trim() : "";
+    const kind = typeof data.kind === "string" && data.kind.trim() ? data.kind.trim() : type ?? "control";
+    const label = typeof data.label === "string" && data.label.trim() ? data.label.trim() : kind;
+
+    if (!type || !nodeId) return [];
+
+    if (type === "widget") {
+      const fields = Array.isArray(data.fields)
+        ? (data.fields.filter((field): field is CanvasWidgetField => {
+            if (!field || typeof field !== "object") return false;
+            const candidate = field as Partial<CanvasWidgetField>;
+            return typeof candidate.key === "string" && candidate.key.trim().length > 0;
+          }) as CanvasWidgetField[])
+        : [];
+      if (!fields.length) return [];
+
+      return [{
+        id: `widget:${nodeId}`,
+        type,
+        nodeId,
+        kind,
+        label,
+        fields,
+        state: normalizeWidgetDraft(
+          fields,
+          data.state && typeof data.state === "object"
+            ? (data.state as Record<string, string>)
+            : {},
+        ),
+      }];
+    }
+
+    if (type === "media") {
+      return [{
+        id: `media:${nodeId}`,
+        type,
+        nodeId,
+        kind: "image",
+        label,
+        src: typeof data.src === "string" ? data.src : "",
+        alt: typeof data.alt === "string" ? data.alt : "",
+      }];
+    }
+
+    const fields = Array.isArray(data.fields)
+      ? (data.fields.filter((field): field is CanvasCollectionField => {
+          if (!field || typeof field !== "object") return false;
+          const candidate = field as Partial<CanvasCollectionField>;
+          return typeof candidate.key === "string" && candidate.key.trim().length > 0;
+        }) as CanvasCollectionField[])
+      : [];
+    if (!fields.length) return [];
+
+    const normalizedItems = normalizeCollectionDraft(
+      fields,
+      Array.isArray(data.items) ? (data.items as CanvasCollectionItem[]) : [],
+    );
+
+    return [{
+      id: `collection:${nodeId}`,
+      type,
+      nodeId,
+      kind,
+      label,
+      fields,
+      items: normalizedItems.length ? normalizedItems : [createCollectionItem(fields, 0)],
+      fixed: data.fixed === true,
+    }];
+  });
+}
+
+function humanizeStructuredKind(kind: string): string {
+  return kind
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function shouldHideSectionControlTitle(label?: string | null): boolean {
+  if (!label) return false;
+  return label.replace(/[\s_-]+/g, "").toLowerCase() === "actionbuttons";
+}
+
 type EmbedMode = "youtube" | "map" | "custom";
-type MediaPickerTarget = "image" | "video" | "background" | "section-own-background" | "section-background" | "logos";
+type MediaPickerTarget =
+  | "image"
+  | "video"
+  | "background"
+  | "section-own-background"
+  | "section-background"
+  | "logos"
+  | "widget-image"
+  | "section-widget-image"
+  | "section-control-image"
+  | "section-control-collection-image";
 type LinkInputType = "page" | "url" | "email" | "phone" | "anchor" | "none";
 
 function pageHrefFor(page: { slug?: string; name: string }): string {
@@ -595,6 +814,93 @@ function inferLinkTypeFromValue(rawValue: string): LinkInputType {
 
 function isWidgetLinkField(field: CanvasWidgetField): boolean {
   return /url$/i.test(field.key);
+}
+
+function isCollectionLinkField(field: CanvasCollectionField): boolean {
+  return field.type === "text" && /(url|href|link)$/i.test(field.key);
+}
+
+function formatCollectionItemIndex(index: number): string {
+  return String(index + 1).padStart(2, "0");
+}
+
+function getCollectionItemHeading(
+  fields: CanvasCollectionField[],
+  item: CanvasCollectionItem,
+): string {
+  const prioritizedKeys = ["label", "title", "name", "heading", "text"];
+
+  for (const key of prioritizedKeys) {
+    const prioritizedField = fields.find((field) => field.key.toLowerCase() === key);
+    const candidate = prioritizedField ? item.fields?.[prioritizedField.key] : "";
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+
+  const firstFilledTextField = fields.find((field) => {
+    if (field.type !== "text") return false;
+    if (isCollectionLinkField(field)) return false;
+    const value = item.fields?.[field.key];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+
+  if (firstFilledTextField) {
+    return String(item.fields?.[firstFilledTextField.key] ?? "").trim();
+  }
+
+  return "Untitled item";
+}
+
+function collectionFieldSpansFullRow(field: CanvasCollectionField, compactGrid: boolean): boolean {
+  if (!compactGrid) return false;
+  if (field.type === "textarea" || field.type === "list" || field.type === "image") return true;
+  if (isCollectionLinkField(field)) return true;
+  return /^(label|title|name|heading)$/i.test(field.key);
+}
+
+function collectionLinkTypeStateKey(itemId: string, fieldKey: string): string {
+  return `${itemId}:${fieldKey}`;
+}
+
+function sectionCollectionLinkTypeStateKey(controlId: string, itemId: string, fieldKey: string): string {
+  return `${controlId}:${itemId}:${fieldKey}`;
+}
+
+function inferCollectionLinkTypeMap(
+  fields: CanvasCollectionField[],
+  items: CanvasCollectionItem[],
+): Record<string, LinkInputType> {
+  const linkFields = fields.filter(isCollectionLinkField);
+  if (!linkFields.length || !items.length) return {};
+
+  return Object.fromEntries(
+    items.flatMap((item, index) => {
+      const itemId = item.id || `item-${index + 1}`;
+      return linkFields.map((field) => [
+        collectionLinkTypeStateKey(itemId, field.key),
+        inferLinkTypeFromValue(item.fields?.[field.key] ?? ""),
+      ]);
+    }),
+  );
+}
+
+function inferSectionCollectionLinkTypeMap(
+  controls: SectionStructuredControl[],
+): Record<string, LinkInputType> {
+  return Object.fromEntries(
+    controls.flatMap((control) => {
+      if (control.type !== "collection") return [];
+      const linkFields = control.fields.filter(isCollectionLinkField);
+      if (!linkFields.length || !control.items.length) return [];
+
+      return control.items.flatMap((item, index) => {
+        const itemId = item.id || `item-${index + 1}`;
+        return linkFields.map((field) => [
+          sectionCollectionLinkTypeStateKey(control.id, itemId, field.key),
+          inferLinkTypeFromValue(item.fields?.[field.key] ?? ""),
+        ]);
+      });
+    }),
+  );
 }
 
 function extractYouTubeId(url: string): string | null {
@@ -879,24 +1185,70 @@ function Accordion({ title, icon, open, toggle, children }: {
   title: string; icon: React.ReactNode; open: boolean; toggle: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className={`overflow-hidden rounded-lg transition-colors ${open ? "bg-white/[0.03]" : ""}`}>
-      <button onClick={toggle}
-        className="group flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04] rounded-lg">
-        <span className={`flex h-5 w-5 items-center justify-center rounded-md transition-colors ${
-          open
-            ? "text-[#5B8CFF]"
-            : "text-white/25 group-hover:text-white/50"
+    <div className="overflow-hidden">
+      <button type="button" onClick={toggle}
+        className="group flex w-full items-center gap-2.5 px-1 py-2 text-left transition-colors">
+        <span className={`flex-shrink-0 transition-colors ${
+          open ? "text-[var(--text-accent)]" : "text-[var(--text-disabled)] group-hover:text-[var(--text-secondary)]"
         }`}>
           {icon}
         </span>
-        <div className={`min-w-0 flex-1 text-[11px] font-medium transition-colors ${
-          open ? "text-white/80" : "text-white/50 group-hover:text-white/70"
+        <div className={`min-w-0 flex-1 text-[12px] font-medium tracking-[-0.01em] transition-colors ${
+          open ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]"
         }`}>
           {title}
         </div>
-        <ChevronDown size={12} className={`text-white/20 transition-transform duration-150 flex-shrink-0 ${open ? "rotate-180 text-white/40" : ""}`} />
+        <ChevronDown size={11} className={`flex-shrink-0 text-[var(--text-disabled)] transition-transform duration-150 ${open ? "rotate-180 text-[var(--text-tertiary)]" : ""}`} />
       </button>
-      {open && <div className="px-3 pb-3 pt-1.5 space-y-3.5">{children}</div>}
+      {open && <div className="pb-3 pt-0.5 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
+function SectionControlCard({
+  tone = "neutral",
+  icon,
+  title,
+  meta,
+  badge,
+  aside,
+  children,
+}: {
+  tone?: SectionControlTone;
+  icon?: React.ReactNode;
+  title?: string;
+  meta?: string;
+  badge?: React.ReactNode;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const hasHeaderInfo = Boolean(icon || title || meta || badge);
+  const hasHeader = hasHeaderInfo || aside;
+
+  return (
+    <div className={SECTION_CONTROL_PANEL}>
+      <div className="space-y-3.5">
+        {hasHeader ? (
+          <div className={`flex gap-3 ${hasHeaderInfo ? "items-start justify-between" : "justify-end"}`}>
+            {hasHeaderInfo ? (
+              <div className={`flex min-w-0 flex-1 ${icon ? "items-start gap-3" : "items-center"}`}>
+                {icon ? <span className={sectionControlIconWrapClass(tone)}>{icon}</span> : null}
+                <div className="min-w-0 flex-1 space-y-1">
+                  {(title || badge) ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {title ? <p className={SECTION_CONTROL_TITLE}>{title}</p> : null}
+                      {badge}
+                    </div>
+                  ) : null}
+                  {meta ? <p className={SECTION_CONTROL_META}>{meta}</p> : null}
+                </div>
+              </div>
+            ) : null}
+            {aside ? <div className={`${SECTION_CONTROL_ACTIONS} justify-end`}>{aside}</div> : null}
+          </div>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 }
@@ -910,12 +1262,12 @@ const Label = ({
   overrideActive?: boolean;
   onReset?: () => void;
 }) => (
-  <div className="mb-2 flex items-center justify-between gap-2">
-    <p className="text-[9px] font-medium text-white/30 uppercase tracking-[0.14em]">{children}</p>
+  <div className="mb-1.5 flex items-center justify-between gap-2">
+    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">{children}</p>
     {(overrideActive || onReset) && (
       <div className="flex items-center gap-1.5">
         {overrideActive && (
-          <span className="rounded-full border border-sky-400/24 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-sky-200/78">
+          <span className="rounded-full border border-[#5B8CFF]/18 bg-[#5B8CFF]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#9DB1FF]">
             Override
           </span>
         )}
@@ -923,7 +1275,7 @@ const Label = ({
           <button
             type="button"
             onClick={onReset}
-            className="text-[8px] font-semibold uppercase tracking-[0.14em] text-white/36 hover:text-white/74 transition-colors"
+            className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
           >
             Reset
           </button>
@@ -939,13 +1291,13 @@ function ToggleGroup({ options, value, onChange }: {
   value: string; onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
+    <div className={INSPECTOR_SEGMENTED} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
       {options.map((o) => (
-        <button key={o.val} title={o.title} onClick={() => onChange(o.val)}
-          className={`flex h-7 flex-1 items-center justify-center rounded-md text-[11px] transition-colors ${
+        <button key={o.val} title={o.title} type="button" onClick={() => onChange(o.val)}
+          className={`flex min-h-[34px] items-center justify-center rounded-md px-1.5 text-[11px] font-semibold leading-tight transition-colors ${
             value === o.val
-              ? "bg-white/[0.1] text-white/90"
-              : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]"
+              ? "bg-[var(--surface-3)] text-[var(--text-primary)]"
+              : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
           }`}>
           {o.icon}
         </button>
@@ -972,7 +1324,7 @@ function PresetSelect({
         if (!e.target.value) return;
         onChange(e.target.value);
       }}
-      className="h-8 min-w-[100px] rounded-lg border border-white/[0.07] bg-white/[0.04] px-2.5 text-[11px] text-white/65 focus:outline-none appearance-none leading-none"
+      className={`${PANEL_SELECT} h-10 min-w-[100px] px-3 text-[11px] leading-none`}
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (
@@ -1004,7 +1356,7 @@ function RangeSlider({
   const safeValue = Math.min(max, Math.max(min, value));
   const percent = max <= min ? 0 : ((safeValue - min) / (max - min)) * 100;
   const trackStyle = {
-    background: `linear-gradient(90deg, rgba(91,140,255,0.5) 0%, rgba(91,140,255,0.5) ${percent}%, rgba(255,255,255,0.08) ${percent}%, rgba(255,255,255,0.08) 100%)`,
+    background: `linear-gradient(90deg, rgba(91,140,255,0.72) 0%, rgba(91,140,255,0.72) ${percent}%, rgba(255,255,255,0.11) ${percent}%, rgba(255,255,255,0.11) 100%)`,
   } as React.CSSProperties;
 
   return (
@@ -1013,49 +1365,50 @@ function RangeSlider({
         .sz-range {
           -webkit-appearance: none;
           appearance: none;
-          height: 4px;
+          height: 5px;
           border-radius: 9999px;
           outline: none;
           cursor: pointer;
-          background-color: rgba(255,255,255,0.08);
+          background-color: rgba(255,255,255,0.1);
         }
         .sz-range::-webkit-slider-runnable-track {
-          height: 4px;
+          height: 5px;
           border-radius: 9999px;
           background: transparent;
         }
         .sz-range::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 14px;
-          height: 14px;
+          width: 16px;
+          height: 16px;
           border-radius: 9999px;
-          background: #ffffff;
-          border: 2px solid rgba(91,140,255,0.4);
-          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-          margin-top: -5px;
-          transition: border-color 0.15s;
+          background: #f7f9ff;
+          border: 2px solid rgba(91,140,255,0.58);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.28);
+          margin-top: -5.5px;
+          transition: border-color 0.15s, transform 0.15s;
         }
         .sz-range::-webkit-slider-thumb:hover {
-          border-color: rgba(91,140,255,0.7);
+          border-color: rgba(91,140,255,0.82);
+          transform: scale(1.04);
         }
         .sz-range::-moz-range-track {
-          height: 4px;
+          height: 5px;
           border-radius: 9999px;
-          background: rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.1);
         }
         .sz-range::-moz-range-progress {
-          height: 4px;
+          height: 5px;
           border-radius: 9999px;
-          background: rgba(91,140,255,0.5);
+          background: rgba(91,140,255,0.72);
         }
         .sz-range::-moz-range-thumb {
-          width: 14px;
-          height: 14px;
+          width: 16px;
+          height: 16px;
           border-radius: 9999px;
-          background: #ffffff;
-          border: 2px solid rgba(91,140,255,0.4);
-          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+          background: #f7f9ff;
+          border: 2px solid rgba(91,140,255,0.58);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.28);
         }
       `}</style>
       <input
@@ -1103,12 +1456,12 @@ function SliderField({
   const rangeValue = Number.isNaN(parsed) ? min : Math.min(max, Math.max(min, parsed));
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex items-center justify-between gap-1">
-        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-white/30 truncate">{label}</p>
+        <p className="truncate text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--text-tertiary)]">{label}</p>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {overrideActive && (
-            <span className="rounded-full bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-medium text-sky-300/70">
+            <span className="rounded-full bg-[var(--accent-subtle)] px-1.5 py-0.5 text-[8px] font-medium text-[var(--text-accent)]">
               Override
             </span>
           )}
@@ -1116,42 +1469,42 @@ function SliderField({
             <button
               type="button"
               onClick={onReset}
-              className="text-[8px] font-medium text-white/30 hover:text-white/60 transition-colors"
+              className="text-[8px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
             >
               Reset
             </button>
           )}
         </div>
       </div>
-      <div className="h-7 w-full rounded-md border border-white/[0.07] bg-white/[0.04] px-2 transition-colors focus-within:border-[#5B8CFF]/30">
-        <div className="flex h-full items-center gap-1">
-          <input
-            value={value}
-            type="number"
-            min={min}
-            max={max}
-            step={step}
-            onFocus={onFocus}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={() => onCommit(value)}
-            className="h-full w-full bg-transparent text-[11px] text-white/70 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          {unit ? (
-            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-white/25">
-              {unit}
-            </span>
-          ) : null}
-        </div>
+      <div className={INSPECTOR_VALUE_FIELD}>
+        <input
+          value={value}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          onFocus={onFocus}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => onCommit(value)}
+          className="editor-plain-input h-full w-full bg-transparent text-[11px] font-medium text-[var(--text-primary)] focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        {unit ? (
+          <span className="shrink-0 text-[8.5px] font-semibold uppercase tracking-[0.14em] text-[var(--text-disabled)]">
+            {unit}
+          </span>
+        ) : null}
       </div>
-      <RangeSlider
-        value={rangeValue}
-        min={min}
-        max={max}
-        step={step}
-        onFocus={onFocus}
-        onBlur={() => onCommit(String(rangeValue))}
-        onChange={onChange}
-      />
+      <div className={INSPECTOR_SLIDER_SHELL}>
+        <RangeSlider
+          value={rangeValue}
+          min={min}
+          max={max}
+          step={step}
+          onFocus={onFocus}
+          onBlur={() => onCommit(String(rangeValue))}
+          onChange={onChange}
+        />
+      </div>
     </div>
   );
 }
@@ -1328,6 +1681,121 @@ function UrlApplyField({
   );
 }
 
+// ── Shadow builder helpers ──────────────────────────────────────────────────
+type ShadowLayer = { x: number; y: number; blur: number; spread: number; color: string; inset: boolean; };
+
+function parseShadowValue(css: string): ShadowLayer[] {
+  const def: ShadowLayer = { x: 0, y: 4, blur: 8, spread: 0, color: "rgba(0,0,0,0.15)", inset: false };
+  if (!css || css === "none") return [{ ...def }];
+  const parts: string[] = [];
+  let depth = 0, curr = "";
+  for (const ch of css) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === "," && depth === 0) { parts.push(curr); curr = ""; } else curr += ch;
+  }
+  if (curr.trim()) parts.push(curr);
+  return parts.map((part): ShadowLayer => {
+    let s = part.trim();
+    const inset = /^inset\b/.test(s);
+    if (inset) s = s.replace(/^inset\s+/, "");
+    let color = "rgba(0,0,0,0.15)";
+    const rgbaM = s.match(/rgba?\([^)]+\)/);
+    if (rgbaM) { color = rgbaM[0]; s = s.replace(rgbaM[0], "").trim(); }
+    else { const hexM = s.match(/#[0-9a-fA-F]{3,8}/); if (hexM) { color = hexM[0]; s = s.replace(hexM[0], "").trim(); } }
+    const pts = s.trim().split(/\s+/).filter(Boolean);
+    return { inset, color, x: parseFloat(pts[0]||"0")||0, y: parseFloat(pts[1]||"0")||0, blur: parseFloat(pts[2]||"0")||0, spread: parseFloat(pts[3]||"0")||0 };
+  });
+}
+
+function buildShadowCss(layers: ShadowLayer[]): string {
+  if (!layers.length) return "none";
+  return layers.map(l => `${l.inset?"inset ":""}${l.x}px ${l.y}px ${l.blur}px ${l.spread}px ${l.color}`).join(", ");
+}
+
+function ShadowBuilder({ value, onChange }: { value: string; onChange: (css: string) => void }) {
+  const [layers, setLayers] = useState<ShadowLayer[]>(() => parseShadowValue(value || "none"));
+  const [activeIdx, setActiveIdx] = useState(0);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    if (prevRef.current !== value) { prevRef.current = value; setLayers(parseShadowValue(value || "none")); setActiveIdx(0); }
+  }, [value]);
+  const updateLayer = (idx: number, patch: Partial<ShadowLayer>) => {
+    const next = layers.map((l, i) => i === idx ? { ...l, ...patch } : l);
+    setLayers(next); onChange(buildShadowCss(next));
+  };
+  const addLayer = () => {
+    const next = [...layers, { x: 0, y: 4, blur: 8, spread: 0, color: "rgba(0,0,0,0.15)", inset: false }];
+    setLayers(next); setActiveIdx(next.length - 1); onChange(buildShadowCss(next));
+  };
+  const removeLayer = (idx: number) => {
+    const next = layers.filter((_, i) => i !== idx);
+    const nextLayers = next.length ? next : [];
+    setLayers(nextLayers); setActiveIdx(Math.min(activeIdx, Math.max(0, nextLayers.length - 1)));
+    onChange(nextLayers.length ? buildShadowCss(nextLayers) : "none");
+  };
+  const layer = layers[activeIdx] ?? null;
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-1 flex-wrap">
+        {layers.map((_, i) => (
+          <button key={i} onClick={() => setActiveIdx(i)}
+            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-semibold border transition-all ${
+              i === activeIdx ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20" : "bg-white/[0.04] text-white/40 border-transparent hover:text-white/60"
+            }`}>
+            Layer {i + 1}
+            {layers.length > 1 && <X size={8} className="ml-0.5 opacity-50 hover:opacity-100" onClick={(e) => { e.stopPropagation(); removeLayer(i); }} />}
+          </button>
+        ))}
+        {layers.length < 4 && (
+          <button onClick={addLayer} className="rounded-lg border border-white/[0.08] px-2 py-1 text-[9px] text-white/30 hover:text-white/60 hover:border-white/[0.18] transition-all">
+            + Add
+          </button>
+        )}
+        <button onClick={() => { setLayers([]); onChange("none"); }} className="ml-auto rounded-lg border border-white/[0.06] px-2 py-1 text-[9px] text-white/25 hover:text-rose-300/70 hover:border-rose-400/20 transition-all">
+          None
+        </button>
+      </div>
+      {layer && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <SliderField label="X Offset" value={String(layer.x)} min={-80} max={80} step={1} unit="px"
+              onChange={(v) => updateLayer(activeIdx, { x: parseFloat(v)||0 })}
+              onCommit={(v) => updateLayer(activeIdx, { x: parseFloat(v)||0 })} />
+            <SliderField label="Y Offset" value={String(layer.y)} min={-80} max={80} step={1} unit="px"
+              onChange={(v) => updateLayer(activeIdx, { y: parseFloat(v)||0 })}
+              onCommit={(v) => updateLayer(activeIdx, { y: parseFloat(v)||0 })} />
+            <SliderField label="Blur" value={String(layer.blur)} min={0} max={80} step={1} unit="px"
+              onChange={(v) => updateLayer(activeIdx, { blur: parseFloat(v)||0 })}
+              onCommit={(v) => updateLayer(activeIdx, { blur: parseFloat(v)||0 })} />
+            <SliderField label="Spread" value={String(layer.spread)} min={-20} max={40} step={1} unit="px"
+              onChange={(v) => updateLayer(activeIdx, { spread: parseFloat(v)||0 })}
+              onCommit={(v) => updateLayer(activeIdx, { spread: parseFloat(v)||0 })} />
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="flex-1 min-w-0">
+              <Label>Shadow Color</Label>
+              <ColorPicker
+                value={safeHex(layer.color) ?? "#000000"}
+                onChange={(hex) => updateLayer(activeIdx, { color: hex })}
+              />
+            </div>
+            <div className="flex-shrink-0">
+              <Label>Inset</Label>
+              <button
+                onClick={() => updateLayer(activeIdx, { inset: !layer.inset })}
+                className={`rounded-lg border px-3 py-1.5 text-[10px] font-semibold transition-all ${
+                  layer.inset ? "bg-[#5B8CFF]/12 text-[#5B8CFF] border-[#5B8CFF]/20" : "border-white/[0.08] text-white/35 hover:border-white/[0.16] hover:text-white/60"
+                }`}
+              >{layer.inset ? "Inset ✓" : "Inset"}</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SurfaceBackgroundEditor({
   repeat,
   attachment,
@@ -1369,7 +1837,7 @@ function SurfaceBackgroundEditor({
           <select
             value={repeat}
             onChange={(e) => onRepeatChange(e.target.value)}
-            className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+            className={PANEL_SELECT}
           >
             {BG_REPEAT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -1434,8 +1902,28 @@ function SurfaceBackgroundEditor({
                   </button>
                 ))}
               </div>
+              {/* Custom angle input — only for linear gradients */}
+              {gradientDir !== "circle at center" && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="text-[9px] text-white/30 flex-shrink-0">Custom angle</span>
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={360}
+                      value={parseInt(gradientDir) || 0}
+                      onChange={(e) => {
+                        const deg = Math.min(360, Math.max(0, parseInt(e.target.value) || 0));
+                        onGradientDirChange(`${deg}deg`);
+                      }}
+                      className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1 pr-7 text-[11px] text-white/70 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-white/28">°</span>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
               <div>
                 <Label>From</Label>
                 <ColorPicker value={gradientFrom} onChange={onGradientFromChange} />
@@ -1538,18 +2026,28 @@ function BoxModel({ label, t, r, b, l, onT, onR, onB, onL, accent, fieldKey, set
 export function EditPanel({ iframeRef, onClose, project }: Props) {
   const node           = useAppStore((s) => s.editor.selectedNode) as CanvasNodeInfo | null;
   const editing        = useAppStore((s) => s.editor.isCanvasEditing);
+  const visualEditMode = useAppStore((s) => s.editor.visualEditMode);
+  const setVisualEditMode = useAppStore((s) => s.setVisualEditMode);
   const devicePreview  = useAppStore((s) => s.editor.devicePreview);
   const setDevicePreview = useAppStore((s) => s.setDevicePreview);
   const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
+  const selectedSectionId = useAppStore((s) => s.editor.selectedSectionId);
   const mediaLibrary   = useAppStore((s) => s.mediaLibrary);
   const selectPage     = useAppStore((s) => s.selectPage);
+  const toggleRightSidebar = useAppStore((s) => s.toggleRightSidebar);
+  const rightSidebarOpen = useAppStore((s) => s.editor.rightSidebarOpen);
+  const setRightPanel = useAppStore((s) => s.setRightPanel);
   const currentPage    = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
+  const activeSectionId = node?.sectionId ?? selectedSectionId ?? null;
+  const activeSectionMeta = currentPage?.sections.find((section) => section.id === activeSectionId) ?? null;
   const lastSyncedSelectionKeyRef = useRef<string | null>(null);
 
   // Accordion open/close state
   const [open, setOpen] = useState<Record<string, boolean>>(createClosedAccordionState);
   const [iconSearch, setIconSearch] = useState("");
   const toggle = (k: string) => setOpen((s) => ({ ...s, [k]: !s[k] }));
+  // CSS editor state
+  const [cssDraft, setCssDraft] = useState("");
 
   // Local spacing mirrors (numbers)
   const [pT, setPT] = useState(0); const [pR, setPR] = useState(0);
@@ -1584,6 +2082,22 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const [widgetDraft, setWidgetDraft] = useState<Record<string, string>>({});
   const [widgetLinkTypes, setWidgetLinkTypes] = useState<Record<string, LinkInputType>>({});
   const [collectionDraft, setCollectionDraft] = useState<CanvasCollectionItem[]>([]);
+  const [collectionLinkTypes, setCollectionLinkTypes] = useState<Record<string, LinkInputType>>({});
+  const [sectionControls, setSectionControls] = useState<SectionStructuredControl[]>([]);
+  const [sectionCollectionLinkTypes, setSectionCollectionLinkTypes] = useState<Record<string, LinkInputType>>({});
+  const [sectionControlsLoading, setSectionControlsLoading] = useState(false);
+  const [sectionControlsReady, setSectionControlsReady] = useState(false);
+  const [widgetImagePicker, setWidgetImagePicker] = useState<{ fieldKey: string } | null>(null);
+  const [sectionWidgetImagePicker, setSectionWidgetImagePicker] = useState<{
+    controlId: string;
+    fieldKey: string;
+  } | null>(null);
+  const [sectionMediaPicker, setSectionMediaPicker] = useState<{ controlId: string } | null>(null);
+  const [sectionCollectionImagePicker, setSectionCollectionImagePicker] = useState<{
+    controlId: string;
+    itemIndex: number;
+    fieldKey: string;
+  } | null>(null);
   const [mediaPickerTarget, setMediaPickerTarget] = useState<MediaPickerTarget | null>(null);
   // Size inputs
   const [wVal,  setWVal]  = useState("");
@@ -1657,6 +2171,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     lastSyncedSelectionKeyRef.current = null;
     setActiveField(null);
     setWidgetLinkTypes({});
+    setCollectionLinkTypes({});
+    setSectionCollectionLinkTypes({});
     setOpen((current) => {
       if (!Object.values(current).some(Boolean)) return current;
       return createClosedAccordionState();
@@ -1704,10 +2220,15 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       );
     }
     if (!currentActiveField?.startsWith("collection:")) {
-      setCollectionDraft(
-        normalizeCollectionDraft(
+      const nextCollectionDraft = normalizeCollectionDraft(
+        ((node as any).collectionFields ?? []) as CanvasCollectionField[],
+        (((node as any).collectionItems ?? []) as CanvasCollectionItem[]),
+      );
+      setCollectionDraft(nextCollectionDraft);
+      setCollectionLinkTypes(
+        inferCollectionLinkTypeMap(
           ((node as any).collectionFields ?? []) as CanvasCollectionField[],
-          (((node as any).collectionItems ?? []) as CanvasCollectionItem[]),
+          nextCollectionDraft,
         ),
       );
     }
@@ -1760,9 +2281,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     if (currentActiveField !== "underlineOffset") setLocalUnderlineOffset(parseSizeToken(node.textUnderlineOffset, 0));
     if (currentActiveField !== "opacity") setLocalOpacity(parseFloat(node.opacity ?? "1"));
     if (currentActiveField !== "border") setLocalBorder(node.border || "none");
-    if (currentActiveField !== "borderWidth") setBorderWidthVal(parseSizeToken(node.borderWidth, 0));
-    if (currentActiveField !== "borderStyle") setBorderStyleVal(node.borderStyle || "none");
-    if (currentActiveField !== "borderColor") setBorderColorVal(safeHex(node.borderColor ?? node.color));
+    if (currentActiveField !== "borderWidth") setBorderWidthVal(parseSizeToken(node.buttonSurfaceBorderWidth ?? node.borderWidth, 0));
+    if (currentActiveField !== "borderStyle") setBorderStyleVal(node.buttonSurfaceBorderStyle ?? node.borderStyle ?? "none");
+    if (currentActiveField !== "borderColor") setBorderColorVal(safeHex(node.buttonSurfaceBorderColor ?? node.borderColor ?? node.color));
     if (currentActiveField !== "backgroundImage") {
       const gradient = parseGradientBackground(node.backgroundImage);
       // Use clean URL from bgImageSrc (strips url("...") wrapper)
@@ -1789,6 +2310,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     }
     if (selectionChanged) {
       setOpen((prev) => ({ ...prev, ...createClosedAccordionState(), ...getDefaultOpenAccordions(node) }) as Record<string, boolean>);
+      // Reset CSS draft on new selection
+      setCssDraft((node as any).inlineStyle ?? (node as any).style ?? "");
     }
     if ((node as any).isIconEl) {
       setIconSize((node as any).iconSize ?? 32);
@@ -1861,6 +2384,11 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     node?.borderWidth,
     node?.borderStyle,
     node?.borderColor,
+    node?.buttonSurfaceNodeId,
+    node?.buttonSurfaceBackgroundColor,
+    node?.buttonSurfaceBorderWidth,
+    node?.buttonSurfaceBorderStyle,
+    node?.buttonSurfaceBorderColor,
     node?.backgroundImage,
     node?.bgImageSrc,
     node?.backgroundPosition,
@@ -1894,12 +2422,45 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     );
   }, [iframeRef]);
 
+  useEffect(() => {
+    function handleSectionControlsMessage(e: MessageEvent) {
+      if (!e.data || e.data.source !== "sitezy-editor" || e.data.type !== "section-structured-controls") return;
+      const payload = e.data.payload as { sectionId?: string | null; controls?: unknown } | null;
+      if (!payload || payload.sectionId !== activeSectionId) return;
+      const normalizedControls = normalizeSectionStructuredControls(payload.controls);
+      setSectionControls(normalizedControls);
+      setSectionCollectionLinkTypes(inferSectionCollectionLinkTypeMap(normalizedControls));
+      setSectionControlsLoading(false);
+      setSectionControlsReady(true);
+    }
+
+    window.addEventListener("message", handleSectionControlsMessage);
+    return () => window.removeEventListener("message", handleSectionControlsMessage);
+  }, [activeSectionId]);
+
+  useEffect(() => {
+    if (!node?.isSec || !activeSectionId) {
+      setSectionControls([]);
+      setSectionCollectionLinkTypes({});
+      setSectionControlsLoading(false);
+      setSectionControlsReady(false);
+      return;
+    }
+
+    setSectionControls([]);
+    setSectionCollectionLinkTypes({});
+    setSectionControlsLoading(true);
+    setSectionControlsReady(false);
+    send("get-section-structured-controls", { sectionId: activeSectionId });
+  }, [activeSectionId, node?.isSec, node?.nodeId, send]);
+
   const clearResponsiveOverrides = useCallback(() => {
     if (!node || devicePreview === "desktop") return;
     const nodeIds = Array.from(
       new Set(
         [
           node.nodeId,
+          node.buttonSurfaceNodeId,
           node.textTargetNodeId,
           node.mediaTargetNodeId,
           node.animationTargetNodeId,
@@ -1913,6 +2474,22 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       )
     );
     send("clear-responsive-overrides", { nodeIds });
+  }, [devicePreview, node, send]);
+
+  const copyDesktopToBreakpoint = useCallback(() => {
+    if (!node || devicePreview === "desktop") return;
+    const nodeIds = Array.from(new Set([
+      node.nodeId,
+      node.buttonSurfaceNodeId,
+      node.textTargetNodeId,
+      node.mediaTargetNodeId,
+      node.animationTargetNodeId,
+      node.animationEntranceTargetNodeId,
+      node.animationHoverTargetNodeId,
+      node.linkTargetNodeId,
+      node.listTargetNodeId,
+    ].filter((v): v is string => Boolean(v))));
+    send("copy-desktop-styles", { nodeIds });
   }, [devicePreview, node, send]);
 
   const setCurrentVisibility = useCallback((visible: boolean) => {
@@ -1950,8 +2527,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           : scope === "list"
             ? [node.listTargetNodeId ?? node.nodeId]
         : scope === "all"
-          ? [node.nodeId, node.textTargetNodeId, node.mediaTargetNodeId, node.animationTargetNodeId, node.animationEntranceTargetNodeId, node.animationHoverTargetNodeId, node.linkTargetNodeId, node.listTargetNodeId]
-          : [node.nodeId];
+          ? [node.nodeId, node.buttonSurfaceNodeId, node.textTargetNodeId, node.mediaTargetNodeId, node.animationTargetNodeId, node.animationEntranceTargetNodeId, node.animationHoverTargetNodeId, node.linkTargetNodeId, node.listTargetNodeId]
+          : [node.isBtn ? (node.buttonSurfaceNodeId ?? node.nodeId) : node.nodeId];
     const nodeIds = Array.from(new Set(targets.filter((value): value is string => Boolean(value))));
     if (!nodeIds.length) return;
     send("clear-responsive-property", { nodeIds, props });
@@ -2067,6 +2644,12 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   function applyBorderConfig(width: string, style: string, color: string) {
     const safeWidth = `${parseSizeToken(width, 0)}px`;
     const safeStyle = style || "solid";
+    if (node?.isBtn) {
+      applyStyleToNode(buttonSurfaceTargetId, "borderWidth", safeStyle === "none" ? "0px" : safeWidth, { batch: true });
+      applyStyleToNode(buttonSurfaceTargetId, "borderStyle", safeStyle, { batch: true });
+      applyStyleToNode(buttonSurfaceTargetId, "borderColor", color, { batch: true });
+      return;
+    }
     applyStyle("borderWidth", safeStyle === "none" ? "0px" : safeWidth, { batch: true });
     applyStyle("borderStyle", safeStyle, { batch: true });
     applyStyle("borderColor", color, { batch: true });
@@ -2094,36 +2677,63 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   }
   function applyRadius(tl:string, tr:string, br:string, bl:string) {
     const v = `${parseUnitDraft(tl)}px ${parseUnitDraft(tr)}px ${parseUnitDraft(br)}px ${parseUnitDraft(bl)}px`;
+    if (node?.isBtn) {
+      applyStyleToNode(buttonSurfaceTargetId, "borderRadius", v);
+      return;
+    }
     send("apply-style", { prop: "borderRadius", value: v });
+  }
+
+  if (!visualEditMode) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-5">
+        <div className="w-full max-w-[240px] text-center">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#5B8CFF]/8 ring-1 ring-[#5B8CFF]/10">
+            <MousePointer2 size={16} className="text-[#5B8CFF]/60" />
+          </div>
+          <p className="mt-4 text-[13px] font-semibold text-white/70">Start editing</p>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-white/30">
+            Enable edit mode to select and style elements on your page.
+          </p>
+          <button
+            onClick={() => {
+              setVisualEditMode(true);
+              if (!rightSidebarOpen) toggleRightSidebar();
+              setRightPanel("style");
+            }}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#5B8CFF]/12 px-4 py-2 text-[12px] font-semibold text-[#5B8CFF] ring-1 ring-[#5B8CFF]/20 transition-all hover:bg-[#5B8CFF]/18 hover:ring-[#5B8CFF]/30"
+          >
+            <MousePointer2 size={11} />
+            Enable editing
+          </button>
+          <p className="mt-3 text-[9.5px] text-white/20">or press <kbd className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-[9px] text-white/30">E</kbd></p>
+        </div>
+      </div>
+    );
   }
 
   if (!node) {
     return (
-      <div className="flex h-full flex-col p-3">
-        <div className="rounded-lg bg-white/[0.025] p-3">
-          <div className="flex items-start gap-2.5">
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#5B8CFF]/10">
-              <MousePointer2 size={14} className="text-[#5B8CFF]/70" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium text-white/70">Select an element</p>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-white/30">
-                Click any element on the canvas to inspect and edit it.
-              </p>
-            </div>
+      <div className="flex h-full flex-col items-center justify-center p-5">
+        <div className="w-full max-w-[240px] text-center">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+            <MousePointer2 size={16} className="text-white/30" />
           </div>
-        </div>
-
-        <div className="mt-2.5 space-y-1.5">
-          {[
-            "Double-click text to edit directly on the canvas.",
-            "Use Layers when the canvas target is nested or hard to reach.",
-            "Adjust responsive settings after desktop styling is in place.",
-          ].map((tip) => (
-            <div key={tip} className="rounded-md bg-white/[0.02] px-2.5 py-2 text-[10px] leading-relaxed text-white/28">
-              {tip}
-            </div>
-          ))}
+          <p className="mt-4 text-[13px] font-semibold text-white/60">Nothing selected</p>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-white/25">
+            Click any element on the canvas to inspect and edit its styles.
+          </p>
+          <div className="mt-4 space-y-1.5 text-left">
+            {[
+              "Click an element to select it.",
+              "Double-click text to edit inline.",
+              "Use Layers for nested elements.",
+            ].map((tip) => (
+              <div key={tip} className="rounded-md bg-white/[0.02] px-2.5 py-2 text-[11px] leading-relaxed text-white/22 ring-1 ring-white/[0.03]">
+                {tip}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -2132,6 +2742,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const txtColor   = safeHex(node.color);
   const textOpacityValue = Math.max(0, Math.min(1, parseFloat(node.textOpacity || "1") || safeAlpha(node.color)));
   const bgColor    = isTransparent(node.backgroundColor) ? null : safeHex(node.backgroundColor);
+  const buttonSurfaceBgColor = isTransparent(node.buttonSurfaceBackgroundColor ?? node.backgroundColor) ? null : safeHex(node.buttonSurfaceBackgroundColor ?? node.backgroundColor);
   const secBgColor = isTransparent(node.secBg) ? null : safeHex(node.secBg);
   const isMediaNode = node.isImg || node.isVideo || node.isIframe;
   const hasEditableText = node.hasEditableText || node.isText || node.isBtn || node.isInput;
@@ -2147,6 +2758,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const isGridChild = !!node.parentDisplay && node.parentDisplay.includes("grid");
   const mediaTargetNodeId = node.mediaTargetNodeId ?? node.nodeId;
   const linkTargetNodeId = node.linkTargetNodeId ?? node.nodeId;
+  const buttonSurfaceTargetId = node.buttonSurfaceNodeId ?? linkTargetNodeId ?? node.nodeId;
   const listTargetNodeId = node.listTargetNodeId ?? null;
   const sectionVisualNodeId = node.sectionVisualNodeId ?? null;
   const currentResponsiveProps = node.responsiveCurrentProps ?? [];
@@ -2158,13 +2770,13 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const showColumnsControls = hasEditableText && !node.isBtn && !(node as any).isInput && !["a", "span", "small", "strong", "em", "label", "button", "summary"].includes(textTargetTag);
   const showListControls = !!listTargetNodeId;
   const showLinkDecorationControls = textTargetTag === "a" || node.tag === "a" || node.href !== null;
-  const buttonSurfaceTargetId = linkTargetNodeId ?? node.nodeId;
-  const resolvedButtonTone = (bgColor ?? safeHex(borderColorVal) ?? txtColor ?? "#7c3aed").toLowerCase();
-  const currentBorderWidth = parseFloat(parseSizeToken(borderWidthVal || "0", 0)) || 0;
+  const resolvedButtonTone = (buttonSurfaceBgColor ?? safeHex(node.buttonSurfaceBorderColor ?? borderColorVal) ?? txtColor ?? "#7c3aed").toLowerCase();
+  const currentBorderWidth = parseFloat(parseSizeToken(node.buttonSurfaceBorderWidth ?? borderWidthVal ?? "0", 0)) || 0;
+  const currentBorderStyle = node.buttonSurfaceBorderStyle ?? borderStyleVal ?? "none";
   const currentButtonSurface =
-    !!bgColor
+    !!buttonSurfaceBgColor
       ? "solid"
-      : currentBorderWidth > 0 && borderStyleVal !== "none"
+      : currentBorderWidth > 0 && currentBorderStyle !== "none"
       ? "outline"
       : "ghost";
 
@@ -2206,12 +2818,20 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   const showLogoPanel = inspectorProfile?.showLogoPanel ?? false;
   const showWidgetPanel = inspectorProfile?.showWidgetPanel ?? false;
   const showCollectionPanel = inspectorProfile?.showCollectionPanel ?? false;
+  const showSectionControlsPanel = !!node.isSec && !!activeSectionId;
+  const suppressStandaloneStructuredPanels =
+    showSectionControlsPanel &&
+    sectionControlsReady &&
+    sectionControls.length > 0;
+  const showStandaloneWidgetPanel = showWidgetPanel && !suppressStandaloneStructuredPanels;
+  const showStandaloneCollectionPanel = showCollectionPanel && !suppressStandaloneStructuredPanels;
   const showContentPanel = inspectorProfile?.showContentPanel ?? false;
   const showTextContentPanel =
     showContentPanel &&
     (hasEditableText || !!localEditableText.trim()) &&
     !showLogoPanel &&
-    !showWidgetPanel;
+    !showStandaloneWidgetPanel &&
+    !node.isContainer; // containers (nav bars, wrappers) must NOT show a merged text editor
   const widgetFields = (node?.widgetFields ?? []) as CanvasWidgetField[];
   const widgetLabel = node?.widgetLabel || "Widget";
   const collectionFields = node?.collectionFields ?? [];
@@ -2223,6 +2843,14 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     ? "Project Video Library"
     : mediaPickerTarget === "logos"
     ? "Company Logos"
+    : mediaPickerTarget === "widget-image"
+    ? "Widget Image Gallery"
+    : mediaPickerTarget === "section-widget-image"
+    ? "Section Image Gallery"
+    : mediaPickerTarget === "section-control-image"
+    ? "Section Image Gallery"
+    : mediaPickerTarget === "section-control-collection-image"
+    ? "Section Image Gallery"
     : mediaPickerTarget === "section-own-background"
     ? "Section Background Gallery"
     : mediaPickerTarget === "section-background"
@@ -2234,6 +2862,10 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     ? "Upload or reuse brand marks for logo walls and logo scrollers."
     : mediaPickerTarget === "video"
     ? "Upload or reuse videos, then replace the selected media block in one step."
+    : mediaPickerTarget === "widget-image" || mediaPickerTarget === "section-widget-image"
+    ? "Choose an image from your project library and apply it directly to this widget field."
+    : mediaPickerTarget === "section-control-image" || mediaPickerTarget === "section-control-collection-image"
+    ? "Choose an image from your project library and apply it directly to this section control."
     : "Upload once, then reuse images anywhere for cards, sections, and visual replacements.";
   const mediaPickerActionLabel = mediaPickerTarget === "logos" ? "Add selected" : "Use selected";
 
@@ -2275,7 +2907,6 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       .split("\n")
       .map((item) => item.trim())
       .filter(Boolean);
-    if (!items.length) return;
     setLogoItemsDraft(items.join("\n"));
     send("apply-logo-items", { nodeId: node.logoCollectionNodeId, items });
   }
@@ -2291,7 +2922,10 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   }
 
   function updateWidgetField(key: string, value: string) {
-    setWidgetDraft((current) => ({ ...current, [key]: value }));
+    applyWidgetState({
+      ...widgetDraft,
+      [key]: value,
+    });
   }
 
   function setWidgetLinkType(fieldKey: string, nextType: LinkInputType) {
@@ -2328,6 +2962,43 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
     }
   }
 
+  function setCollectionLinkType(index: number, itemId: string, fieldKey: string, nextType: LinkInputType) {
+    setCollectionLinkTypes((current) => ({
+      ...current,
+      [collectionLinkTypeStateKey(itemId, fieldKey)]: nextType,
+    }));
+    const currentValue = collectionDraft[index]?.fields?.[fieldKey] ?? "";
+
+    if (nextType === "none") {
+      updateCollectionField(index, fieldKey, "");
+      return;
+    }
+
+    if (nextType === "email") {
+      updateCollectionField(index, fieldKey, currentValue.startsWith("mailto:") ? currentValue : "mailto:");
+      return;
+    }
+
+    if (nextType === "phone") {
+      updateCollectionField(index, fieldKey, currentValue.startsWith("tel:") ? currentValue : "tel:");
+      return;
+    }
+
+    if (nextType === "page" || nextType === "anchor") {
+      updateCollectionField(index, fieldKey, "");
+      return;
+    }
+
+    if (
+      currentValue.startsWith("mailto:") ||
+      currentValue.startsWith("tel:") ||
+      currentValue.startsWith("#") ||
+      normalizeInternalPageHref(currentValue) !== null
+    ) {
+      updateCollectionField(index, fieldKey, "");
+    }
+  }
+
   function applyCollectionItems(items: CanvasCollectionItem[]) {
     if (!node?.collectionNodeId) return;
     const normalized = normalizeCollectionDraft(collectionFields, items);
@@ -2336,49 +3007,223 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
   }
 
   function updateCollectionField(index: number, key: string, value: string) {
-    setCollectionDraft((items) =>
-      items.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
-        const fields = { ...(item.fields ?? {}), [key]: value };
-        const titleSeed =
-          fields.title ||
-          fields.name ||
-          fields.plan ||
-          fields.question ||
-          fields.label ||
-          Object.values(fields).find((entry) => String(entry || "").trim()) ||
-          `Item ${index + 1}`;
-        return {
-          ...item,
-          title: String(titleSeed),
-          fields,
-        };
-      }),
-    );
+    const nextItems = collectionDraft.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const fields = { ...(item.fields ?? {}), [key]: value };
+      const titleSeed =
+        fields.title ||
+        fields.name ||
+        fields.plan ||
+        fields.question ||
+        fields.label ||
+        Object.values(fields).find((entry) => String(entry || "").trim()) ||
+        `Item ${index + 1}`;
+      return {
+        ...item,
+        title: String(titleSeed),
+        fields,
+      };
+    });
+    applyCollectionItems(nextItems);
   }
 
   function addCollectionItem() {
-    setCollectionDraft((items) => [
-      ...items,
-      createCollectionItem(collectionFields, items.length),
+    applyCollectionItems([
+      ...collectionDraft,
+      createCollectionItem(collectionFields, collectionDraft.length),
     ]);
   }
 
   function duplicateCollectionItem(index: number) {
-    setCollectionDraft((items) => {
-      const source = items[index];
-      if (!source) return items;
-      const next = [...items];
-      next.splice(index + 1, 0, createCollectionItem(collectionFields, index + 1, source));
-      return next;
-    });
+    const source = collectionDraft[index];
+    if (!source) return;
+    const nextItems = [...collectionDraft];
+    nextItems.splice(index + 1, 0, createCollectionItem(collectionFields, index + 1, source));
+    applyCollectionItems(nextItems);
   }
 
   function removeCollectionItem(index: number) {
-    setCollectionDraft((items) => {
-      if (items.length <= 1) return items;
-      return items.filter((_, itemIndex) => itemIndex !== index);
+    if (collectionDraft.length <= 1) return;
+    applyCollectionItems(collectionDraft.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updateSectionWidgetField(controlId: string, key: string, value: string) {
+    const control = sectionControls.find(
+      (entry): entry is SectionWidgetControl => entry.id === controlId && entry.type === "widget",
+    );
+    if (!control) return;
+
+    const nextState = normalizeWidgetDraft(control.fields, {
+      ...control.state,
+      [key]: value,
     });
+
+    setSectionControls((current) => current.map((entry) =>
+      entry.id === controlId && entry.type === "widget"
+        ? { ...entry, state: nextState }
+        : entry
+    ));
+    send("apply-widget-state", { nodeId: control.nodeId, state: nextState });
+  }
+
+  function applySectionCollectionItems(controlId: string, items: CanvasCollectionItem[]) {
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    if (!control) return;
+
+    const normalized = normalizeCollectionDraft(control.fields, items);
+    const nextItems = normalized.length ? normalized : [createCollectionItem(control.fields, 0)];
+
+    setSectionControls((current) => current.map((entry) =>
+      entry.id === controlId && entry.type === "collection"
+        ? { ...entry, items: nextItems }
+        : entry
+    ));
+    send("apply-collection-items", { nodeId: control.nodeId, items: nextItems });
+  }
+
+  function updateSectionCollectionField(controlId: string, index: number, key: string, value: string) {
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    if (!control) return;
+
+    const nextItems = control.items.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const fields = { ...(item.fields ?? {}), [key]: value };
+      const titleSeed =
+        fields.title ||
+        fields.name ||
+        fields.plan ||
+        fields.question ||
+        fields.label ||
+        Object.values(fields).find((entry) => String(entry || "").trim()) ||
+        `Item ${index + 1}`;
+
+      return {
+        ...item,
+        title: String(titleSeed),
+        fields,
+      };
+    });
+
+    applySectionCollectionItems(controlId, nextItems);
+  }
+
+  function setSectionCollectionLinkType(
+    controlId: string,
+    index: number,
+    itemId: string,
+    fieldKey: string,
+    nextType: LinkInputType,
+  ) {
+    setSectionCollectionLinkTypes((current) => ({
+      ...current,
+      [sectionCollectionLinkTypeStateKey(controlId, itemId, fieldKey)]: nextType,
+    }));
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    const currentValue = control?.items[index]?.fields?.[fieldKey] ?? "";
+
+    if (nextType === "none") {
+      updateSectionCollectionField(controlId, index, fieldKey, "");
+      return;
+    }
+
+    if (nextType === "email") {
+      updateSectionCollectionField(
+        controlId,
+        index,
+        fieldKey,
+        currentValue.startsWith("mailto:") ? currentValue : "mailto:",
+      );
+      return;
+    }
+
+    if (nextType === "phone") {
+      updateSectionCollectionField(
+        controlId,
+        index,
+        fieldKey,
+        currentValue.startsWith("tel:") ? currentValue : "tel:",
+      );
+      return;
+    }
+
+    if (nextType === "page" || nextType === "anchor") {
+      updateSectionCollectionField(controlId, index, fieldKey, "");
+      return;
+    }
+
+    if (
+      currentValue.startsWith("mailto:") ||
+      currentValue.startsWith("tel:") ||
+      currentValue.startsWith("#") ||
+      normalizeInternalPageHref(currentValue) !== null
+    ) {
+      updateSectionCollectionField(controlId, index, fieldKey, "");
+    }
+  }
+
+  function addSectionCollectionItem(controlId: string) {
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    if (!control) return;
+    applySectionCollectionItems(controlId, [
+      ...control.items,
+      createCollectionItem(control.fields, control.items.length),
+    ]);
+  }
+
+  function duplicateSectionCollectionItem(controlId: string, index: number) {
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    const source = control?.items[index];
+    if (!control || !source) return;
+    const nextItems = [...control.items];
+    nextItems.splice(index + 1, 0, createCollectionItem(control.fields, index + 1, source));
+    applySectionCollectionItems(controlId, nextItems);
+  }
+
+  function removeSectionCollectionItem(controlId: string, index: number) {
+    const control = sectionControls.find(
+      (entry): entry is SectionCollectionControl => entry.id === controlId && entry.type === "collection",
+    );
+    if (!control || control.items.length <= 1) return;
+    applySectionCollectionItems(controlId, control.items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updateSectionMediaControl(controlId: string, patch: Partial<Pick<SectionMediaControl, "src" | "alt">>) {
+    const control = sectionControls.find(
+      (entry): entry is SectionMediaControl => entry.id === controlId && entry.type === "media",
+    );
+    if (!control) return;
+
+    const nextControl = { ...control, ...patch };
+    setSectionControls((current) => current.map((entry) =>
+      entry.id === controlId && entry.type === "media"
+        ? nextControl
+        : entry
+    ));
+
+    if (Object.prototype.hasOwnProperty.call(patch, "src")) {
+      send("apply-attr", { attr: "src", value: nextControl.src, nodeId: control.nodeId });
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "alt")) {
+      send("apply-attr", { attr: "alt", value: nextControl.alt, nodeId: control.nodeId });
+    }
+  }
+
+  function closeMediaPicker() {
+    setMediaPickerTarget(null);
+    setWidgetImagePicker(null);
+    setSectionWidgetImagePicker(null);
+    setSectionMediaPicker(null);
+    setSectionCollectionImagePicker(null);
   }
 
   const mediaPickerKinds: ProjectMediaAsset["kind"][] = mediaPickerTarget === "video" ? ["video"] : ["image"];
@@ -2387,6 +3232,35 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       ? (imgUrl ? [imgUrl] : [])
       : mediaPickerTarget === "video"
       ? (imgUrl ? [imgUrl] : [])
+      : mediaPickerTarget === "widget-image"
+      ? (() => {
+          const value = widgetImagePicker ? widgetDraft[widgetImagePicker.fieldKey] : "";
+          return value ? [value] : [];
+        })()
+      : mediaPickerTarget === "section-widget-image"
+      ? (() => {
+          const control = sectionControls.find(
+            (entry): entry is SectionWidgetControl => entry.type === "widget" && entry.id === sectionWidgetImagePicker?.controlId,
+          );
+          const value = control?.state?.[sectionWidgetImagePicker?.fieldKey ?? ""];
+          return value ? [value] : [];
+        })()
+      : mediaPickerTarget === "section-control-image"
+      ? (() => {
+          const control = sectionControls.find(
+            (entry): entry is SectionMediaControl => entry.type === "media" && entry.id === sectionMediaPicker?.controlId,
+          );
+          return control?.src ? [control.src] : [];
+        })()
+      : mediaPickerTarget === "section-control-collection-image"
+      ? (() => {
+          const control = sectionControls.find(
+            (entry): entry is SectionCollectionControl => entry.type === "collection" && entry.id === sectionCollectionImagePicker?.controlId,
+          );
+          const value =
+            control?.items[sectionCollectionImagePicker?.itemIndex ?? -1]?.fields?.[sectionCollectionImagePicker?.fieldKey ?? ""];
+          return value ? [value] : [];
+        })()
       : mediaPickerTarget === "section-own-background"
       ? (localBgImage ? [localBgImage] : [])
       : mediaPickerTarget === "background"
@@ -2407,6 +3281,39 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
       const next = assets[0].url;
       setImgUrl(next);
       sendMediaAttr("src", next);
+      return;
+    }
+    if (mediaPickerTarget === "widget-image") {
+      const next = assets[0].url;
+      if (widgetImagePicker) {
+        updateWidgetField(widgetImagePicker.fieldKey, next);
+      }
+      return;
+    }
+    if (mediaPickerTarget === "section-widget-image") {
+      const next = assets[0].url;
+      if (sectionWidgetImagePicker) {
+        updateSectionWidgetField(sectionWidgetImagePicker.controlId, sectionWidgetImagePicker.fieldKey, next);
+      }
+      return;
+    }
+    if (mediaPickerTarget === "section-control-image") {
+      const next = assets[0].url;
+      if (sectionMediaPicker) {
+        updateSectionMediaControl(sectionMediaPicker.controlId, { src: next });
+      }
+      return;
+    }
+    if (mediaPickerTarget === "section-control-collection-image") {
+      const next = assets[0].url;
+      if (sectionCollectionImagePicker) {
+        updateSectionCollectionField(
+          sectionCollectionImagePicker.controlId,
+          sectionCollectionImagePicker.itemIndex,
+          sectionCollectionImagePicker.fieldKey,
+          next,
+        );
+      }
       return;
     }
     if (mediaPickerTarget === "background") {
@@ -2597,19 +3504,23 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
             {currentResponsiveProps.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {currentResponsiveProps.slice(0, 8).map((prop) => (
-                  <span
-                    key={prop}
-                    className="rounded-full border border-white/[0.08] bg-black/20 px-2 py-1 text-[9px] font-medium text-white/58"
-                  >
-                    {responsivePropLabel(prop)}
-                  </span>
-                ))}
-                {currentResponsiveProps.length > 8 && (
-                  <span className="rounded-full border border-white/[0.08] bg-black/20 px-2 py-1 text-[9px] font-medium text-white/42">
-                    +{currentResponsiveProps.length - 8} more
-                  </span>
-                )}
+                {currentResponsiveProps.map((prop) => {
+                  const scope: "node" | "media" | "list" =
+                    ["objectFit", "objectPosition"].includes(prop) ? "media" :
+                    ["listStyleType", "listStylePosition"].includes(prop) ? "list" :
+                    "node";
+                  return (
+                    <button
+                      key={prop}
+                      onClick={() => resetResponsiveProp([prop], scope)}
+                      title={`Reset ${prop} override`}
+                      className="group flex items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 px-2 py-1 text-[9px] font-medium text-white/58 hover:border-rose-400/30 hover:bg-rose-400/8 hover:text-rose-300/80 transition-all"
+                    >
+                      <span>{responsivePropLabel(prop)}</span>
+                      <X size={8} className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-[10px] leading-relaxed text-white/28">
@@ -2643,7 +3554,6 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         </div>
 
         <div className="space-y-2">
-          <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-white/25">Visibility presets</p>
           <div className="grid grid-cols-3 gap-1.5">
             {(["desktop", "tablet", "mobile"] as const).map((device) => (
               <button
@@ -2659,19 +3569,24 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               </button>
             ))}
           </div>
-          <p className="text-[9px] leading-relaxed text-white/24">
-            These presets set display rules across breakpoints for the selected element.
-          </p>
         </div>
 
         {devicePreview !== "desktop" && (
-          <button
-            onClick={clearResponsiveOverrides}
-            disabled={!node.responsiveHasCurrentOverrides}
-            className="w-full rounded-lg bg-white/[0.04] py-2 text-[10px] font-medium text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            Reset {devicePreview} overrides
-          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={copyDesktopToBreakpoint}
+              className="rounded-lg bg-sky-400/[0.07] border border-sky-400/[0.14] py-2 text-[10px] font-medium text-sky-200/70 transition-colors hover:bg-sky-400/[0.12] hover:text-sky-200/90"
+            >
+              Copy desktop → {devicePreview}
+            </button>
+            <button
+              onClick={clearResponsiveOverrides}
+              disabled={!node.responsiveHasCurrentOverrides}
+              className="rounded-lg bg-white/[0.04] py-2 text-[10px] font-medium text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              Reset {devicePreview}
+            </button>
+          </div>
         )}
       </div>
     </Accordion>
@@ -2685,13 +3600,6 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         {/* ── Link ── */}
         {showLinkPanel && (
           <Accordion title="Link" icon={<Link size={12}/>} open={open.link} toggle={() => toggle("link")}>
-            {!node.href && (
-              <p className="text-[10px] text-white/28 leading-relaxed">
-                {hasEditableText && textTargetTag !== "a"
-                  ? "Choose a link type below to turn this text or element into a clickable hyperlink."
-                  : "Choose a link type below to make this element clickable."}
-              </p>
-            )}
             {/* Type selector */}
             <div className="grid grid-cols-3 gap-1">
               {([
@@ -2705,9 +3613,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <button key={val} onClick={() => {
                   setLinkType(val);
                   // "none": remove the href entirely (null = removeAttribute) so non-anchors aren't converted to <a>
-                  if (val === "none")   { setLinkUrl(""); send("apply-attr", { attr: "href", value: null }); }
-                  if (val === "email")  { setLinkUrl("mailto:"); send("apply-attr", { attr: "href", value: "mailto:" }); }
-                  if (val === "phone")  { setLinkUrl("tel:"); send("apply-attr", { attr: "href", value: "tel:" }); }
+                  if (val === "none")   { setLinkUrl(""); send("apply-attr", { attr: "href", value: null, nodeId: linkTargetNodeId }); }
+                  if (val === "email")  { setLinkUrl("mailto:"); send("apply-attr", { attr: "href", value: "mailto:", nodeId: linkTargetNodeId }); }
+                  if (val === "phone")  { setLinkUrl("tel:"); send("apply-attr", { attr: "href", value: "tel:", nodeId: linkTargetNodeId }); }
                   // "anchor"/"page": just update UI state — don't send any href yet; only apply when user picks
                   if (val === "anchor") { setLinkUrl(""); }
                   if (val === "page")   { setLinkUrl(""); }
@@ -2730,7 +3638,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   const isSel = (normalizeInternalPageHref(linkUrl) ?? linkUrl) === href;
                   return (
                     <button key={p.id} type="button"
-                      onClick={() => { setLinkUrl(href); send("apply-attr", { attr: "href", value: href, nodeId: node?.nodeId ?? null }); }}
+                      onClick={() => { setLinkUrl(href); send("apply-attr", { attr: "href", value: href, nodeId: linkTargetNodeId }); }}
                       className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-all text-left ${
                         isSel ? "bg-[#5B8CFF]/12 text-[#5B8CFF]" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
                       }`}>
@@ -2750,9 +3658,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   {currentPage.sections.map((sec) => {
                     const anchorVal = `#${sec.id}`;
                     const isSelected = linkUrl === anchorVal;
-                    return (
+                  return (
                       <button key={sec.id}
-                        onClick={() => { setLinkUrl(anchorVal); send("apply-attr", { attr: "href", value: anchorVal }); }}
+                        onClick={() => { setLinkUrl(anchorVal); send("apply-attr", { attr: "href", value: anchorVal, nodeId: linkTargetNodeId }); }}
                         className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-all text-left ${
                           isSelected ? "bg-teal-500/15 text-teal-300" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
                         }`}>
@@ -2772,8 +3680,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <Globe size={10} className="text-white/25 flex-shrink-0" />
                 <input value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
-                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
-                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
+                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
+                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
                   placeholder="https://example.com"
                   className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
@@ -2786,8 +3694,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <Mail size={10} className="text-white/25 flex-shrink-0" />
                 <input value={linkUrl.replace("mailto:", "")}
                   onChange={(e) => setLinkUrl("mailto:" + e.target.value)}
-                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
-                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
+                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
+                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
                   placeholder="hello@example.com"
                   className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
@@ -2800,8 +3708,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <Phone size={10} className="text-white/25 flex-shrink-0" />
                 <input value={linkUrl.replace("tel:", "")}
                   onChange={(e) => setLinkUrl("tel:" + e.target.value)}
-                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl })}
-                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl })}
+                  onBlur={() => send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
+                  onKeyDown={(e) => e.key === "Enter" && send("apply-attr", { attr: "href", value: linkUrl, nodeId: linkTargetNodeId })}
                   placeholder="+1 555 000 0000"
                   className="editor-plain-input flex-1 bg-transparent text-[11px] text-white/60 placeholder-white/18 focus:outline-none min-w-0"
                 />
@@ -2826,7 +3734,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <span className="text-[10px] text-white/35">Open in new tab</span>
                 <EditorSwitch
                   checked={node.target === "_blank"}
-                  onChange={() => send("apply-attr", { attr: "target", value: node.target === "_blank" ? "_self" : "_blank" })}
+                  onChange={() => send("apply-attr", { attr: "target", value: node.target === "_blank" ? "_self" : "_blank", nodeId: linkTargetNodeId })}
                   title={node.target === "_blank" ? "Open in new tab on" : "Open in new tab off"}
                 />
               </label>
@@ -2834,19 +3742,531 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           </Accordion>
         )}
 
+        {/* ── AI Quick Actions ── */}
+        {activeSectionId && (
+          <div className="rounded-[18px] border border-[rgba(91,140,255,0.12)] bg-[rgba(91,140,255,0.04)] px-3 py-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8faeff]/70">
+              <Wand2 size={10} />
+              AI Quick Actions
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: "Rewrite copy", prompt: `Rewrite the copy in section "${activeSectionMeta?.name ?? activeSectionId}" to be more compelling and specific.` },
+                { label: "Change layout", prompt: `Change the layout variant of section "${activeSectionMeta?.name ?? activeSectionId}" to a different style.` },
+                { label: "Make bolder", prompt: `Make section "${activeSectionMeta?.name ?? activeSectionId}" more visually bold — bigger headings, stronger colors, more contrast.` },
+                { label: "Simplify", prompt: `Simplify section "${activeSectionMeta?.name ?? activeSectionId}" — reduce visual clutter, fewer elements, cleaner spacing.` },
+              ].map((action) => (
+                <button
+                  key={action.label}
+                  onClick={() => {
+                    if (!rightSidebarOpen) toggleRightSidebar();
+                    setRightPanel("ai");
+                    useAppStore.getState().setAiDraftPrompt(action.prompt);
+                  }}
+                  className="rounded-full border border-[rgba(91,140,255,0.18)] bg-[rgba(91,140,255,0.08)] px-2.5 py-1 text-[10.5px] font-medium text-[#b4c8ff] transition-colors hover:bg-[rgba(91,140,255,0.16)] hover:text-white"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Section Controls ── */}
+        {showSectionControlsPanel && (
+          <Accordion
+            title={`${node?.sectionName || activeSectionMeta?.name || node?.label || "Section"} Controls`}
+            icon={<Layers size={12} />}
+            open={open.sectionControls}
+            toggle={() => toggle("sectionControls")}
+          >
+            <div className="space-y-3">
+              {sectionControlsLoading && (
+                <SectionControlCard
+                  tone="neutral"
+                  icon={<Layers size={15} />}
+                  title="Loading structured controls"
+                  meta="Preparing linked fields and editable section content."
+                >
+                  <div className={`${SECTION_CONTROL_ITEM} space-y-2.5 animate-pulse`}>
+                    <div className="h-2.5 w-24 rounded-full bg-white/[0.08]" />
+                    <div className="h-10 rounded-[14px] bg-white/[0.05]" />
+                    <div className="h-10 rounded-[14px] bg-white/[0.05]" />
+                  </div>
+                </SectionControlCard>
+              )}
+
+              {!sectionControlsLoading && sectionControls.length === 0 && (
+                <SectionControlCard
+                  tone="neutral"
+                  icon={<Layers size={15} />}
+                  title="No structured settings detected"
+                  meta="This section still supports style editing, but it does not expose shared fields or repeatable item groups yet."
+                >
+                  <div className={SECTION_CONTROL_EMPTY_STATE}>
+                    <span className={sectionControlBadgeClass("neutral")}>Style-only section</span>
+                    <p className="max-w-[220px] text-[10px] leading-5 text-[var(--text-tertiary)]">
+                      When a section exposes structured data, it will show up here as editable fields, media, or repeatable items.
+                    </p>
+                  </div>
+                </SectionControlCard>
+              )}
+
+              {!sectionControlsLoading && sectionControls.map((control) => {
+                if (control.type === "media") {
+                  const previewAlt = control.alt || control.label || "Section image";
+                  return (
+                    <SectionControlCard
+                      key={control.id}
+                      tone="media"
+                      icon={<ImageIcon size={15} />}
+                      title={control.label}
+                      meta="Direct image control for this section."
+                      badge={<span className={sectionControlBadgeClass("media")}>Image</span>}
+                    >
+                      <div className={SECTION_CONTROL_PREVIEW}>
+                        {control.src ? (
+                          <img
+                            src={control.src}
+                            alt={previewAlt}
+                            className="h-28 w-full object-cover"
+                            onError={(event) => {
+                              (event.currentTarget as HTMLImageElement).style.opacity = "0.2";
+                            }}
+                          />
+                        ) : (
+                          <div className={`${SECTION_CONTROL_EMPTY_STATE} min-h-[128px] rounded-none border-0 bg-transparent px-5`}>
+                            <ImageIcon size={14} />
+                            No image selected yet
+                          </div>
+                        )}
+                      </div>
+
+                      <div className={`${SECTION_CONTROL_ITEM} space-y-2.5`}>
+                        <div className="space-y-1.5">
+                          <Label>{control.label} URL</Label>
+                          <input
+                            type="text"
+                            value={control.src}
+                            onFocus={() => setActiveField(`section-media:${control.id}:src`)}
+                            onChange={(e) => updateSectionMediaControl(control.id, { src: e.target.value })}
+                            onBlur={() => setActiveField((current) => (current === `section-media:${control.id}:src` ? null : current))}
+                            placeholder="https://example.com/image.jpg"
+                            className={PANEL_INPUT}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Alt text</Label>
+                          <input
+                            type="text"
+                            value={control.alt}
+                            onFocus={() => setActiveField(`section-media:${control.id}:alt`)}
+                            onChange={(e) => updateSectionMediaControl(control.id, { alt: e.target.value })}
+                            onBlur={() => setActiveField((current) => (current === `section-media:${control.id}:alt` ? null : current))}
+                            placeholder="Describe this image..."
+                            className={PANEL_INPUT}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSectionCollectionImagePicker(null);
+                              setSectionMediaPicker({ controlId: control.id });
+                              setMediaPickerTarget("section-control-image");
+                            }}
+                            className={PANEL_BUTTON_SECONDARY}
+                          >
+                            Media gallery
+                          </button>
+                        </div>
+                      </div>
+                    </SectionControlCard>
+                  );
+                }
+
+                if (control.type === "widget") {
+                  return (
+                    <div key={control.id} className={SECTION_CONTROL_PANEL}>
+                      <div className="space-y-2.5">
+                        {control.fields.map((field) => {
+                          const value = control.state[field.key] ?? "";
+                          const focusKey = `section-widget:${control.id}:${field.key}`;
+                          const placeholder =
+                            field.placeholder ||
+                            (field.type === "image"
+                              ? "https://example.com/logo.svg"
+                              : field.type === "datetime-local"
+                              ? "YYYY-MM-DDTHH:mm"
+                              : `Edit ${field.label.toLowerCase()}...`);
+
+                          if (field.type === "image") {
+                            return (
+                              <div key={field.key} className={SECTION_CONTROL_FIELD_SHELL}>
+                                <Label>{field.label} URL</Label>
+                                {value ? (
+                                  <div className={SECTION_CONTROL_PREVIEW}>
+                                    <img
+                                      src={value}
+                                      alt={control.state.brandAlt || control.state.brand || field.label}
+                                      className="h-24 w-full object-contain bg-[var(--surface-3)] px-4 py-3"
+                                      onError={(event) => {
+                                        (event.currentTarget as HTMLImageElement).style.opacity = "0.2";
+                                      }}
+                                    />
+                                  </div>
+                                ) : null}
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={value}
+                                    onFocus={() => setActiveField(focusKey)}
+                                    onChange={(e) => updateSectionWidgetField(control.id, field.key, e.target.value)}
+                                    onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                    placeholder={placeholder}
+                                    className={PANEL_INPUT}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWidgetImagePicker(null);
+                                      setSectionMediaPicker(null);
+                                      setSectionCollectionImagePicker(null);
+                                      setSectionWidgetImagePicker({ controlId: control.id, fieldKey: field.key });
+                                      setMediaPickerTarget("section-widget-image");
+                                    }}
+                                    className={`${PANEL_BUTTON_SECONDARY} shrink-0 whitespace-nowrap`}
+                                  >
+                                    Media gallery
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (field.type === "textarea") {
+                            return (
+                              <div key={field.key} className={SECTION_CONTROL_FIELD_SHELL}>
+                                <Label>{field.label}</Label>
+                                <textarea
+                                  value={value}
+                                  rows={Math.min(6, Math.max(3, value.split("\n").length || 3))}
+                                  onFocus={() => setActiveField(focusKey)}
+                                  onChange={(e) => updateSectionWidgetField(control.id, field.key, e.target.value)}
+                                  onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                  placeholder={placeholder}
+                                  className={PANEL_TEXTAREA}
+                                />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={field.key} className="space-y-1.5">
+                              <Label>{field.label}</Label>
+                              <input
+                                type={field.type === "number" || field.type === "datetime-local" ? field.type : "text"}
+                                value={value}
+                                min={field.type === "number" ? field.min : undefined}
+                                max={field.type === "number" ? field.max : undefined}
+                                step={field.type === "number" ? field.step ?? 1 : undefined}
+                                onFocus={() => setActiveField(focusKey)}
+                                onChange={(e) => updateSectionWidgetField(control.id, field.key, e.target.value)}
+                                onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                placeholder={placeholder}
+                                className={PANEL_INPUT}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const compactGrid =
+                  control.fields.length > 2 &&
+                  control.fields.every((field) => field.type !== "textarea" && field.type !== "list");
+
+                return (
+                  <SectionControlCard
+                    key={control.id}
+                    tone="collection"
+                    title={shouldHideSectionControlTitle(control.label) ? undefined : control.label}
+                  >
+
+                    <div className="space-y-3">
+                      {control.items.map((item, index) => (
+                        <div key={item.id || `${control.nodeId}-${index}`} className={COLLECTION_ITEM_PANEL}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 space-y-1">
+                              <p className={COLLECTION_ITEM_EYEBROW}>Item {formatCollectionItemIndex(index)}</p>
+                              <p className={COLLECTION_ITEM_HEADING}>{getCollectionItemHeading(control.fields, item)}</p>
+                            </div>
+
+                            {!control.fixed ? (
+                              <div className={`${SECTION_CONTROL_ACTIONS} justify-end`}>
+                                <div className={SECTION_CONTROL_ACTION_BAR}>
+                                  <button
+                                    type="button"
+                                    onClick={() => duplicateSectionCollectionItem(control.id, index)}
+                                    className={SECTION_CONTROL_ACTION_ICON}
+                                    title="Duplicate item"
+                                    aria-label={`Duplicate item ${index + 1}`}
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSectionCollectionItem(control.id, index)}
+                                    disabled={control.items.length <= 1}
+                                    className={SECTION_CONTROL_ACTION_ICON_DANGER}
+                                    title="Remove item"
+                                    aria-label={`Remove item ${index + 1}`}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className={compactGrid ? "grid grid-cols-2 gap-2.5" : "space-y-2.5"}>
+                            {control.fields.map((field) => {
+                              const itemId = item.id || `item-${index + 1}`;
+                              const value = item.fields?.[field.key] ?? "";
+                              const focusKey = `section-collection:${control.id}:${index}:${field.key}`;
+                              const isLinkField = isCollectionLinkField(field);
+                              const currentLinkType =
+                                sectionCollectionLinkTypes[
+                                  sectionCollectionLinkTypeStateKey(control.id, itemId, field.key)
+                                ] ?? inferLinkTypeFromValue(value);
+                              const labelText = field.type === "image" ? `${field.label} URL` : field.label;
+                              const fieldClassName = collectionFieldSpansFullRow(field, compactGrid) ? "col-span-2" : "";
+                              const placeholder =
+                                field.placeholder ||
+                                (field.type === "image"
+                                  ? "https://example.com/image.jpg"
+                                  : field.type === "list"
+                                  ? "One item per line"
+                                  : `Edit ${field.label.toLowerCase()}...`);
+
+                              if (field.type === "textarea" || field.type === "list") {
+                                return (
+                                  <div key={field.key} className={`${SECTION_CONTROL_FIELD_SHELL} ${fieldClassName}`.trim()}>
+                                    <Label>{labelText}</Label>
+                                    <textarea
+                                      value={value}
+                                      rows={Math.min(7, Math.max(3, value.split("\n").length || 3))}
+                                      onFocus={() => setActiveField(focusKey)}
+                                      onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                      onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                      placeholder={placeholder}
+                                      className={PANEL_TEXTAREA}
+                                    />
+                                    {field.type === "list" && (
+                                      <p className="text-[9px] text-[var(--text-disabled)]">Use one line per item.</p>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              if (isLinkField) {
+                                return (
+                                  <div key={field.key} className={`${SECTION_CONTROL_FIELD_SHELL} ${fieldClassName}`.trim()}>
+                                    <Label>{field.label}</Label>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {[
+                                        { val: "page" as const, label: "Page", icon: <FileText size={11} /> },
+                                        { val: "anchor" as const, label: "Section", icon: <Anchor size={11} /> },
+                                        { val: "url" as const, label: "URL", icon: <Globe size={11} /> },
+                                        { val: "email" as const, label: "Email", icon: <Mail size={11} /> },
+                                        { val: "phone" as const, label: "Phone", icon: <Phone size={11} /> },
+                                        { val: "none" as const, label: "None", icon: <X size={11} /> },
+                                      ].map(({ val, label, icon }) => {
+                                        const active = currentLinkType === val;
+                                        return (
+                                          <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setSectionCollectionLinkType(control.id, index, itemId, field.key, val)}
+                                            className={`inline-flex items-center justify-center gap-1.5 rounded-[14px] border px-2.5 py-2 text-[10px] font-medium transition-all ${
+                                              active
+                                                ? "border-[#5B8CFF]/22 bg-[#5B8CFF]/10 text-[#8EA8FF]"
+                                                : "border-[var(--border-soft)] bg-[var(--surface-4)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                                            }`}
+                                          >
+                                            {icon}
+                                            {label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {currentLinkType === "page" && (
+                                      project?.pages && project.pages.length > 0 ? (
+                                        <select
+                                          value={normalizeInternalPageHref(value) ?? ""}
+                                          onFocus={() => setActiveField(focusKey)}
+                                          onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                          onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                          className={PANEL_SELECT}
+                                        >
+                                          <option value="">Choose page</option>
+                                          {project.pages.map((p) => (
+                                            <option key={`${control.id}:${itemId}:${field.key}:${p.id}`} value={pageHrefFor(p)}>
+                                              {p.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : <p className="px-1 text-[10px] text-[var(--text-disabled)]">No pages in this project.</p>
+                                    )}
+
+                                    {currentLinkType === "anchor" && (
+                                      currentPage && currentPage.sections.length > 0 ? (
+                                        <select
+                                          value={value.startsWith("#") ? value : ""}
+                                          onFocus={() => setActiveField(focusKey)}
+                                          onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                          onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                          className={PANEL_SELECT}
+                                        >
+                                          <option value="">Choose section</option>
+                                          {currentPage.sections.map((sec) => (
+                                            <option key={`${control.id}:${itemId}:${field.key}:${sec.id}`} value={`#${sec.id}`}>
+                                              {sec.name || sec.type}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : <p className="px-1 text-[10px] text-[var(--text-disabled)]">No sections on this page.</p>
+                                    )}
+
+                                    {currentLinkType === "url" && (
+                                      <input
+                                        value={value}
+                                        onFocus={() => setActiveField(focusKey)}
+                                        onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                        onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                        placeholder="https://example.com"
+                                        className={PANEL_INPUT}
+                                      />
+                                    )}
+
+                                    {currentLinkType === "email" && (
+                                      <input
+                                        value={value.replace("mailto:", "")}
+                                        onFocus={() => setActiveField(focusKey)}
+                                        onChange={(e) => updateSectionCollectionField(control.id, index, field.key, `mailto:${e.target.value}`)}
+                                        onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                        placeholder="hello@example.com"
+                                        className={PANEL_INPUT}
+                                      />
+                                    )}
+
+                                    {currentLinkType === "phone" && (
+                                      <input
+                                        value={value.replace("tel:", "")}
+                                        onFocus={() => setActiveField(focusKey)}
+                                        onChange={(e) => updateSectionCollectionField(control.id, index, field.key, `tel:${e.target.value}`)}
+                                        onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                        placeholder="+1 555 000 0000"
+                                        className={PANEL_INPUT}
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              if (field.type === "image") {
+                                return (
+                                  <div key={field.key} className={`${SECTION_CONTROL_FIELD_SHELL} ${fieldClassName}`.trim()}>
+                                    <Label>{labelText}</Label>
+                                    {value ? (
+                                      <div className={SECTION_CONTROL_PREVIEW}>
+                                        <img
+                                          src={value}
+                                          alt={field.label}
+                                          className="h-24 w-full object-cover"
+                                          onError={(event) => {
+                                            (event.currentTarget as HTMLImageElement).style.opacity = "0.2";
+                                          }}
+                                        />
+                                      </div>
+                                    ) : null}
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        value={value}
+                                        onFocus={() => setActiveField(focusKey)}
+                                        onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                        onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                        placeholder={placeholder}
+                                        className={PANEL_INPUT}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSectionMediaPicker(null);
+                                          setSectionCollectionImagePicker({
+                                            controlId: control.id,
+                                            itemIndex: index,
+                                            fieldKey: field.key,
+                                          });
+                                          setMediaPickerTarget("section-control-collection-image");
+                                        }}
+                                        className={`${PANEL_BUTTON_SECONDARY} shrink-0 whitespace-nowrap`}
+                                      >
+                                        Media gallery
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={field.key} className={fieldClassName ? `${fieldClassName} space-y-1.5` : "space-y-1.5"}>
+                                  <Label>{labelText}</Label>
+                                  <input
+                                    type="text"
+                                    value={value}
+                                    onFocus={() => setActiveField(focusKey)}
+                                    onChange={(e) => updateSectionCollectionField(control.id, index, field.key, e.target.value)}
+                                    onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                    placeholder={placeholder}
+                                    className={PANEL_INPUT}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
+                      {!control.fixed ? (
+                        <button
+                          type="button"
+                          onClick={() => addSectionCollectionItem(control.id)}
+                          className={COLLECTION_ADD_BUTTON}
+                          aria-label={`Add item to ${control.label}`}
+                        >
+                          <Plus size={12} />
+                          Add item
+                        </button>
+                      ) : null}
+                    </div>
+                  </SectionControlCard>
+                );
+              })}
+            </div>
+          </Accordion>
+        )}
+
         {/* ── Content ── */}
-        {showWidgetPanel && widgetFields.length > 0 && (
+        {showStandaloneWidgetPanel && widgetFields.length > 0 && (
           <Accordion title={widgetLabel} icon={<Square size={12} />} open={open.widget} toggle={() => toggle("widget")}>
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/32">
-                  Structured widget
-                </p>
-                <p className="text-[10px] leading-relaxed text-white/28">
-                  Edit the widget data directly without flattening the block into plain text or losing its live behavior.
-                </p>
-              </div>
-
               <div className="space-y-2.5">
                 {widgetFields.map((field) => {
                   const value = widgetDraft[field.key] ?? "";
@@ -2856,9 +4276,55 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   const widgetLinkType = widgetLinkTypes[field.key] ?? inferLinkTypeFromValue(value);
                   const placeholder =
                     field.placeholder ||
-                    (isCountdownTarget
+                    (field.type === "image"
+                      ? "https://example.com/logo.svg"
+                      : isCountdownTarget
                       ? "Select a date"
                       : `Edit ${field.label.toLowerCase()}…`);
+
+                  if (field.type === "image") {
+                    return (
+                      <div key={field.key} className="space-y-2">
+                        <Label>{field.label} URL</Label>
+                        {value ? (
+                          <div className={`${PANEL_CARD} overflow-hidden p-0`}>
+                            <img
+                              src={value}
+                              alt={widgetDraft.brandAlt || widgetDraft.brand || field.label}
+                              className="h-24 w-full object-contain bg-[var(--surface-3)] px-4 py-3"
+                              onError={(event) => {
+                                (event.currentTarget as HTMLImageElement).style.opacity = "0.2";
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={value}
+                            onFocus={() => setActiveField(focusKey)}
+                            onChange={(e) => updateWidgetField(field.key, e.target.value)}
+                            onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                            placeholder={placeholder}
+                            className={PANEL_INPUT}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSectionWidgetImagePicker(null);
+                              setSectionMediaPicker(null);
+                              setSectionCollectionImagePicker(null);
+                              setWidgetImagePicker({ fieldKey: field.key });
+                              setMediaPickerTarget("widget-image");
+                            }}
+                            className={`${PANEL_BUTTON_SECONDARY} shrink-0 whitespace-nowrap`}
+                          >
+                            Media gallery
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   if (isLinkField) {
                     return (
@@ -3011,7 +4477,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                           onChange={(e) => updateWidgetField(field.key, e.target.value)}
                           onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
                           placeholder={placeholder}
-                          className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                          className={PANEL_TEXTAREA}
                         />
                       </div>
                     );
@@ -3075,17 +4541,6 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 })}
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] leading-relaxed text-white/26">
-                  Changes stay attached to the widget state, so the element keeps working after save, reload, preview, and export.
-                </p>
-                <button
-                  onClick={() => applyWidgetState(widgetDraft)}
-                  className={PANEL_BUTTON_PRIMARY}
-                >
-                  Apply widget
-                </button>
-              </div>
             </div>
           </Accordion>
         )}
@@ -3098,30 +4553,24 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 value={logoItemsDraft}
                 rows={Math.min(10, Math.max(4, logoItemsDraft.split("\n").length || 4))}
                 onFocus={() => setActiveField("logoItems")}
-                onChange={(e) => setLogoItemsDraft(e.target.value)}
+                onChange={(e) => applyLogoItems(e.target.value)}
                 onBlur={() => {
                   applyLogoItems(logoItemsDraft);
                   setActiveField(null);
                 }}
-                className="w-full resize-y min-h-[96px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={`${PANEL_TEXTAREA} min-h-[96px]`}
                 placeholder={"One item per line\nUse a company name or a logo image URL"}
               />
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] text-white/26 leading-relaxed">
-                  One logo per line. Use plain text for company names, paste direct image URLs, or open the media gallery for uploaded brand marks.
+                <p className="text-[10px] leading-relaxed text-[var(--text-tertiary)]">
+                  One logo per line. Use names or image URLs.
                 </p>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     onClick={() => setMediaPickerTarget("logos")}
-                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-white/[0.08] text-white/68 hover:text-white/86 hover:border-white/[0.16] transition-colors"
+                    className={PANEL_BUTTON_SECONDARY}
                   >
                     Media gallery
-                  </button>
-                  <button
-                    onClick={() => applyLogoItems(logoItemsDraft)}
-                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-[#5B8CFF]/20 bg-[#5B8CFF]/10 text-[#5B8CFF] hover:bg-[#5B8CFF]/18 transition-colors"
-                  >
-                    Apply
                   </button>
                 </div>
               </div>
@@ -3129,31 +4578,21 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           </Accordion>
         )}
 
-        {showCollectionPanel && collectionFields.length > 0 && (
+        {showStandaloneCollectionPanel && collectionFields.length > 0 && (
           <Accordion title={collectionLabel} icon={<Layers size={12}/>} open={open.items} toggle={() => toggle("items")}>
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/32">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                     Structured content
                   </p>
-                  <p className="text-[10px] leading-relaxed text-white/28">
-                    Manage the repeated entries inside this block.
+                  <p className="text-[10px] leading-relaxed text-[var(--text-tertiary)]">
+                    Edit repeated items live.
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {!node.collectionFixed && (
-                    <button
-                      type="button"
-                      onClick={addCollectionItem}
-                      className={`${PANEL_BUTTON_SECONDARY} inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2`}
-                    >
-                      <Plus size={11} />
-                      Add item
-                    </button>
-                  )}
                   {node.collectionFixed && (
-                    <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/42">
+                    <span className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-4)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-disabled)]">
                       fixed set
                     </span>
                   )}
@@ -3162,50 +4601,50 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
 
               <div className="space-y-3">
                 {collectionDraft.map((item, index) => (
-                  <div key={item.id || `${node.collectionKind}-${index}`} className={`${PANEL_SUBCARD} space-y-3 px-3 py-3`}>
+                  <div key={item.id || `${node.collectionKind}-${index}`} className={COLLECTION_ITEM_PANEL}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/46">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-[11px] font-semibold text-white/78">
-                            {item.title || `Item ${index + 1}`}
-                          </p>
-                          <p className="text-[9px] uppercase tracking-[0.12em] text-white/24">
-                            Collection item
-                          </p>
-                        </div>
+                      <div className="min-w-0 space-y-1">
+                        <p className={COLLECTION_ITEM_EYEBROW}>Item {formatCollectionItemIndex(index)}</p>
+                        <p className={COLLECTION_ITEM_HEADING}>{getCollectionItemHeading(collectionFields, item)}</p>
                       </div>
-                      {!node.collectionFixed && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => duplicateCollectionItem(index)}
-                            className={PANEL_BUTTON_ICON}
-                            title="Duplicate item"
-                            aria-label={`Duplicate item ${index + 1}`}
-                          >
-                            <Copy size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeCollectionItem(index)}
-                            disabled={collectionDraft.length <= 1}
-                            className={`${PANEL_BUTTON_ICON} text-rose-200/82 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-40`}
-                            title="Remove item"
-                            aria-label={`Remove item ${index + 1}`}
-                          >
-                            <Trash2 size={12} />
-                          </button>
+
+                      {!node.collectionFixed ? (
+                        <div className="flex items-center justify-end gap-1.5 shrink-0">
+                          <div className={SECTION_CONTROL_ACTION_BAR}>
+                            <button
+                              type="button"
+                              onClick={() => duplicateCollectionItem(index)}
+                              className={SECTION_CONTROL_ACTION_ICON}
+                              title="Duplicate item"
+                              aria-label={`Duplicate item ${index + 1}`}
+                            >
+                              <Copy size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeCollectionItem(index)}
+                              disabled={collectionDraft.length <= 1}
+                              className={SECTION_CONTROL_ACTION_ICON_DANGER}
+                              title="Remove item"
+                              aria-label={`Remove item ${index + 1}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className={useCompactCollectionGrid ? "grid grid-cols-2 gap-2.5" : "space-y-2.5"}>
                       {collectionFields.map((field) => {
+                        const itemId = item.id || `item-${index + 1}`;
                         const value = item.fields?.[field.key] ?? "";
                         const focusKey = `collection:${index}:${field.key}`;
+                        const isLinkField = isCollectionLinkField(field);
+                        const fieldClassName = collectionFieldSpansFullRow(field, useCompactCollectionGrid) ? "col-span-2" : "";
+                        const currentLinkType =
+                          collectionLinkTypes[collectionLinkTypeStateKey(itemId, field.key)] ??
+                          inferLinkTypeFromValue(value);
                         const labelText =
                           field.type === "image"
                             ? `${field.label} URL`
@@ -3219,7 +4658,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                             : `Edit ${field.label.toLowerCase()}…`);
                         if (field.type === "textarea" || field.type === "list") {
                           return (
-                            <div key={field.key} className="space-y-1.5">
+                            <div key={field.key} className={`${fieldClassName} space-y-1.5`.trim()}>
                               <Label>{labelText}</Label>
                               <textarea
                                 value={value}
@@ -3228,17 +4667,123 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                                 onChange={(e) => updateCollectionField(index, field.key, e.target.value)}
                                 onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
                                 placeholder={placeholder}
-                                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                                className={PANEL_TEXTAREA}
                               />
                               {field.type === "list" && (
-                                <p className="text-[9px] text-white/24">Use one line per list item.</p>
+                                <p className="text-[9px] text-[var(--text-disabled)]">Use one line per item.</p>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (isLinkField) {
+                          return (
+                            <div key={field.key} className={`${fieldClassName} space-y-2`.trim()}>
+                              <Label>{field.label}</Label>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[
+                                  { val: "page" as const, label: "Page", icon: <FileText size={11} /> },
+                                  { val: "anchor" as const, label: "Section", icon: <Anchor size={11} /> },
+                                  { val: "url" as const, label: "URL", icon: <Globe size={11} /> },
+                                  { val: "email" as const, label: "Email", icon: <Mail size={11} /> },
+                                  { val: "phone" as const, label: "Phone", icon: <Phone size={11} /> },
+                                  { val: "none" as const, label: "None", icon: <X size={11} /> },
+                                ].map(({ val, label, icon }) => {
+                                  const active = currentLinkType === val;
+                                  return (
+                                    <button
+                                      key={val}
+                                      type="button"
+                                      onClick={() => setCollectionLinkType(index, itemId, field.key, val)}
+                                      className={`inline-flex items-center justify-center gap-1.5 rounded-[14px] border px-2.5 py-2 text-[10px] font-medium transition-all ${
+                                        active
+                                          ? "border-[#5B8CFF]/22 bg-[#5B8CFF]/10 text-[#8EA8FF]"
+                                          : "border-[var(--border-soft)] bg-[var(--surface-4)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                                      }`}
+                                    >
+                                      {icon}
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {currentLinkType === "page" && (
+                                project?.pages && project.pages.length > 0 ? (
+                                  <select
+                                    value={normalizeInternalPageHref(value) ?? ""}
+                                    onFocus={() => setActiveField(focusKey)}
+                                    onChange={(e) => updateCollectionField(index, field.key, e.target.value)}
+                                    onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                    className={PANEL_SELECT}
+                                  >
+                                    <option value="">Choose page</option>
+                                    {project.pages.map((p) => (
+                                      <option key={`${itemId}:${field.key}:${p.id}`} value={pageHrefFor(p)}>
+                                        {p.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : <p className="px-1 text-[10px] text-[var(--text-disabled)]">No pages in this project.</p>
+                              )}
+
+                              {currentLinkType === "anchor" && (
+                                currentPage && currentPage.sections.length > 0 ? (
+                                  <select
+                                    value={value.startsWith("#") ? value : ""}
+                                    onFocus={() => setActiveField(focusKey)}
+                                    onChange={(e) => updateCollectionField(index, field.key, e.target.value)}
+                                    onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                    className={PANEL_SELECT}
+                                  >
+                                    <option value="">Choose section</option>
+                                    {currentPage.sections.map((sec) => (
+                                      <option key={`${itemId}:${field.key}:${sec.id}`} value={`#${sec.id}`}>
+                                        {sec.name || sec.type}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : <p className="px-1 text-[10px] text-[var(--text-disabled)]">No sections on this page.</p>
+                              )}
+
+                              {currentLinkType === "url" && (
+                                <input
+                                  value={value}
+                                  onFocus={() => setActiveField(focusKey)}
+                                  onChange={(e) => updateCollectionField(index, field.key, e.target.value)}
+                                  onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                  placeholder="https://example.com"
+                                  className={PANEL_INPUT}
+                                />
+                              )}
+
+                              {currentLinkType === "email" && (
+                                <input
+                                  value={value.replace("mailto:", "")}
+                                  onFocus={() => setActiveField(focusKey)}
+                                  onChange={(e) => updateCollectionField(index, field.key, `mailto:${e.target.value}`)}
+                                  onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                  placeholder="hello@example.com"
+                                  className={PANEL_INPUT}
+                                />
+                              )}
+
+                              {currentLinkType === "phone" && (
+                                <input
+                                  value={value.replace("tel:", "")}
+                                  onFocus={() => setActiveField(focusKey)}
+                                  onChange={(e) => updateCollectionField(index, field.key, `tel:${e.target.value}`)}
+                                  onBlur={() => setActiveField((current) => (current === focusKey ? null : current))}
+                                  placeholder="+1 555 000 0000"
+                                  className={PANEL_INPUT}
+                                />
                               )}
                             </div>
                           );
                         }
 
                         return (
-                          <div key={field.key} className="min-w-0 space-y-1.5">
+                          <div key={field.key} className={`${fieldClassName} min-w-0 space-y-1.5`.trim()}>
                             <Label>{labelText}</Label>
                             <input
                               value={value}
@@ -3254,19 +4799,23 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                     </div>
                   </div>
                 ))}
+
+                {!node.collectionFixed ? (
+                  <button
+                    type="button"
+                    onClick={addCollectionItem}
+                    className={COLLECTION_ADD_BUTTON}
+                    aria-label="Add collection item"
+                  >
+                    <Plus size={12} />
+                    Add item
+                  </button>
+                ) : null}
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] leading-relaxed text-white/26">
-                  Changes stay scoped to this block’s item structure and preserve the block’s current styling and interaction.
-                </p>
-                <button
-                  onClick={() => applyCollectionItems(collectionDraft)}
-                  className={PANEL_BUTTON_PRIMARY}
-                >
-                  Apply items
-                </button>
-              </div>
+              <p className="text-[10px] leading-relaxed text-[var(--text-tertiary)]">
+                Collection changes update the block immediately without breaking its layout.
+              </p>
             </div>
           </Accordion>
         )}
@@ -3279,25 +4828,17 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 value={localEditableText}
                 rows={Math.min(8, Math.max(3, localEditableText.split("\n").length || 3))}
                 onFocus={() => setActiveField("editableText")}
-                onChange={(e) => setLocalEditableText(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setLocalEditableText(nextValue);
+                  applyTextContent(nextValue);
+                }}
                 onBlur={() => {
-                  applyTextContent(localEditableText);
                   setActiveField(null);
                 }}
-                className="w-full resize-y min-h-[84px] bg-white/[0.05] border border-white/[0.07] rounded-lg px-2.5 py-2 text-[11px] leading-6 text-white/72 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={PANEL_TEXTAREA}
                 placeholder="Edit the selected text…"
               />
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] text-white/26 leading-relaxed">
-                  Edits the live text target for this element, including generated headings, labels, and simple emoji/text wrappers.
-                </p>
-                <button
-                  onClick={() => applyTextContent(localEditableText)}
-                  className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border border-[#5B8CFF]/20 bg-[#5B8CFF]/10 text-[#5B8CFF] hover:bg-[#5B8CFF]/18 transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
             </div>
           </Accordion>
         )}
@@ -3306,16 +4847,16 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         {(hasEditableText || node.isBtn || node.tag === "a" || (node as any).isInput) && (
           <Accordion title="Typography" icon={<Type size={12}/>} open={open.typography} toggle={() => toggle("typography")}>
             {/* Font family */}
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label>Font</Label>
               <select value={node.fontFamily} onChange={(e) => applyStyle("fontFamily", e.target.value)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none">
+                className={PANEL_SELECT}>
                 {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
 
             {/* Size + Weight row */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
               <div>
                 <SliderField
                   label="Size"
@@ -3347,14 +4888,14 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   Weight
                 </Label>
                 <select value={node.fontWeight} onChange={(e) => applyStyle("fontWeight", e.target.value)}
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none">
+                  className={PANEL_SELECT}>
                   {WEIGHTS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
                 </select>
               </div>
             </div>
 
             {/* Line height + Letter spacing */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
               <SliderField
                 label="Line Height"
                 value={localLineHeight}
@@ -3395,7 +4936,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Text align */}
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label>Align</Label>
               <ToggleGroup
                 value={node.textAlign}
@@ -3410,7 +4951,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Style toggles */}
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label>Style</Label>
               <ToggleGroup
                 value={node.fontStyle === "italic" ? "italic" : node.textDecoration === "underline" ? "underline" : node.textDecoration === "line-through" ? "line-through" : "normal"}
@@ -3430,7 +4971,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Text transform */}
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label>Transform</Label>
               <ToggleGroup
                 value={node.textTransform ?? "none"}
@@ -3444,7 +4985,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
               <div>
                 <Label
                   overrideActive={hasResponsiveProp("fontVariantCaps")}
@@ -3487,7 +5028,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
               <div>
                 <Label
                   overrideActive={hasResponsiveProp("whiteSpace")}
@@ -3528,7 +5069,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               </div>
             </div>
 
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label
                 overrideActive={hasResponsiveProp("wordBreak")}
                 onReset={() => resetResponsiveProp(["wordBreak"])}
@@ -3549,7 +5090,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {showListControls && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
                 <div>
                   <Label
                     overrideActive={hasResponsiveProp("listStyleType")}
@@ -3592,7 +5133,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             )}
 
             {showColumnsControls && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
                 <SliderField
                   label="Columns"
                   value={localColumnCount}
@@ -3638,7 +5179,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             )}
 
             {showParagraphSpacing && (
-              <div className="space-y-2">
+              <div className={`${INSPECTOR_GROUP} space-y-2.5`}>
                 <SliderField
                   label="Space After"
                   value={localParagraphGap}
@@ -3673,7 +5214,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             )}
 
             {showLinkDecorationControls && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`${INSPECTOR_GROUP} grid grid-cols-2 gap-2.5`}>
                 <div>
                   <Label
                     overrideActive={hasResponsiveProp("textDecorationStyle")}
@@ -3718,7 +5259,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             )}
 
             {/* Text color */}
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <Label
                 overrideActive={hasResponsiveProp("color")}
                 onReset={() => resetResponsiveProp(["color"])}
@@ -3728,7 +5269,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               <ColorPicker value={txtColor} onChange={(hex) => applyTextColor(hex, textOpacityValue, { batch: true })} />
             </div>
 
-            <div>
+            <div className={INSPECTOR_GROUP}>
               <SliderField
                 label="Text Opacity"
                 value={localTextOpacity}
@@ -3753,13 +5294,13 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Text shadow */}
-            <div>
+            <div className={`${INSPECTOR_GROUP} space-y-2.5`}>
               <Label>Text Shadow</Label>
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid grid-cols-3 gap-1.5">
                 {TEXT_SHADOW_PRESETS.map(p => (
                   <button key={p.label}
                     onClick={() => applyStyle("textShadow", p.value)}
-                    className="py-1.5 rounded-lg text-[10px] font-medium border border-white/[0.06] text-white/50 hover:border-white/[0.15] hover:text-white/80 transition-all">
+                    className="rounded-[12px] border border-[var(--border-soft)] bg-[rgba(255,255,255,0.02)] py-2 text-[10px] font-medium text-[var(--text-secondary)] transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)]">
                     {p.label}
                   </button>
                 ))}
@@ -3767,8 +5308,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Gradient text */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
+            <div className={`${INSPECTOR_GROUP} space-y-2.5`}>
+              <div className="mb-0 flex items-center justify-between">
                 <Label>Gradient Text</Label>
                 <EditorSwitch
                   checked={gradientOn}
@@ -3795,7 +5336,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               </div>
               {gradientOn && (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {GRADIENT_DIRS.map(d => (
                       <button key={d.value} onClick={() => {
                         setGradDir(d.value);
@@ -3803,7 +5344,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                           ? `radial-gradient(${d.value}, ${gradFrom}, ${gradTo})`
                           : `linear-gradient(${d.value}, ${gradFrom}, ${gradTo})`;
                         applyStyleToNode(node.textTargetNodeId ?? node.nodeId, "backgroundImage", grad);
-                      }} className={`py-1 rounded-lg text-[11px] border transition-all ${gradDir === d.value ? "border-[#5B8CFF]/30 bg-[#5B8CFF]/10 text-[#5B8CFF]" : "border-white/[0.06] text-white/50 hover:border-white/20"}`}>
+                      }} className={`rounded-[12px] border py-2 text-[11px] transition-all ${gradDir === d.value ? "border-[#5B8CFF]/22 bg-[#5B8CFF]/10 text-[#8EA8FF]" : "border-[var(--border-soft)] bg-[rgba(255,255,255,0.02)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-5)] hover:text-[var(--text-primary)]"}`}>
                         {d.label}
                       </button>
                     ))}
@@ -3835,9 +5376,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             </div>
 
             {/* Text stroke */}
-            <div>
+            <div className={`${INSPECTOR_GROUP} space-y-2.5`}>
               <Label>Stroke</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <SliderField
                   label="Width"
                   value={textStroke}
@@ -3961,7 +5502,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <select
                   value={(node as any).svgStrokeWidth ?? "2"}
                   onChange={(e) => send("apply-attr", { attr: "stroke-width", value: e.target.value })}
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                  className={PANEL_SELECT}
                 >
                   {["0.5","1","1.5","2","2.5","3"].map((v) => (
                     <option key={v} value={v}>{v}px</option>
@@ -4187,13 +5728,6 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }
                 />
               </div>
-              <p className="text-[9px] text-white/20 mt-1">
-                {embedMode === "youtube"
-                  ? "Paste any normal YouTube watch, share, shorts, or embed URL."
-                  : embedMode === "map"
-                    ? "Paste a place name, address, Google Maps share link, maps.app.goo.gl short link, or an existing embed URL."
-                    : "Use any valid iframe source such as Vimeo or a custom embed."}
-              </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {([
@@ -4265,7 +5799,8 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
         {/* ── Layout ── */}
         {showLayoutPanel && (
         <Accordion title="Layout" icon={<Layout size={12}/>} open={open.layout} toggle={() => toggle("layout")}>
-          <div className="grid grid-cols-2 gap-2">
+          <>
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <Label
                 overrideActive={hasResponsiveProp("position")}
@@ -4276,7 +5811,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               <select
                 value={node.position || "static"}
                 onChange={(e) => applyStyle("position", e.target.value)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                className={PANEL_SELECT}
               >
                 {POSITION_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -4293,7 +5828,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               <select
                 value={node.overflow || "visible"}
                 onChange={(e) => applyStyle("overflow", e.target.value)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                className={PANEL_SELECT}
               >
                 {OVERFLOW_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -4307,7 +5842,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               overrideActive={hasResponsiveProp("zIndex")}
               onReset={() => resetResponsiveProp(["zIndex"])}
             >
-              Z-Index
+              Z-index
             </Label>
             <input value={zIndexVal}
               onFocus={() => setActiveField("zIndex")}
@@ -4330,7 +5865,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }
               }}
               placeholder="auto"
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+              className={PANEL_INPUT}
             />
           </div>
 
@@ -4340,9 +5875,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 overrideActive={hasResponsiveProp("top", "right", "bottom", "left")}
                 onReset={() => resetResponsiveProp(["top", "right", "bottom", "left"])}
               >
-                Offsets
+                Inset
               </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <input value={topVal}
                   onFocus={() => setActiveField("top")}
                   onChange={(e) => {
@@ -4358,7 +5893,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("top", topVal.trim() === "" ? "auto" : topVal)}
                   placeholder="top"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                  className={PANEL_INPUT}
                 />
                 <input value={rightVal}
                   onFocus={() => setActiveField("right")}
@@ -4375,7 +5910,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("right", rightVal.trim() === "" ? "auto" : rightVal)}
                   placeholder="right"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                  className={PANEL_INPUT}
                 />
                 <input value={bottomVal}
                   onFocus={() => setActiveField("bottom")}
@@ -4392,7 +5927,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("bottom", bottomVal.trim() === "" ? "auto" : bottomVal)}
                   placeholder="bottom"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                  className={PANEL_INPUT}
                 />
                 <input value={leftVal}
                   onFocus={() => setActiveField("left")}
@@ -4409,14 +5944,13 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && applyStyle("left", leftVal.trim() === "" ? "auto" : leftVal)}
                   placeholder="left"
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                  className={PANEL_INPUT}
                 />
               </div>
             </div>
           )}
 
-          {/* W / H */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <Label>Width</Label>
               <input value={wVal}
@@ -4428,7 +5962,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("width", wVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("width", wVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={PANEL_INPUT}
               />
             </div>
             <div>
@@ -4442,14 +5976,13 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("height", hVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("height", hVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={PANEL_INPUT}
               />
             </div>
           </div>
-          {/* Min-W / Max-W */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <Label>Min Width</Label>
+              <Label>Min width</Label>
               <input value={mwVal}
                 onFocus={() => setActiveField("minWidth")}
                 onChange={(e) => {
@@ -4459,11 +5992,11 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("minWidth", mwVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("minWidth", mwVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={PANEL_INPUT}
               />
             </div>
             <div>
-              <Label>Max Width</Label>
+              <Label>Max width</Label>
               <input value={mxVal}
                 onFocus={() => setActiveField("maxWidth")}
                 onChange={(e) => {
@@ -4473,13 +6006,12 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 }}
                 onBlur={() => { applyStyle("maxWidth", mxVal); setActiveField(null); }}
                 onKeyDown={(e) => e.key === "Enter" && applyStyle("maxWidth", mxVal)}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                className={PANEL_INPUT}
               />
             </div>
           </div>
           {(!isMediaNode && !node.isText) && (
           <>
-          {/* Display */}
           <div>
             <Label
               overrideActive={hasResponsiveProp("display")}
@@ -4491,15 +6023,15 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               value={node.display}
               onChange={(v) => applyStyle("display", v)}
               options={[
-                { val: "block",        icon: <span className="text-[9px] font-semibold">Block</span>,  title: "Block" },
-                { val: "flex",         icon: <span className="text-[9px] font-semibold">Flex</span>,   title: "Flex" },
-                { val: "grid",         icon: <span className="text-[9px] font-semibold">Grid</span>,   title: "Grid" },
-                { val: "inline-block", icon: <span className="text-[9px] font-semibold">Inline</span>, title: "Inline Block" },
+                { val: "block",        icon: <span className="text-[10px] font-semibold tracking-tight">Block</span>,  title: "Block" },
+                { val: "flex",         icon: <span className="text-[10px] font-semibold tracking-tight">Flex</span>,   title: "Flex" },
+                { val: "grid",         icon: <span className="text-[10px] font-semibold tracking-tight">Grid</span>,   title: "Grid" },
+                { val: "inline-block", icon: <span className="text-[10px] font-semibold tracking-tight">Inline</span>, title: "Inline Block" },
               ]}
             />
           </div>
           {isFlexContainer && (
-            <>
+              <>
               <div>
                 <Label>Direction</Label>
                 <ToggleGroup
@@ -4518,7 +6050,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <select
                   value={node.flexWrap || "nowrap"}
                   onChange={(e) => applyStyle("flexWrap", e.target.value)}
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none"
+                  className={PANEL_SELECT}
                 >
                   {FLEX_WRAP_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -4529,7 +6061,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <div>
                   <Label>Justify</Label>
                   <select value={node.justifyContent} onChange={(e) => applyStyle("justifyContent", e.target.value)}
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none">
+                    className={PANEL_SELECT}>
                     {["flex-start","center","flex-end","space-between","space-around","space-evenly"].map((v) => (
                       <option key={v} value={v}>{v}</option>
                     ))}
@@ -4538,7 +6070,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <div>
                   <Label>Align</Label>
                   <select value={node.alignItems} onChange={(e) => applyStyle("alignItems", e.target.value)}
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none">
+                    className={PANEL_SELECT}>
                     {["flex-start","center","flex-end","stretch","baseline"].map((v) => (
                       <option key={v} value={v}>{v}</option>
                     ))}
@@ -4550,7 +6082,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 <select
                   value={node.alignContent || "normal"}
                   onChange={(e) => applyStyle("alignContent", e.target.value)}
-                  className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none"
+                  className={PANEL_SELECT}
                 >
                   {ALIGN_CONTENT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -4616,10 +6148,33 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                 />
               </div>
-            </>
+              </>
           )}
           {isGridContainer && (
-            <>
+              <>
+              {/* Grid column quick presets */}
+              <div>
+                <Label>Column Presets</Label>
+                <div className="grid grid-cols-5 gap-1">
+                  {[
+                    { label: "1", value: "1fr" },
+                    { label: "2", value: "repeat(2, 1fr)" },
+                    { label: "3", value: "repeat(3, 1fr)" },
+                    { label: "4", value: "repeat(4, 1fr)" },
+                    { label: "1:2", value: "1fr 2fr" },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => { setGridColsVal(p.value); applyStyle("gridTemplateColumns", p.value); }}
+                      className={`${INSPECTOR_PRESET_BTN} ${
+                        gridColsVal === p.value ? INSPECTOR_PRESET_BTN_ON : INSPECTOR_PRESET_BTN_OFF
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>Columns</Label>
@@ -4636,7 +6191,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       setActiveField(null);
                     }}
                     placeholder="repeat(3, minmax(0, 1fr))"
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                    className={PANEL_INPUT}
                   />
                 </div>
                 <div>
@@ -4654,7 +6209,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       setActiveField(null);
                     }}
                     placeholder="auto auto"
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                    className={PANEL_INPUT}
                   />
                 </div>
               </div>
@@ -4664,7 +6219,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   <select
                     value={node.gridAutoFlow || "row"}
                     onChange={(e) => applyStyle("gridAutoFlow", e.target.value)}
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none"
+                    className={PANEL_SELECT}
                   >
                     {GRID_AUTO_FLOW_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -4676,7 +6231,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   <select
                     value={node.justifyItems || "normal"}
                     onChange={(e) => applyStyle("justifyItems", e.target.value)}
-                    className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none"
+                    className={PANEL_SELECT}
                   >
                     {JUSTIFY_ITEMS_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -4743,19 +6298,10 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   }}
                 />
               </div>
-            </>
+              </>
           )}
           {(isFlexChild || isGridChild) && (
-            <>
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <Label>Item Layout</Label>
-                    <p className="text-[10px] text-white/24 leading-relaxed">
-                      Parent uses {node.parentDisplay}. These controls affect how this element behaves inside that layout.
-                    </p>
-                  </div>
-                </div>
+                  <>
                 {isFlexChild && (
                   <>
                     <div className="grid grid-cols-3 gap-2">
@@ -4777,7 +6323,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                             applyStyle("flexGrow", next);
                             setActiveField(null);
                           }}
-                          className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                          className={`${PANEL_INPUT} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
                         />
                       </div>
                       <div>
@@ -4798,7 +6344,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                             applyStyle("flexShrink", next);
                             setActiveField(null);
                           }}
-                          className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                          className={`${PANEL_INPUT} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
                         />
                       </div>
                       <div>
@@ -4816,7 +6362,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                             setActiveField(null);
                           }}
                           placeholder="auto"
-                          className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
+                          className={PANEL_INPUT}
                         />
                       </div>
                     </div>
@@ -4825,7 +6371,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                       <select
                         value={node.alignSelf || "auto"}
                         onChange={(e) => applyStyle("alignSelf", e.target.value)}
-                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10.5px] text-white/60 focus:outline-none appearance-none"
+                        className={PANEL_SELECT}
                       >
                         {ALIGN_SELF_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
@@ -4835,38 +6381,72 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   </>
                 )}
                 {isGridChild && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    {/* Column span quick picks */}
                     <div>
-                      <Label>Grid Column</Label>
-                      <input
-                        value={node.gridColumn || "auto"}
-                        onChange={(e) => applyStyle("gridColumn", e.target.value)}
-                        placeholder="auto / span 2"
-                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
-                      />
+                      <Label>Col Span</Label>
+                      <div className="grid grid-cols-5 gap-1">
+                        {(["auto","span 1","span 2","span 3","span 4"] as const).map((v) => (
+                          <button key={v}
+                            onClick={() => applyStyle("gridColumn", v)}
+                            className={`${INSPECTOR_PRESET_BTN} ${
+                              (node.gridColumn || "auto") === v ? INSPECTOR_PRESET_BTN_ON : INSPECTOR_PRESET_BTN_OFF
+                            }`}>
+                            {v === "auto" ? "auto" : v.replace("span ","")}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    {/* Row span quick picks */}
                     <div>
-                      <Label>Grid Row</Label>
-                      <input
-                        value={node.gridRow || "auto"}
-                        onChange={(e) => applyStyle("gridRow", e.target.value)}
-                        placeholder="auto / span 2"
-                        className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none focus:border-[#5B8CFF]/30 transition-colors"
-                      />
+                      <Label>Row Span</Label>
+                      <div className="grid grid-cols-5 gap-1">
+                        {(["auto","span 1","span 2","span 3","span 4"] as const).map((v) => (
+                          <button key={v}
+                            onClick={() => applyStyle("gridRow", v)}
+                            className={`${INSPECTOR_PRESET_BTN} ${
+                              (node.gridRow || "auto") === v ? INSPECTOR_PRESET_BTN_ON : INSPECTOR_PRESET_BTN_OFF
+                            }`}>
+                            {v === "auto" ? "auto" : v.replace("span ","")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Raw inputs for advanced values */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Column</Label>
+                        <input
+                          value={node.gridColumn || "auto"}
+                          onChange={(e) => applyStyle("gridColumn", e.target.value)}
+                          placeholder="auto / span 2 / 1 / 3"
+                          className={PANEL_INPUT}
+                        />
+                      </div>
+                      <div>
+                        <Label>Row</Label>
+                        <input
+                          value={node.gridRow || "auto"}
+                          onChange={(e) => applyStyle("gridRow", e.target.value)}
+                          placeholder="auto / span 2 / 1 / 3"
+                          className={PANEL_INPUT}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
-              </div>
-            </>
+                  </>
           )}
           </>
           )}
+          </>
         </Accordion>
         )}
 
         {/* ── Spacing ── */}
         <Accordion title="Spacing" icon={<Square size={12}/>} open={open.spacing} toggle={() => toggle("spacing")}>
-          <div className="grid grid-cols-2 gap-2">
+          <>
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <Label>Padding Preset</Label>
               <PresetSelect
@@ -4936,14 +6516,16 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             overrideActive={hasResponsiveProp("margin", "marginTop", "marginRight", "marginBottom", "marginLeft")}
             onReset={() => resetResponsiveProp(["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"])}
           />
+          </>
         </Accordion>
 
         {/* ── Background ── */}
         {showBackgroundPanel && (
         <Accordion title="Background" icon={<Layers size={12}/>} open={open.background} toggle={() => toggle("background")}>
+          <>
           {node.isBtn && (
             <div>
-              <Label>Button Surface</Label>
+              <Label>Button surface</Label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: "solid", label: "Solid" },
@@ -4977,10 +6559,22 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               Color
             </Label>
             <ColorPicker
-              value={bgColor ?? "#ffffff"}
-              onChange={(hex) => applyStyle("backgroundColor", hex, { batch: true })}
-              allowClear={!!bgColor}
-              onClear={() => applyStyle("backgroundColor", "transparent")}
+              value={(node.isBtn ? buttonSurfaceBgColor : bgColor) ?? "#ffffff"}
+              onChange={(hex) => {
+                if (node.isBtn) {
+                  applyStyleToNode(buttonSurfaceTargetId, "backgroundColor", hex, { batch: true });
+                  return;
+                }
+                applyStyle("backgroundColor", hex, { batch: true });
+              }}
+              allowClear={!!(node.isBtn ? buttonSurfaceBgColor : bgColor)}
+              onClear={() => {
+                if (node.isBtn) {
+                  applyStyleToNode(buttonSurfaceTargetId, "backgroundColor", "transparent");
+                  return;
+                }
+                applyStyle("backgroundColor", "transparent");
+              }}
             />
           </div>
           {/* Background Image */}
@@ -5033,12 +6627,14 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               applyStyle("backgroundImage", "none");
             }}
           />
+          </>
         </Accordion>
         )}
 
         {/* ── Border ── */}
         {showBorderPanel && (
         <Accordion title="Border & Radius" icon={<Square size={12}/>} open={open.border} toggle={() => toggle("border")}>
+          <>
           <SliderField
             label="Width"
             value={borderWidthVal}
@@ -5074,7 +6670,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   setBorderStyleVal(e.target.value);
                   applyBorderConfig(borderWidthVal, e.target.value, borderColorVal);
                 }}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                className={PANEL_SELECT}
               >
                 {BORDER_STYLE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -5104,10 +6700,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               onBlur={() => applyStyle("border", localBorder)}
               onKeyDown={(e) => e.key === "Enter" && applyStyle("border", localBorder)}
               placeholder="1px solid #ccc"
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/60 placeholder-white/18 focus:outline-none focus:border-[#5B8CFF]/30 font-mono transition-colors"
+              className={`${PANEL_INPUT} font-mono text-[10.5px]`}
             />
           </div>
-          {/* 4-corner radius */}
           <div>
             <Label
               overrideActive={hasResponsiveProp("borderRadius")}
@@ -5154,33 +6749,34 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               ))}
             </div>
           </div>
+          </>
         </Accordion>
         )}
 
         {/* ── Animation ── */}
         <Accordion title="Animation" icon={<Sparkles size={12}/>} open={open.animation} toggle={() => toggle("animation")}>
-          <div className="rounded-lg bg-white/[0.025] px-2.5 py-2 space-y-2">
-            <p className="text-[10px] text-white/35 leading-relaxed">
+          <div className="space-y-2">
+            <p className="text-[10px] text-[var(--text-disabled)] leading-relaxed">
               Builder motion overrides generated motion on this block.
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <button
                 onClick={() => previewAnimation("entrance")}
                 disabled={!node.animationIn || node.animationIn === "none" || node.animationIn === "custom"}
-                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-5)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Preview in
               </button>
               <button
                 onClick={() => previewAnimation("hover")}
                 disabled={!node.animationHover || node.animationHover === "none" || node.animationHover === "custom"}
-                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-5)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Preview hover
               </button>
               <button
                 onClick={() => applyAnimationConfig({ entrance: "none", hover: "none", duration: "600ms", delay: "0ms", ease: "cubic-bezier(0.22,1,0.36,1)" })}
-                className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/[0.04] text-white/50 hover:text-white/75 hover:bg-white/[0.07] transition-colors"
+                className="px-2 py-1 rounded-md text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-5)] transition-colors"
               >
                 Clear
               </button>
@@ -5195,7 +6791,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   if (e.target.value === "custom") return;
                   applyAnimationConfig({ entrance: e.target.value });
                 }}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                className={PANEL_SELECT}
               >
                 {ENTRANCE_ANIMATIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -5210,7 +6806,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                   if (e.target.value === "custom") return;
                   applyAnimationConfig({ hover: e.target.value });
                 }}
-                className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+                className={PANEL_SELECT}
               >
                 {HOVER_ANIMATIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -5268,7 +6864,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
             <select
               value={node.animationEase || "cubic-bezier(0.22,1,0.36,1)"}
               onChange={(e) => applyAnimationConfig({ ease: e.target.value })}
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+              className={PANEL_SELECT}
             >
               {ANIMATION_EASINGS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -5410,7 +7006,7 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 setMixBlendVal(e.target.value);
                 applyStyle("mixBlendMode", e.target.value);
               }}
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[11px] text-white/70 focus:outline-none appearance-none"
+              className={PANEL_SELECT}
             >
               {MIX_BLEND_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -5460,10 +7056,11 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
               }}
             />
           </div>
-          {/* Shadow presets */}
+          {/* Shadow builder */}
           <div>
             <Label>Box Shadow</Label>
-            <div className="grid grid-cols-3 gap-1">
+            {/* Quick presets */}
+            <div className="grid grid-cols-6 gap-1 mb-2.5">
               {SHADOW_PRESETS.map((s) => (
                 <button key={s.label}
                   onClick={() => applyStyle("boxShadow", s.value)}
@@ -5476,18 +7073,12 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
                 </button>
               ))}
             </div>
-          </div>
-          {/* Custom shadow */}
-          <div>
-            <Label>Custom</Label>
-            <input value={node.boxShadow || "none"}
-              onChange={(e) => applyStyle("boxShadow", e.target.value)}
-              className="w-full bg-white/[0.05] border border-white/[0.07] rounded-lg px-2 py-1.5 text-[10px] text-white/50 font-mono focus:outline-none transition-colors"
+            {/* Visual layer builder */}
+            <ShadowBuilder
+              value={node.boxShadow || "none"}
+              onChange={(css) => applyStyle("boxShadow", css)}
             />
           </div>
-          <p className="text-[10px] text-white/22 leading-relaxed">
-            Backdrop blur is most visible on elements with translucent backgrounds, like frosted cards or sticky navbars.
-          </p>
         </Accordion>
 
         {/* ── Section ── */}
@@ -5645,6 +7236,64 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           </Accordion>
         )}
 
+        {/* ── CSS Editor ── */}
+        <Accordion title="CSS" icon={<Code2 size={12}/>} open={open.css} toggle={() => toggle("css")}>
+          <div className="space-y-3">
+            <textarea
+              value={cssDraft}
+              onChange={(e) => setCssDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  // Parse lines into prop/value pairs and apply each
+                  const lines = cssDraft.split("\n");
+                  lines.forEach((line) => {
+                    const trimmed = line.trim().replace(/;$/, "");
+                    if (!trimmed) return;
+                    const colonIdx = trimmed.indexOf(":");
+                    if (colonIdx < 1) return;
+                    const rawProp = trimmed.slice(0, colonIdx).trim();
+                    const val = trimmed.slice(colonIdx + 1).trim();
+                    // Convert kebab-case to camelCase
+                    const prop = rawProp.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+                    if (prop && val) send("apply-style", { prop, value: val });
+                  });
+                }
+              }}
+              rows={8}
+              placeholder={"color: #ffffff\nfont-size: 18px\nborder-radius: 12px"}
+              spellCheck={false}
+              className="w-full resize-y bg-black/25 border border-white/[0.08] rounded-xl px-3 py-2.5 text-[11px] leading-relaxed text-white/70 font-mono focus:outline-none focus:border-[#5B8CFF]/30 transition-colors placeholder:text-white/16 min-h-[120px]"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const lines = cssDraft.split("\n");
+                  lines.forEach((line) => {
+                    const trimmed = line.trim().replace(/;$/, "");
+                    if (!trimmed) return;
+                    const colonIdx = trimmed.indexOf(":");
+                    if (colonIdx < 1) return;
+                    const rawProp = trimmed.slice(0, colonIdx).trim();
+                    const val = trimmed.slice(colonIdx + 1).trim();
+                    const prop = rawProp.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+                    if (prop && val) send("apply-style", { prop, value: val });
+                  });
+                }}
+                className="flex-1 rounded-xl border border-[#5B8CFF]/20 bg-[#5B8CFF]/10 py-2 text-[10px] font-semibold text-[#5B8CFF]/90 hover:bg-[#5B8CFF]/16 transition-all"
+              >
+                Apply CSS <span className="opacity-50 ml-1 text-[9px]">⌘↵</span>
+              </button>
+              <button
+                onClick={() => setCssDraft("")}
+                className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-[10px] text-white/35 hover:text-white/60 hover:border-white/[0.14] transition-all"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </Accordion>
+
         {responsiveAccordion}
 
       </div>
@@ -5659,9 +7308,9 @@ export function EditPanel({ iframeRef, onClose, project }: Props) {
           actionLabel={mediaPickerActionLabel}
           onSelect={(assets) => {
             applyMediaFromLibrary(assets);
-            setMediaPickerTarget(null);
+            closeMediaPicker();
           }}
-          onClose={() => setMediaPickerTarget(null)}
+          onClose={closeMediaPicker}
         />
       ) : null}
     </>

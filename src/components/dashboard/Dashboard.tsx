@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { CurrentBetaAccess, UserAccountProfile } from "@/types";
+import { buildStudioWorkspaceHref } from "@/lib/app-navigation";
 import { useAppStore } from "@/lib/store";
 import { CreateProjectModal } from "./CreateProjectModal";
 import { ProjectCard } from "./ProjectCard";
@@ -68,6 +69,7 @@ export function Dashboard({
   }, [hydrateProjects, mounted, projects]);
 
   const visibleProjects = mounted ? projects : [];
+  const isEmptyWorkspace = visibleProjects.length === 0;
   const filtered = visibleProjects
     .filter((p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -80,9 +82,9 @@ export function Dashboard({
     });
 
   return (
-    <div className="min-h-screen">
+    <div className="sz-page-shell">
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="sz-topbar sticky top-0 z-40">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-5">
           {/* Logo */}
           <Link href="/" className="flex items-center">
@@ -91,58 +93,6 @@ export function Dashboard({
 
           {/* Controls */}
           <div className="flex items-center gap-2.5">
-            {visibleProjects.length > 0 && (
-              <>
-                {/* Search */}
-                <div className="hidden w-[220px] xl:block">
-                  <SitezyInput
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search projects…"
-                    className="px-4 text-[13px]"
-                  />
-                </div>
-
-                {/* View toggle */}
-                <div className="hidden items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-3)] p-1 xl:flex">
-                  {VIEW_OPTIONS.map((mode) => (
-                    <button
-                      key={mode.key}
-                      type="button"
-                      onClick={() => setViewMode(mode.key)}
-                      title={`${mode.label} view`}
-                      className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
-                        viewMode === mode.key
-                          ? "bg-[rgba(107,119,255,0.18)] text-[var(--text-primary)]"
-                          : "text-[var(--fg-muted)] hover:text-[var(--fg-soft)]"
-                      }`}
-                    >
-                      {mode.icon}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Sort toggle */}
-                <div className="hidden items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-3)] p-1 xl:flex">
-                  {SORT_OPTIONS.map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      title={item.label}
-                      onClick={() => setSortBy(item.key)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
-                        sortBy === item.key
-                          ? "bg-[rgba(107,119,255,0.18)] text-[var(--text-primary)]"
-                          : "text-[var(--fg-muted)] hover:text-[var(--fg-soft)]"
-                      }`}
-                    >
-                      {item.icon}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
             {currentAccess?.role === "admin" ? (
               <Link href="/admin">
                 <SitezyButton variant="secondary" size="sm">
@@ -161,23 +111,24 @@ export function Dashboard({
               </Link>
             ) : null}
 
-            <SitezyButton variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={14} />
-              New project
-            </SitezyButton>
-            <UserAvatarMenu initialAccount={initialAccount} showStudioShortcut={false} />
+            <UserAvatarMenu
+              initialAccount={initialAccount}
+              showStudioShortcut={false}
+              settingsReturnHref={buildStudioWorkspaceHref()}
+            />
           </div>
         </div>
       </header>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <main className="sz-grid-shell pb-28 pt-6">
+      <main className={isEmptyWorkspace ? "sz-page-body" : "sz-page-scroll"}>
+        <div className={isEmptyWorkspace ? "sz-grid-shell h-full py-4 lg:py-6" : "sz-grid-shell pb-28 pt-6"}>
 
         {/* Empty state */}
-        {visibleProjects.length === 0 ? (
-          <div className="grid min-h-[calc(100vh-160px)] items-center gap-10 lg:grid-cols-[1fr_1fr] lg:gap-16">
-            <div className="space-y-8">
-              <div className="space-y-5">
+        {isEmptyWorkspace ? (
+          <div className="grid h-full min-h-0 items-center gap-6 lg:grid-cols-[1fr_1fr] lg:gap-12">
+            <div className="space-y-6">
+              <div className="space-y-4">
                 <SitezyBadge className="sz-status-info">Your workspace</SitezyBadge>
                 <h1 className="text-[clamp(2rem,4vw,3rem)] font-bold leading-[1.05] tracking-[-0.055em] text-[var(--text-primary)]">
                   A calm workspace for every site you ship.
@@ -194,15 +145,15 @@ export function Dashboard({
                 </SitezyButton>
               </div>
 
-              <SitezyCard className="max-w-[520px] p-6">
+              <SitezyCard className="max-w-[520px] p-5">
                 <p className="text-[10.5px] font-bold uppercase tracking-[0.2em] text-[var(--fg-faint)]">How it works</p>
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-2">
                   {[
                     { step: "01", text: "Write a business brief and choose your site type" },
                     { step: "02", text: "Sitezy generates structure, copy, and sections" },
                     { step: "03", text: "Refine visually in the editor, then export when ready" },
                   ].map((item) => (
-                    <div key={item.step} className="flex items-center gap-4 rounded-[16px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-3">
+                    <div key={item.step} className="flex items-center gap-4 rounded-[16px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-2.5">
                       <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-subtle)] text-[10px] font-bold text-[var(--text-accent)] tracking-[-0.02em]">{item.step}</span>
                       <span className="text-[13.5px] text-[var(--text-secondary)] tracking-[-0.01em]">{item.text}</span>
                     </div>
@@ -212,7 +163,7 @@ export function Dashboard({
             </div>
 
             {/* Visual showcase panel */}
-            <div className="relative hidden lg:block">
+            <div className="relative hidden min-h-0 lg:block">
               <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(circle_at_30%_20%,rgba(91,140,255,0.2),transparent_55%)]" />
               <div className="sz-card-featured relative overflow-hidden rounded-[32px] p-5">
                 {/* Editor preview mock */}
@@ -230,7 +181,7 @@ export function Dashboard({
                   </div>
 
                   {/* Three-panel editor body */}
-                  <div className="grid h-[320px] grid-cols-[140px_1fr_140px]">
+                  <div className="grid h-[min(320px,calc(100dvh-290px))] min-h-[260px] grid-cols-[140px_1fr_140px]">
                     {/* Left nav */}
                     <div className="border-r border-white/[0.04] p-3 space-y-1">
                       {["Pages","Layers","Media"].map((t,i) => (
@@ -292,82 +243,68 @@ export function Dashboard({
 
         ) : (
             <div className="space-y-6">
-              {/* Section heading row */}
-              <div className="flex items-end justify-between gap-6">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-[36px] font-bold leading-none tracking-[-0.06em] md:text-[44px]">
-                    Projects
-                  </h1>
-                  <span className="mt-0.5 flex h-7 items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-3)] px-3 text-[12px] font-semibold text-[var(--text-tertiary)] tracking-[-0.01em]">
-                    {filtered.length}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[14px] text-[var(--text-tertiary)] tracking-[-0.01em]">
-                  Generate, refine, and reopen your sites.
-                </p>
-                </div>
+              {/* Title + count */}
+              <div className="flex items-end gap-3">
+                <h1 className="text-[36px] font-bold leading-none tracking-[-0.06em] md:text-[44px]">
+                  Projects
+                </h1>
+                <span
+                  className="mb-1 text-[18px] font-semibold leading-none tracking-[-0.04em] text-white/48 tabular-nums md:text-[21px]"
+                  aria-live="polite"
+                >
+                  {filtered.length}
+                </span>
               </div>
 
-              <div className="xl:hidden">
-                <SitezyCard className="p-4">
-                  <div className="space-y-4">
-                    <SitezyInput
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search projects"
-                      className="px-4 text-[13px]"
-                    />
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">
-                          View
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {VIEW_OPTIONS.map((option) => (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setViewMode(option.key)}
-                              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-all ${
-                                viewMode === option.key
-                                  ? "border-[var(--border-focus)] bg-[var(--accent-subtle)] text-[var(--text-primary)]"
-                                  : "border-[var(--border-soft)] bg-[var(--surface-3)] text-[var(--fg-soft)]"
-                              }`}
-                            >
-                              {option.icon}
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]">
-                          Sort
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {SORT_OPTIONS.map((option) => (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setSortBy(option.key)}
-                              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-all ${
-                                sortBy === option.key
-                                  ? "border-[var(--border-focus)] bg-[var(--accent-subtle)] text-[var(--text-primary)]"
-                                  : "border-[var(--border-soft)] bg-[var(--surface-3)] text-[var(--fg-soft)]"
-                              }`}
-                            >
-                              {option.icon}
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </SitezyCard>
+              {/* Search + view / sort — one toolbar, responsive */}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                <SitezyInput
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search projects"
+                  className="min-w-0 flex-1 px-4 text-[13px] lg:max-w-xl"
+                />
+                <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap lg:ml-auto lg:shrink-0">
+                  {VIEW_OPTIONS.map((mode) => (
+                    <button
+                      key={mode.key}
+                      type="button"
+                      onClick={() => setViewMode(mode.key)}
+                      title={`${mode.label} view`}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
+                        viewMode === mode.key
+                          ? "border-[var(--border-focus)] bg-[rgba(107,119,255,0.18)] text-[var(--text-primary)]"
+                          : "border-[var(--border-soft)] text-[var(--fg-muted)] hover:border-[var(--border-default)] hover:text-[var(--fg-soft)]"
+                      }`}
+                    >
+                      {mode.icon}
+                    </button>
+                  ))}
+                  {SORT_OPTIONS.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      title={item.label}
+                      onClick={() => setSortBy(item.key)}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
+                        sortBy === item.key
+                          ? "border-[var(--border-focus)] bg-[rgba(107,119,255,0.18)] text-[var(--text-primary)]"
+                          : "border-[var(--border-soft)] text-[var(--fg-muted)] hover:border-[var(--border-default)] hover:text-[var(--fg-soft)]"
+                      }`}
+                    >
+                      {item.icon}
+                    </button>
+                  ))}
+                  <SitezyButton
+                    variant="primary"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={() => setShowCreate(true)}
+                  >
+                    <Plus size={14} />
+                    New project
+                  </SitezyButton>
+                </div>
               </div>
 
             {/* No search results */}
@@ -396,6 +333,7 @@ export function Dashboard({
             )}
           </div>
         )}
+        </div>
       </main>
 
       {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}

@@ -198,8 +198,8 @@ export function CustomerServiceDashboard({
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="sz-topbar sticky top-0 z-40">
+    <div className="sz-page-shell">
+      <header className="sz-topbar sz-page-header">
         <div className="sz-grid-shell flex h-20 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/" className="flex items-center">
@@ -226,7 +226,8 @@ export function CustomerServiceDashboard({
         </div>
       </header>
 
-      <main className="sz-grid-shell py-6 md:py-8">
+      <main className="sz-page-scroll">
+        <div className="sz-grid-shell py-6 md:py-8">
         <div className="space-y-6">
           <SitezyCard className="p-5 md:p-6">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -529,6 +530,7 @@ export function CustomerServiceDashboard({
               )}
             </SitezyCard>
           </div>
+        </div>
         </div>
       </main>
     </div>

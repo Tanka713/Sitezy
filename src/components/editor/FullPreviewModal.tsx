@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { derivePageStateFromHtml } from "@/lib/editor/structure";
+import { resolveEffectiveProjectLeadCaptureSettings } from "@/lib/lead-capture";
+import { defaultUserSettings, readCachedUserSettings } from "@/lib/settings";
 import { useAppStore } from "@/lib/store";
-import { buildFullPageHtml } from "@/lib/utils";
+import { buildFullPageHtml, buildProjectPageNavigationLinks } from "@/lib/utils";
 import { X, ChevronLeft, ChevronRight, Globe } from "lucide-react";
 import { OverlayDialog } from "@/components/ui/OverlayDialog";
 import type { Project } from "@/types";
@@ -24,6 +26,11 @@ export function FullPreviewModal({ project }: Props) {
 
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null;
   const currentIndex = pages.findIndex((p) => p.id === activePageId);
+  const cachedSettings = useMemo(() => readCachedUserSettings() ?? defaultUserSettings, []);
+  const effectiveLeadSettings = useMemo(
+    () => resolveEffectiveProjectLeadCaptureSettings(project.integrationSettings, cachedSettings),
+    [cachedSettings, project.integrationSettings]
+  );
 
   useEffect(() => {
     if (activePageId && pages.some((page) => page.id === activePageId)) return;
@@ -67,10 +74,42 @@ export function FullPreviewModal({ project }: Props) {
     const iframe = iframeRef.current;
     if (!iframe || !iframeReady || !activePage?.html) return;
     const normalized = derivePageStateFromHtml(activePage.html, activePage.sections);
-    const fullHtml = buildFullPageHtml(normalized.html, project?.blueprint ?? null, activePage.name, navScript);
+    const navigationLinks = buildProjectPageNavigationLinks(pages, (_target, _index, slug) =>
+      slug === "home" ? "/" : `/${slug}`
+    );
+    const fullHtml = buildFullPageHtml(
+      normalized.html,
+      project?.blueprint ?? null,
+      activePage.name,
+      navScript,
+      "",
+      null,
+      {
+        mode: "preview",
+        projectId: project.id,
+        contactCaptureEnabled: effectiveLeadSettings.contactCapture === "sitezy",
+        newsletterCaptureEnabled: effectiveLeadSettings.newsletterCapture === "sitezy",
+        submitEndpoint: "/api/leads/submit",
+      },
+      null,
+      null,
+      navigationLinks
+    );
     const doc = iframe.contentDocument;
     if (doc) { doc.open(); doc.write(fullHtml); doc.close(); }
-  }, [activePage?.html, activePage?.id, activePage?.sections, iframeReady, project?.blueprint, navScript]);
+  }, [
+    activePage?.html,
+    activePage?.id,
+    activePage?.name,
+    activePage?.sections,
+    effectiveLeadSettings.contactCapture,
+    effectiveLeadSettings.newsletterCapture,
+    iframeReady,
+    navScript,
+    pages,
+    project?.blueprint,
+    project.id,
+  ]);
 
   // Listen for inter-page navigation from within the iframe
   useEffect(() => {

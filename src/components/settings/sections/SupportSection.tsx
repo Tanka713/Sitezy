@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bug, ExternalLink, Inbox, LifeBuoy, MessageSquareMore, Sparkles, Ticket } from "lucide-react";
+import { buildSupportInboxHref } from "@/lib/app-navigation";
 import type { SupportRequest, SupportRequestKind } from "@/types";
 import { API_UNKNOWN_001, logAppError, normalizeError } from "@/lib/errors";
 import { formatSupportTicketNumber } from "@/lib/utils";
@@ -48,6 +49,7 @@ const FORM_COPY: Record<
 
 export function SupportSection() {
   const router = useRouter();
+  const supportInboxHref = buildSupportInboxHref();
   const [requests, setRequests] = useState<SupportRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -67,6 +69,10 @@ export function SupportSection() {
     }),
     [requests]
   );
+
+  useEffect(() => {
+    router.prefetch(supportInboxHref);
+  }, [router, supportInboxHref]);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,7 +235,7 @@ export function SupportSection() {
                 Open the dedicated inbox page to filter pending, open, and closed tickets and read every reply from customer service in one place.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <SettingsPrimaryAction type="button" onClick={() => router.push("/support/inbox")}>
+                <SettingsPrimaryAction type="button" onClick={() => router.push(supportInboxHref)}>
                   <Inbox size={14} />
                   Open inbox
                 </SettingsPrimaryAction>

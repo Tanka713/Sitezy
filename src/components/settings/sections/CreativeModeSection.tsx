@@ -6,6 +6,7 @@ import {
   SettingsField,
   SettingsGroup,
   SettingsResetRow,
+  SettingsRow,
   SettingsSlider,
   SettingsStack,
   SettingsStatus,
@@ -32,7 +33,7 @@ export function CreativeModeSection({
     <SettingsStack>
       {status ? <SettingsStatus tone={status.tone}>{status.message}</SettingsStatus> : null}
 
-      <SettingsGroup title="Creative bias" body="Bias generation toward more surprising, less restrained outputs when you want the AI to push harder.">
+      <SettingsGroup title="Creative mode">
         <div className="space-y-4">
           <SettingsField label="Boldness">
             <SettingsSlider
@@ -44,32 +45,26 @@ export function CreativeModeSection({
             />
           </SettingsField>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-4">
-              <div>
-                <h3 className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">Surprise me</h3>
-                <p className="mt-1 text-[13px] leading-6 text-[var(--text-secondary)]">
-                  Let generation occasionally pick a more unexpected layout direction.
-                </p>
-              </div>
-              <SettingsToggle
-                checked={draft.surpriseMe}
-                onChange={(surpriseMe) => setDraft((current) => ({ ...current, surpriseMe }))}
-              />
-            </div>
+          <div className="space-y-3">
+            <SettingsRow
+              title="Surprise me"
+              action={
+                <SettingsToggle
+                  checked={draft.surpriseMe}
+                  onChange={(surpriseMe) => setDraft((current) => ({ ...current, surpriseMe }))}
+                />
+              }
+            />
 
-            <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-3)] px-4 py-4">
-              <div>
-                <h3 className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">Break design rules</h3>
-                <p className="mt-1 text-[13px] leading-6 text-[var(--text-secondary)]">
-                  Permit asymmetry, sharper contrast, and rule-bending composition when the prompt allows it.
-                </p>
-              </div>
-              <SettingsToggle
-                checked={draft.breakDesignRules}
-                onChange={(breakDesignRules) => setDraft((current) => ({ ...current, breakDesignRules }))}
-              />
-            </div>
+            <SettingsRow
+              title="Break rules"
+              action={
+                <SettingsToggle
+                  checked={draft.breakDesignRules}
+                  onChange={(breakDesignRules) => setDraft((current) => ({ ...current, breakDesignRules }))}
+                />
+              }
+            />
           </div>
         </div>
       </SettingsGroup>

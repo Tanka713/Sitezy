@@ -845,7 +845,7 @@ function OutcomeScene() {
         <div className="grid gap-5 sm:grid-cols-3">
           {outcomeSites.map((site, index) => (
             <Reveal key={site.name} delay={index * 100}>
-              <div className="group overflow-hidden rounded-[22px] border border-white/[0.07] transition-all duration-500 hover:border-white/[0.16] hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(0,0,0,0.4)]">
+              <div className="group overflow-hidden rounded-[22px] border border-white/[0.07] transition-all duration-500 hover:border-white/[0.16] hover:shadow-[0_28px_70px_rgba(0,0,0,0.4)]">
                 <div className={`h-[260px] bg-gradient-to-br ${site.palette} p-4`}
                   style={{ boxShadow: `inset 0 -30px 60px ${site.accent}` }}>
                   <div className="h-full rounded-[16px] border border-white/20 bg-white/10 p-4 backdrop-blur-sm">

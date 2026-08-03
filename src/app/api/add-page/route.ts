@@ -14,7 +14,7 @@ import {
 import type { SiteBlueprint, SiteBrief } from "@/types";
 
 export const runtime   = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") ?? null;
@@ -31,21 +31,31 @@ export async function POST(req: NextRequest) {
 
     const body = await parseRequestBody<{
       blueprint?: SiteBlueprint;
+      pageId?: string;
       pageName?: string;
+      pageSlug?: string;
       pageDescription?: string;
       brief?: SiteBrief;
+      navbarHtml?: string | null;
+      footerHtml?: string | null;
     }>(req);
 
     assertFields(body as Record<string, unknown>, ["blueprint", "pageName", "brief"], API_REQUEST_002);
     await consumeAIUsageCredits(user.id, "add-page");
 
-    const { blueprint, pageName, pageDescription, brief } = body;
+    const { blueprint, pageId, pageName, pageSlug, pageDescription, brief, navbarHtml, footerHtml } = body;
 
     const result = await generateNewPage(
       blueprint!,
       pageName!,
       pageDescription || pageName!,
-      brief!
+      brief!,
+      {
+        pageId,
+        pageSlug,
+        navbarHtml: navbarHtml ?? null,
+        footerHtml: footerHtml ?? null,
+      }
     ).catch((err) => {
       throw createAppError({
         code: API_GENERATE_001,

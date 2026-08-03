@@ -12,7 +12,15 @@ import {
   type IconElementDefinition,
   type InsertionCategory,
 } from "@/lib/blocks/registry";
+import { formatCreditAmount, getAIUsageCost } from "@/lib/ai-usage";
+import {
+  buildDefaultProjectPageSeo,
+  normalizeProjectPageMeta,
+  normalizeProjectPageSeo,
+} from "@/lib/project-pages";
+import { projectHasActiveGeneration } from "@/lib/project-generation";
 import { useAppStore } from "@/lib/store";
+import { estimateSectionRegenerationDurationMs } from "@/lib/generation-eta";
 import {
   API_GENERATE_001,
   API_RESPONSE_001,
@@ -22,16 +30,28 @@ import {
   normalizeError,
   type ErrorCode,
 } from "@/lib/errors";
-import { uid, extractNavbarHtml } from "@/lib/utils";
+import { cn, uid, extractNavbarHtml } from "@/lib/utils";
 import {
   LayoutGrid, Send, Loader2,
-  X, Wand2, ImageIcon, Link, ChevronDown, ChevronUp, Sparkles,
+  X, Wand2, ImageIcon, ChevronDown, ChevronUp, Sparkles,
   RefreshCw, Menu, Zap, HelpCircle, Users, Mail, Tag, BarChart2,
   Quote, Info, Building2, Type,
+  Rows3, Columns3, Square, MousePointerClick, FormInput, Shapes, MoreHorizontal,
 } from "lucide-react";
 import { EditorSwitch } from "./EditorSwitch";
 import { EditPanel } from "./EditPanel";
-import type { Project, AIChatMessage } from "@/types";
+import type {
+  AIChatMessage,
+  CmsCollection,
+  CmsField,
+  EditorState,
+  Project,
+  ProjectPage,
+  ProjectPageCmsBinding,
+  ProjectPageKind,
+  ProjectPageMeta,
+  ProjectPageSeoSettings,
+} from "@/types";
 
 // Parse a streaming AI assistant reply that may contain a Sitezy edit block.
 // Returns { message, edit } where edit is null if the block is missing/incomplete.
@@ -100,17 +120,6 @@ function replaceSectionById(pageHtml: string, sectionId: string, replacement: st
   return pageHtml.slice(0, start) + replacement.trim() + pageHtml.slice(pos);
 }
 
-// ── Props panel helpers ───────────────────────────────────────────────────────
-
-interface ExtractedField {
-  key: string;
-  label: string;
-  kind: "text" | "src" | "href";
-  selector: string;
-  nth: number;
-  value: string;
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SECTION_TYPE_ICONS: Record<string, any> = {
   navbar:      Menu,
@@ -135,198 +144,6 @@ function getSectionIcon(type: string) {
 }
 
 /** Parse all sections directly from page HTML — more reliable than page.sections. */
-function parseSectionsFromPageHtml(html: string): { id: string; type: string; name: string }[] {
-  if (typeof window === "undefined" || !html) return [];
-  try {
-    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
-    return Array.from(doc.body.children)
-      .filter((el): el is HTMLElement => el instanceof HTMLElement &&
-        !["script","style","link","meta"].includes(el.tagName.toLowerCase()))
-      .map((el, i) => ({
-        id:   el.dataset.szSectionId   || `sec-fallback-${i}`,
-        type: el.dataset.szSectionType || "section",
-        name: el.dataset.szSectionName ||
-              el.querySelector("h1,h2,h3")?.textContent?.trim()?.slice(0, 52) ||
-              `Section ${i + 1}`,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-/** Extract the HTML of a single section from full page HTML. */
-function extractSectionHtml(pageHtml: string, sectionId: string): string | null {
-  if (typeof window === "undefined" || !pageHtml) return null;
-  try {
-    const doc = new DOMParser().parseFromString(`<body>${pageHtml}</body>`, "text/html");
-    const el = doc.querySelector(`[data-sz-section-id="${sectionId}"]`) as HTMLElement | null;
-    return el?.outerHTML ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Extract editable fields (headings, body text, CTAs, images) from section HTML. */
-function extractEditableFields(sectionHtml: string): ExtractedField[] {
-  if (typeof window === "undefined" || !sectionHtml) return [];
-  try {
-    const doc = new DOMParser().parseFromString(`<body>${sectionHtml}</body>`, "text/html");
-    const root = doc.body.firstElementChild as HTMLElement | null;
-    if (!root) return [];
-
-    const fields: ExtractedField[] = [];
-    let h1n = 0, h2n = 0, h3n = 0;
-
-    root.querySelectorAll("h1,h2,h3").forEach((el) => {
-      const text = el.textContent?.trim() ?? "";
-      if (!text) return;
-      const tag = el.tagName.toLowerCase() as "h1" | "h2" | "h3";
-      const nth = tag === "h1" ? h1n++ : tag === "h2" ? h2n++ : h3n++;
-      const labelMap: Record<string, string[]> = {
-        h1: ["Headline", "Headline 2"],
-        h2: ["Subheading", "Subheading 2", "Subheading 3"],
-        h3: ["Section title", "Section title 2", "Section title 3"],
-      };
-      fields.push({ key: `${tag}-${nth}`, label: labelMap[tag]?.[nth] ?? `${tag.toUpperCase()} ${nth + 1}`,
-        kind: "text", selector: tag, nth, value: text });
-    });
-
-    const p = root.querySelector("p");
-    if (p) {
-      const text = p.textContent?.trim() ?? "";
-      if (text) fields.push({ key: "p-0", label: "Body text", kind: "text", selector: "p", nth: 0, value: text });
-    }
-
-    // CTAs: buttons + links that look like buttons (not nav/list items)
-    const ctaCandidates: Element[] = [];
-    root.querySelectorAll("a,button").forEach((el) => {
-      const text = el.textContent?.trim() ?? "";
-      if (!text || text.length > 80 || text.length < 2) return;
-      if (el.closest("nav") || el.closest("ul") || el.closest("ol")) return;
-      const cls = (el.getAttribute("class") || "").toLowerCase();
-      const isButtonLike =
-        el.tagName === "BUTTON" ||
-        cls.includes("btn") || cls.includes("button") || cls.includes("cta") ||
-        (cls.includes("px-") && cls.includes("py-")) ||
-        (cls.includes("px-") && cls.includes("rounded"));
-      if (isButtonLike) ctaCandidates.push(el);
-    });
-    const ctaLabels = ["CTA Button", "Secondary CTA", "Third CTA"];
-    ctaCandidates.slice(0, 3).forEach((el, i) => {
-      const text = el.textContent?.trim() ?? "";
-      fields.push({ key: `cta-text-${i}`, label: ctaLabels[i] ?? `Button ${i + 1}`,
-        kind: "text", selector: el.tagName.toLowerCase(), nth: i, value: text });
-      if (el.tagName === "A") {
-        const href = el.getAttribute("href") ?? "";
-        fields.push({ key: `cta-href-${i}`, label: `${ctaLabels[i]} Link`,
-          kind: "href", selector: "a", nth: i, value: href });
-      }
-    });
-
-    // Images
-    root.querySelectorAll("img[src]").forEach((img, i) => {
-      const src = img.getAttribute("src") ?? "";
-      if (!src) return;
-      const alt = img.getAttribute("alt")?.trim() || (i === 0 ? "Image" : `Image ${i + 1}`);
-      fields.push({ key: `img-${i}`, label: alt.slice(0, 32), kind: "src",
-        selector: "img", nth: i, value: src });
-    });
-
-    return fields;
-  } catch {
-    return [];
-  }
-}
-
-/** Update text content of an element while preserving inner elements (spans, em, etc.). */
-function updateElementText(el: HTMLElement, newValue: string, doc: Document): void {
-  const tag = el.tagName.toLowerCase();
-  // For CTAs/buttons just replace all text (simpler, icon HTML preserved via deep walk)
-  if (tag === "a" || tag === "button") {
-    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => (n.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
-    } as NodeFilter);
-    const textNodes: Text[] = [];
-    let n;
-    while ((n = walker.nextNode() as Text | null)) textNodes.push(n);
-    if (textNodes.length > 0) {
-      textNodes[textNodes.length - 1].nodeValue = newValue;
-      for (let j = 0; j < textNodes.length - 1; j++) textNodes[j].nodeValue = "";
-    } else {
-      el.textContent = newValue;
-    }
-    return;
-  }
-  // For headings/paragraphs: preserve child elements (color spans, em, etc.)
-  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
-  } as NodeFilter);
-  const textNodes: Text[] = [];
-  let n;
-  while ((n = walker.nextNode() as Text | null)) textNodes.push(n);
-  if (textNodes.length === 0) { el.textContent = newValue; return; }
-  if (textNodes.length === 1) { textNodes[0].nodeValue = newValue; return; }
-  // Multiple text nodes — put all text in first, clear others
-  textNodes[0].nodeValue = newValue;
-  for (let j = 1; j < textNodes.length; j++) textNodes[j].nodeValue = "";
-}
-
-/** Apply a batch of field edits to section HTML, return updated section outerHTML. */
-function applyFieldEditsToSection(
-  sectionHtml: string,
-  fields: ExtractedField[],
-  edits: Record<string, string>
-): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const doc = new DOMParser().parseFromString(`<body>${sectionHtml}</body>`, "text/html");
-    const root = doc.body.firstElementChild as HTMLElement | null;
-    if (!root) return null;
-
-    for (const field of fields) {
-      const newVal = edits[field.key];
-      if (newVal === undefined) continue;
-
-      // CTA href/src fields — the selector and nth need to match the paired cta-text selector
-      // For `cta-href-N`, selector is "a" and nth is N among all `a` elements in the section.
-      // But we stored nth as the index among the ctaCandidates slice which may differ from DOM order.
-      // Re-use the same candidate list for consistency.
-      if (field.key.startsWith("cta-")) {
-        const allCandidates = Array.from(root.querySelectorAll("a,button")).filter((el) => {
-          const txt = el.textContent?.trim() ?? "";
-          if (!txt || txt.length > 80 || txt.length < 2) return false;
-          if (el.closest("nav") || el.closest("ul") || el.closest("ol")) return false;
-          const cls = (el.getAttribute("class") || "").toLowerCase();
-          return (
-            el.tagName === "BUTTON" ||
-            cls.includes("btn") || cls.includes("button") || cls.includes("cta") ||
-            (cls.includes("px-") && cls.includes("py-")) ||
-            (cls.includes("px-") && cls.includes("rounded"))
-          );
-        });
-        const ctaIdx = parseInt(field.key.replace(/\D/g, ""), 10);
-        const target = allCandidates[ctaIdx] as HTMLElement | null;
-        if (!target) continue;
-        if (field.kind === "text") updateElementText(target, newVal, doc);
-        else if (field.kind === "href") target.setAttribute("href", newVal);
-        continue;
-      }
-
-      const targets = Array.from(root.querySelectorAll(field.selector)) as HTMLElement[];
-      const target = targets[field.nth];
-      if (!target) continue;
-
-      if (field.kind === "text")      updateElementText(target, newVal, doc);
-      else if (field.kind === "src")  { target.setAttribute("src", newVal); target.removeAttribute("srcset"); }
-      else if (field.kind === "href") target.setAttribute("href", newVal);
-    }
-
-    return root.outerHTML;
-  } catch {
-    return null;
-  }
-}
-
 function getRequestId(error: unknown): string | null {
   if (typeof error !== "object" || error === null) return null;
 
@@ -361,7 +178,10 @@ function buildClientApiError(error: unknown, fallbackCode: ErrorCode, metadata?:
   };
 }
 
-interface Props { project: Project; }
+interface Props {
+  project: Project;
+  edge?: "left" | "right";
+}
 
 function createPriorityMap(ids: string[]) {
   return new Map(ids.map((id, index) => [id, index]));
@@ -462,11 +282,13 @@ function priorityRank(map: Map<string, number>, blockId: string) {
   return map.get(blockId) ?? Number.MAX_SAFE_INTEGER;
 }
 
-export function RightSidebar({ project }: Props) {
-  const rightPanelTab = useAppStore((s) => s.editor.rightPanelTab);
+export function RightSidebar({ project, edge = "right" }: Props) {
+  const rawRightPanelTab = useAppStore((s) => s.editor.rightPanelTab) as EditorState["rightPanelTab"] | "properties";
   const selectedNode  = useAppStore((s) => s.editor.selectedNode);
   const setRightPanel = useAppStore((s) => s.setRightPanel);
+  const generationLocked = projectHasActiveGeneration(project);
   const previousSelectedNodeIdRef = useRef<string | null>(null);
+  const activeRightPanelTab = rawRightPanelTab === "properties" ? "style" : rawRightPanelTab;
 
   // Stable iframe ref via MutationObserver
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -483,29 +305,45 @@ export function RightSidebar({ project }: Props) {
 
   // New selection can hand off to the inspector, but do not lock the user there.
   useEffect(() => {
+    if (rawRightPanelTab !== "properties") return;
+    setRightPanel("style");
+  }, [rawRightPanelTab, setRightPanel]);
+
+  useEffect(() => {
     const nextId = selectedNode?.nodeId ?? null;
     const prevId = previousSelectedNodeIdRef.current;
     previousSelectedNodeIdRef.current = nextId;
 
     if (!nextId || nextId === prevId) return;
-    if (rightPanelTab === "style" || rightPanelTab === "properties") return;
+    if (activeRightPanelTab === "style") return;
     setRightPanel("style");
-  }, [selectedNode?.nodeId, rightPanelTab, setRightPanel]);
+  }, [activeRightPanelTab, selectedNode?.nodeId, setRightPanel]);
 
   const tabs = [
     { key: "style"  as const, label: "Style" },
+    { key: "page"   as const, label: "Page" },
     { key: "blocks" as const, label: "Blocks" },
     { key: "ai"     as const, label: "AI" },
   ];
 
-  const tabMeta: Record<typeof rightPanelTab, { title: string; subtitle: string }> = {
+  const visualEditMode = useAppStore((s) => s.editor.visualEditMode);
+
+  const tabMeta: Record<EditorState["rightPanelTab"], { title: string; subtitle: string }> = {
     style: {
       title: "Inspector",
-      subtitle: selectedNode ? "Style and settings for the current selection." : "Select something on the canvas to start editing.",
+      subtitle: !visualEditMode
+        ? "Enable edit mode to start editing."
+        : selectedNode
+        ? "Style and settings for the current selection."
+        : "Select something on the canvas to start editing.",
     },
     theme: {
       title: "Design System",
       subtitle: "Site-wide design archetype, typography, spacing, and color direction.",
+    },
+    page: {
+      title: "Page settings",
+      subtitle: "Configure routing, CMS binding, SEO overrides, and approval state for the selected page.",
     },
     blocks: {
       title: "Elements",
@@ -515,38 +353,630 @@ export function RightSidebar({ project }: Props) {
       title: "AI assistant",
       subtitle: "Generate refinements, copy changes, and structural ideas without leaving the editor.",
     },
-    properties: {
-      title: "Properties",
-      subtitle: "Inspect configuration and metadata for the current selection.",
-    },
   };
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/[0.04] bg-[#0e1117]/95 backdrop-blur-2xl">
+    <aside
+      className={cn(
+        "sz-editor-dock editor-sidebar flex h-full w-full flex-col overflow-hidden",
+        edge === "right" ? "rounded-l-[22px] rounded-r-none border-r-0" : "rounded-r-[22px] rounded-l-none border-l-0"
+      )}
+    >
       <div className="flex flex-shrink-0 flex-col gap-2.5 px-3.5 pb-2.5 pt-3.5">
-        <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] p-1">
+        <div className="flex items-center justify-center gap-6 px-1 pb-1">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setRightPanel(t.key)}
-              className={`relative flex h-8 flex-1 items-center justify-center rounded-[10px] text-center transition-all duration-200 ${
-                rightPanelTab === t.key
-                  ? "bg-white/[0.08] text-white/90 shadow-[0_1px_3px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)]"
-                  : "text-white/32 hover:text-white/55"
-              }`}
+              className={cn(
+                "relative flex h-8 items-center justify-center px-1.5 text-center transition-colors duration-200",
+                activeRightPanelTab === t.key
+                  ? "text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
             >
-              <span className="text-[10.5px] font-medium tracking-wide">{t.label}</span>
+              <span className="text-[11.5px] font-medium tracking-wide">{t.label}</span>
             </button>
           ))}
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3">
-        {rightPanelTab === "style"      && <EditPanel iframeRef={iframeRef as React.RefObject<HTMLIFrameElement>} onClose={() => setRightPanel("ai")} project={project} />}
-        {rightPanelTab === "ai"         && <AIPanel project={project} />}
-        {rightPanelTab === "properties" && <PropsPanel project={project} />}
-        {rightPanelTab === "blocks"     && <BlocksPanel project={project} />}
+        {generationLocked ? (
+          <GenerationLockedPanel tab={activeRightPanelTab} />
+        ) : (
+          <>
+            {activeRightPanelTab === "style"  && <EditPanel iframeRef={iframeRef as React.RefObject<HTMLIFrameElement>} onClose={() => setRightPanel("ai")} project={project} />}
+            {activeRightPanelTab === "page"   && <PageMetaPanel project={project} />}
+            {activeRightPanelTab === "ai"     && <AIPanel project={project} />}
+            {activeRightPanelTab === "blocks" && <BlocksPanel project={project} />}
+          </>
+        )}
       </div>
     </aside>
+  );
+}
+
+function GenerationLockedPanel({ tab }: { tab: EditorState["rightPanelTab"] }) {
+  const title =
+    tab === "blocks"
+      ? "Block insertion is paused"
+      : tab === "ai"
+      ? "AI edits are paused"
+      : "Editing is paused";
+
+  const body =
+    tab === "blocks"
+      ? "Finish the current generation first. We pause block insertion so the generator doesn’t get overwritten mid-run."
+      : tab === "ai"
+      ? "Finish the current generation first. This avoids AI edits landing on stale page state."
+      : "Finish the current generation first. The editor stays read-only while pages are still being built.";
+
+  return (
+    <div className="flex h-full items-center justify-center px-3">
+      <div className="w-full rounded-2xl bg-[var(--surface-3)] px-4 py-4 text-center shadow-[inset_0_0_0_1px_var(--border-soft)]">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#5B8CFF]/10 text-[#5B8CFF]">
+          <Loader2 size={15} className="animate-spin" />
+        </div>
+        <p className="mt-3 text-[12.5px] font-semibold text-[var(--text-primary)]">{title}</p>
+        <p className="mt-1.5 text-[11.5px] leading-5 text-[var(--text-secondary)]">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+const PAGE_PANEL_CARD = "rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-3)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]";
+const PAGE_PANEL_INPUT = "min-h-9 w-full rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2 text-[12px] text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-disabled)] focus:border-[var(--border-focus)]";
+const PAGE_PANEL_LABEL = "text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-faint)]";
+
+const PAGE_KIND_OPTIONS: Array<{ key: ProjectPageKind; label: string; body: string }> = [
+  { key: "static", label: "Static", body: "A normal page with fixed sections." },
+  { key: "cms_listing", label: "CMS list", body: "Repeats entries from a collection." },
+  { key: "cms_detail", label: "CMS detail", body: "Renders one published entry per URL." },
+];
+
+const CMS_TEMPLATE_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "description", label: "Description" },
+  { key: "image", label: "Image" },
+  { key: "url", label: "URL" },
+  { key: "date", label: "Date" },
+  { key: "category", label: "Category" },
+];
+
+function firstFieldByPreference(
+  fields: CmsField[],
+  preferredKeys: string[],
+  preferredTypes: CmsField["type"][]
+) {
+  const keyMatch = fields.find((field) => preferredKeys.includes(field.key));
+  if (keyMatch) return keyMatch.key;
+  return fields.find((field) => preferredTypes.includes(field.type))?.key ?? null;
+}
+
+function buildDefaultCmsBinding(
+  collection: CmsCollection,
+  existing?: ProjectPageCmsBinding | null
+): ProjectPageCmsBinding {
+  const descriptionField = firstFieldByPreference(
+    collection.fields,
+    ["description", "excerpt", "summary", "body", "content"],
+    ["textarea", "rich_text", "text"]
+  );
+  const imageField = firstFieldByPreference(collection.fields, ["image", "cover", "photo", "avatar"], ["image"]);
+  const urlField = firstFieldByPreference(collection.fields, ["url", "link", "website"], ["url"]);
+  const dateField = firstFieldByPreference(collection.fields, ["date", "published_at", "event_date"], ["date"]);
+
+  return {
+    collectionId: collection.id,
+    collectionSlug: collection.slug,
+    itemLimit: existing?.itemLimit ?? 6,
+    targetNodeId: existing?.targetNodeId ?? null,
+    detailPageId: existing?.detailPageId ?? null,
+    detailSlugParam: existing?.detailSlugParam ?? "slug",
+    fieldMapping: {
+      ...(descriptionField ? { description: descriptionField } : {}),
+      ...(imageField ? { image: imageField } : {}),
+      ...(urlField ? { url: urlField } : {}),
+      ...(dateField ? { date: dateField } : {}),
+      ...(existing?.fieldMapping ?? {}),
+    },
+    seoFieldMapping: {
+      title: existing?.seoFieldMapping?.title ?? "title",
+      description: existing?.seoFieldMapping?.description ?? descriptionField,
+      ogImageUrl: existing?.seoFieldMapping?.ogImageUrl ?? imageField,
+    },
+  };
+}
+
+function publicPathForPage(page: ProjectPage, collection?: CmsCollection | null) {
+  if ((page.meta?.pageKind === "cms_listing" || page.meta?.pageKind === "cms_detail") && collection) {
+    return `/${(page.meta.cmsBinding?.collectionSlug || collection.slug || page.slug || page.name)
+      .replace(/^\/+|\/+$/g, "")
+      .replace(/\s+/g, "-")}`;
+  }
+  const slug = (page.slug || page.name).replace(/^\/+|\/+$/g, "").replace(/\s+/g, "-");
+  return slug === "home" || !slug ? "/" : `/${slug}`;
+}
+
+function PagePanelField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className={PAGE_PANEL_LABEL}>{label}</span>
+      {children}
+      {hint ? <span className="block text-[11px] leading-5 text-[var(--text-tertiary)]">{hint}</span> : null}
+    </label>
+  );
+}
+
+function PagePanelSourceSelect({
+  value,
+  fields,
+  onChange,
+  allowEntryUrl = true,
+  placeholder = "Use matching field key",
+}: {
+  value: string;
+  fields: CmsField[];
+  onChange: (value: string) => void;
+  allowEntryUrl?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <select className={PAGE_PANEL_INPUT} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{placeholder}</option>
+      <option value="title">Entry title</option>
+      <option value="slug">Entry slug</option>
+      {allowEntryUrl ? <option value="url">Entry URL</option> : null}
+      {fields.length ? (
+        <optgroup label="Collection fields">
+          {fields.map((field) => (
+            <option key={field.id} value={field.key}>
+              {field.label}
+            </option>
+          ))}
+        </optgroup>
+      ) : null}
+    </select>
+  );
+}
+
+function PageMetaPanel({ project }: Props) {
+  const selectedPageId = useAppStore((s) => s.editor.selectedPageId);
+  const setPageMeta = useAppStore((s) => s.setPageMeta);
+  const setApiError = useAppStore((s) => s.setApiError);
+  const page = project.pages.find((candidate) => candidate.id === selectedPageId) ?? null;
+  const [collections, setCollections] = useState<CmsCollection[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCollectionsLoading(true);
+
+    void fetch(`/api/projects/${project.id}/cms/collections`, { credentials: "same-origin" })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as {
+          collections?: CmsCollection[];
+          error?: string;
+          code?: string;
+          requestId?: string | null;
+        };
+        if (!response.ok) {
+          throw createAppError({
+            code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
+            devMessage: `Failed to load CMS collections for page settings (${response.status})`,
+            userMessage: data.error ?? "We couldn't load CMS collections for this project.",
+            severity: "warn",
+            metadata: { projectId: project.id, status: response.status, requestId: data.requestId ?? null },
+          });
+        }
+        if (!cancelled) setCollections(Array.isArray(data.collections) ? data.collections : []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const appErr = normalizeError(error, API_UNKNOWN_001, { action: "loadPageMetaCollections", projectId: project.id });
+        logAppError(appErr);
+        setApiError({
+          message: appErr.userMessage,
+          requestId: typeof appErr.metadata?.requestId === "string" ? appErr.metadata.requestId : null,
+          code: appErr.code,
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setCollectionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, setApiError]);
+
+  if (!page) {
+    return (
+      <div className="flex h-full items-center justify-center px-3 text-center">
+        <div className={PAGE_PANEL_CARD}>
+          <p className="text-[13px] font-semibold text-[var(--text-primary)]">No page selected</p>
+          <p className="mt-1.5 text-[11.5px] leading-5 text-[var(--text-secondary)]">
+            Pick a page from the structure panel to configure routing, CMS, and SEO.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const activePage = page;
+  const meta = normalizeProjectPageMeta(activePage.meta, activePage);
+  const defaultSeo = buildDefaultProjectPageSeo(activePage);
+  const seo = meta.seo ?? defaultSeo;
+  const boundCollection =
+    collections.find((collection) => collection.id === meta.cmsBinding?.collectionId) ??
+    collections.find((collection) => collection.slug === meta.cmsBinding?.collectionSlug) ??
+    null;
+  const effectiveBinding = boundCollection
+    ? buildDefaultCmsBinding(boundCollection, meta.cmsBinding)
+    : meta.cmsBinding;
+  const cmsEnabled = meta.pageKind !== "static";
+  const publicPath = publicPathForPage(activePage, boundCollection);
+
+  function commit(nextMeta: ProjectPageMeta) {
+    setPageMeta(activePage.id, normalizeProjectPageMeta(nextMeta, activePage));
+  }
+
+  function patchMeta(patch: Partial<ProjectPageMeta>) {
+    commit({ ...meta, ...patch });
+  }
+
+  function setPageKind(pageKind: ProjectPageKind) {
+    if (pageKind === "static") {
+      patchMeta({ pageKind, cmsBinding: null });
+      return;
+    }
+
+    const collection = boundCollection ?? collections[0] ?? null;
+    patchMeta({
+      pageKind,
+      cmsBinding: collection ? buildDefaultCmsBinding(collection, meta.cmsBinding) : null,
+    });
+  }
+
+  function updateSeo(patch: Partial<ProjectPageSeoSettings>) {
+    patchMeta({
+      seo: normalizeProjectPageSeo({ ...(meta.seo ?? defaultSeo), ...patch }, activePage),
+    });
+  }
+
+  function updateBinding(patch: Partial<ProjectPageCmsBinding>) {
+    const collection =
+      collections.find((candidate) => candidate.id === patch.collectionId) ??
+      boundCollection ??
+      collections[0] ??
+      null;
+    if (!collection) return;
+    const base = buildDefaultCmsBinding(collection, effectiveBinding);
+    patchMeta({
+      pageKind: meta.pageKind === "static" ? "cms_listing" : meta.pageKind,
+      cmsBinding: {
+        ...base,
+        ...patch,
+        collectionId: collection.id,
+        collectionSlug: patch.collectionSlug ?? collection.slug,
+      },
+    });
+  }
+
+  function updateFieldMapping(slot: string, sourceKey: string) {
+    if (!effectiveBinding) return;
+    const nextMapping = { ...(effectiveBinding.fieldMapping ?? {}) };
+    if (sourceKey.trim()) nextMapping[slot] = sourceKey.trim();
+    else delete nextMapping[slot];
+    updateBinding({ fieldMapping: nextMapping });
+  }
+
+  function updateSeoFieldMapping(slot: keyof ProjectPageCmsBinding["seoFieldMapping"], sourceKey: string) {
+    if (!effectiveBinding) return;
+    updateBinding({
+      seoFieldMapping: {
+        ...effectiveBinding.seoFieldMapping,
+        [slot]: sourceKey.trim() || null,
+      },
+    });
+  }
+
+  return (
+    <div className="sz-scroll-hidden flex h-full min-h-0 flex-col overflow-y-auto pr-1">
+      <div className="space-y-3 pb-3">
+        <div className={PAGE_PANEL_CARD}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={PAGE_PANEL_LABEL}>Selected page</p>
+              <h3 className="mt-1 truncate text-[16px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">{page.name}</h3>
+              <p className="mt-1 text-[11.5px] text-[var(--text-tertiary)]">{publicPath}</p>
+            </div>
+            <span className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-4)] px-2 py-1 text-[10px] font-semibold text-[var(--text-secondary)]">
+              rev {page.revision ?? 1}
+            </span>
+          </div>
+        </div>
+
+        <div className={PAGE_PANEL_CARD}>
+          <p className={PAGE_PANEL_LABEL}>Page kind</p>
+          <div className="mt-3 grid gap-2">
+            {PAGE_KIND_OPTIONS.map((option) => {
+              const disabled = option.key !== "static" && !collections.length;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setPageKind(option.key)}
+                  disabled={disabled}
+                  className={cn(
+                    "rounded-xl border px-3 py-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-45",
+                    meta.pageKind === option.key
+                      ? "border-[var(--border-focus)] bg-[rgba(107,119,255,0.14)] text-[var(--text-primary)]"
+                      : "border-[var(--border-soft)] bg-[var(--surface-4)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
+                  )}
+                >
+                  <span className="block text-[12.5px] font-semibold">{option.label}</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-[var(--text-tertiary)]">{option.body}</span>
+                </button>
+              );
+            })}
+          </div>
+          {!collections.length ? (
+            <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">
+              {collectionsLoading ? "Loading CMS collections..." : "Create a CMS collection before binding list or detail pages."}
+            </p>
+          ) : null}
+        </div>
+
+        <div className={PAGE_PANEL_CARD}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className={PAGE_PANEL_LABEL}>Approval</p>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">Track review state for shared previews.</p>
+            </div>
+            <select
+              className="min-h-9 rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-2.5 text-[12px] text-[var(--text-primary)] outline-none"
+              value={meta.approvalStatus}
+              onChange={(event) => patchMeta({ approvalStatus: event.target.value as ProjectPageMeta["approvalStatus"] })}
+            >
+              <option value="draft">Draft</option>
+              <option value="in_review">In review</option>
+              <option value="approved">Approved</option>
+            </select>
+          </div>
+          <div className="mt-3">
+            <PagePanelField label="Share title" hint="Optional label used by collaboration and preview-share surfaces.">
+              <input
+                className={PAGE_PANEL_INPUT}
+                value={meta.shareTitle ?? ""}
+                onChange={(event) => patchMeta({ shareTitle: event.target.value })}
+                placeholder={`${page.name} review`}
+              />
+            </PagePanelField>
+          </div>
+        </div>
+
+        {cmsEnabled ? (
+          <div className={PAGE_PANEL_CARD}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className={PAGE_PANEL_LABEL}>CMS binding</p>
+                <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                  Bind repeatable blocks with <code className="text-[var(--text-secondary)]">data-sz-field</code> attributes to collection fields.
+                </p>
+              </div>
+              {collectionsLoading ? <Loader2 size={13} className="mt-0.5 animate-spin text-[var(--text-accent)]" /> : null}
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <PagePanelField label="Collection">
+                <select
+                  className={PAGE_PANEL_INPUT}
+                  value={effectiveBinding?.collectionId ?? ""}
+                  onChange={(event) => {
+                    const collection = collections.find((candidate) => candidate.id === event.target.value) ?? null;
+                    if (collection) updateBinding(buildDefaultCmsBinding(collection, effectiveBinding));
+                  }}
+                >
+                  <option value="">Select collection</option>
+                  {collections.map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name}
+                    </option>
+                  ))}
+                </select>
+              </PagePanelField>
+
+              {effectiveBinding && boundCollection ? (
+                <>
+                  <PagePanelField label="Public base path" hint="Listing and detail routes use this collection slug as their public base.">
+                    <input
+                      className={PAGE_PANEL_INPUT}
+                      value={effectiveBinding.collectionSlug ?? boundCollection.slug}
+                      onChange={(event) => updateBinding({ collectionSlug: event.target.value })}
+                      placeholder={boundCollection.slug}
+                    />
+                  </PagePanelField>
+
+                  {meta.pageKind === "cms_listing" ? (
+                    <div className="grid grid-cols-[1fr_1fr] gap-2">
+                      <PagePanelField label="Item limit">
+                        <input
+                          className={PAGE_PANEL_INPUT}
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={effectiveBinding.itemLimit ?? ""}
+                          onChange={(event) =>
+                            updateBinding({
+                              itemLimit: event.target.value ? Math.max(1, Number(event.target.value)) : null,
+                            })
+                          }
+                          placeholder="All"
+                        />
+                      </PagePanelField>
+                      <PagePanelField label="Detail page">
+                        <select
+                          className={PAGE_PANEL_INPUT}
+                          value={effectiveBinding.detailPageId ?? ""}
+                          onChange={(event) => updateBinding({ detailPageId: event.target.value || null })}
+                        >
+                          <option value="">Use /{effectiveBinding.collectionSlug ?? boundCollection.slug}/:slug</option>
+                          {project.pages
+                            .filter((candidate) => candidate.id !== page.id)
+                            .map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.name}
+                              </option>
+                            ))}
+                        </select>
+                      </PagePanelField>
+                    </div>
+                  ) : (
+                    <PagePanelField label="Slug param" hint="Reserved for future route params; v1 resolves published entries by slug.">
+                      <input
+                        className={PAGE_PANEL_INPUT}
+                        value={effectiveBinding.detailSlugParam}
+                        onChange={(event) => updateBinding({ detailSlugParam: event.target.value || "slug" })}
+                        placeholder="slug"
+                      />
+                    </PagePanelField>
+                  )}
+
+                  <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] p-3">
+                    <p className={PAGE_PANEL_LABEL}>Field mapping</p>
+                    <div className="mt-3 space-y-2">
+                      {CMS_TEMPLATE_FIELDS.map((slot) => (
+                        <div key={slot.key} className="grid grid-cols-[84px_1fr] items-center gap-2">
+                          <span className="text-[11px] font-medium text-[var(--text-secondary)]">{slot.label}</span>
+                          <PagePanelSourceSelect
+                            value={effectiveBinding.fieldMapping?.[slot.key] ?? ""}
+                            fields={boundCollection.fields}
+                            onChange={(value) => updateFieldMapping(slot.key, value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] p-3">
+                    <p className={PAGE_PANEL_LABEL}>CMS SEO mapping</p>
+                    <div className="mt-3 space-y-2">
+                      <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                        <span className="text-[11px] font-medium text-[var(--text-secondary)]">Title</span>
+                        <PagePanelSourceSelect
+                          value={effectiveBinding.seoFieldMapping.title ?? ""}
+                          fields={boundCollection.fields}
+                          allowEntryUrl={false}
+                          placeholder="Entry title"
+                          onChange={(value) => updateSeoFieldMapping("title", value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                        <span className="text-[11px] font-medium text-[var(--text-secondary)]">Summary</span>
+                        <PagePanelSourceSelect
+                          value={effectiveBinding.seoFieldMapping.description ?? ""}
+                          fields={boundCollection.fields}
+                          allowEntryUrl={false}
+                          placeholder="Project/page description"
+                          onChange={(value) => updateSeoFieldMapping("description", value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                        <span className="text-[11px] font-medium text-[var(--text-secondary)]">OG image</span>
+                        <PagePanelSourceSelect
+                          value={effectiveBinding.seoFieldMapping.ogImageUrl ?? ""}
+                          fields={boundCollection.fields}
+                          allowEntryUrl={false}
+                          placeholder="Project/page OG image"
+                          onChange={(value) => updateSeoFieldMapping("ogImageUrl", value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-3 text-[11.5px] leading-5 text-[var(--text-secondary)]">
+                  Select a collection to enable field mapping for this CMS page.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={PAGE_PANEL_CARD}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className={PAGE_PANEL_LABEL}>Page SEO</p>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">
+                Override project defaults for title, description, canonical, social image, and noindex.
+              </p>
+            </div>
+            <EditorSwitch
+              checked={Boolean(meta.seo)}
+              onChange={() => patchMeta({ seo: meta.seo ? null : defaultSeo })}
+              title={meta.seo ? "Disable page SEO override" : "Enable page SEO override"}
+              className="scale-[0.86]"
+            />
+          </div>
+
+          <div className={cn("mt-3 space-y-3", !meta.seo && "pointer-events-none opacity-45")}>
+            <PagePanelField label="Title">
+              <input
+                className={PAGE_PANEL_INPUT}
+                value={seo.title}
+                onChange={(event) => updateSeo({ title: event.target.value })}
+                placeholder={defaultSeo.title}
+              />
+            </PagePanelField>
+            <PagePanelField label="Description">
+              <textarea
+                className={`${PAGE_PANEL_INPUT} min-h-[82px] resize-none`}
+                value={seo.description}
+                onChange={(event) => updateSeo({ description: event.target.value })}
+                placeholder={defaultSeo.description}
+              />
+            </PagePanelField>
+            <PagePanelField label="Canonical URL">
+              <input
+                className={PAGE_PANEL_INPUT}
+                value={seo.canonicalUrl}
+                onChange={(event) => updateSeo({ canonicalUrl: event.target.value })}
+                placeholder={`https://example.com${publicPath}`}
+              />
+            </PagePanelField>
+            <PagePanelField label="OG image URL">
+              <input
+                className={PAGE_PANEL_INPUT}
+                value={seo.ogImageUrl}
+                onChange={(event) => updateSeo({ ogImageUrl: event.target.value })}
+                placeholder="https://images.example.com/social-card.jpg"
+              />
+            </PagePanelField>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2.5">
+              <div>
+                <p className="text-[12px] font-semibold text-[var(--text-primary)]">Noindex this page</p>
+                <p className="mt-1 text-[11px] leading-5 text-[var(--text-tertiary)]">Prevent this page from appearing in search results.</p>
+              </div>
+              <EditorSwitch
+                checked={seo.noindex}
+                onChange={() => updateSeo({ noindex: !seo.noindex })}
+                disabled={!meta.seo}
+                className="scale-[0.82]"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -555,6 +985,8 @@ export function RightSidebar({ project }: Props) {
 // ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ project }: Props) {
   const selectedPageId   = useAppStore((s) => s.editor.selectedPageId);
+  const selectedNode     = useAppStore((s) => s.editor.selectedNode);
+  const selectedSectionId = useAppStore((s) => s.editor.selectedSectionId);
   const aiChats          = useAppStore((s) => s.aiChats);
   const aiDraftPrompt    = useAppStore((s) => s.aiDraftPrompt);
   const addChatMessage   = useAppStore((s) => s.addChatMessage);
@@ -568,6 +1000,7 @@ function AIPanel({ project }: Props) {
   const pages    = project?.pages ?? [];
   const page     = pages.find((p) => p.id === selectedPageId) ?? null;
   const msgs: AIChatMessage[] = aiChats[currentProjectId ?? ""] ?? [];
+  const assistCostLabel = formatCreditAmount(getAIUsageCost("assist"));
 
   const [input,   setInput]   = useState("");
   const [loading, setLoading] = useState(false);
@@ -581,7 +1014,11 @@ function AIPanel({ project }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiDraftPrompt]);
 
-  const suggestions = page
+  const suggestions = selectedNode && selectedNode.sectionName
+    ? [`Improve ${selectedNode.sectionName}`, `Rewrite ${selectedNode.sectionName} copy`, "Change layout variant", "Make it bolder"]
+    : selectedSectionId
+    ? ["Rewrite this section", "Change layout", "Make it more premium", "Stronger CTA"]
+    : page
     ? [`Improve ${page.name} copy`, "Make it more premium", "Stronger CTA", "Bolder headings", "Layout improvements"]
     : ["Improve hero copy", "Make it minimal", "Add a CTA", "Better tagline"];
 
@@ -592,9 +1029,39 @@ function AIPanel({ project }: Props) {
     addChatMessage(currentProjectId ?? "", { id: uid1, role: "user", content: text, timestamp: Date.now(), pageId: selectedPageId ?? undefined });
     const aid = uid(); let full = "";
     try {
+      // Build conversation history from existing messages (strip edit markers)
+      const chatHistory = msgs
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-10)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+      // Determine edit scope from selection state
+      const scope = selectedNode ? "element" as const
+        : selectedSectionId ? "section" as const
+        : "page" as const;
+
       const res = await fetch("/api/assist", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instruction: text, context: { projectName: project.name, blueprint: project.blueprint, pageName: page?.name, pageHtml: page?.html, siteType: project.brief?.siteType } }),
+        body: JSON.stringify({
+          instruction: text,
+          context: {
+            projectName: project.name,
+            blueprint: project.blueprint,
+            brief: project.brief,
+            pageName: page?.name,
+            pageHtml: page?.html,
+            siteType: project.brief?.siteType,
+            selectedSectionId: selectedSectionId ?? null,
+            selectedElement: selectedNode ? {
+              nodeId: selectedNode.nodeId,
+              tagName: selectedNode.tag ?? "div",
+              textContent: selectedNode.label?.slice(0, 200) ?? undefined,
+              sectionId: selectedNode.sectionId ?? selectedSectionId ?? undefined,
+            } : null,
+            history: chatHistory,
+            scope,
+          },
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
@@ -686,11 +1153,12 @@ function AIPanel({ project }: Props) {
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#5B8CFF]/10">
               <Sparkles size={15} className="text-[#5B8CFF]/70"/>
             </div>
-            <p className="text-[11px] text-white/35">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
+            <p className="text-[12px] text-[var(--text-secondary)]">{page ? `AI for ${page.name}` : "Ask about your site"}</p>
+            <p className="text-[11px] text-[var(--text-tertiary)]">{assistCostLabel} per prompt</p>
             <div className="space-y-1.5 text-left">
               {suggestions.map((s) => (
                 <button key={s} onClick={() => send(s)}
-                  className="block w-full rounded-xl px-3 py-2.5 text-left text-[11px] text-white/40 transition-all duration-150 bg-white/[0.02] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] hover:bg-white/[0.04] hover:text-white/70 hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+                  className="block w-full rounded-xl bg-[var(--surface-3)] px-3 py-2.5 text-left text-[12px] text-[var(--text-secondary)] transition-all duration-150 shadow-[inset_0_0_0_1px_var(--border-soft)] hover:bg-[var(--surface-4)] hover:text-[var(--text-primary)] hover:shadow-[inset_0_0_0_1px_var(--border-strong)]">
                   {s}
                 </button>
               ))}
@@ -699,15 +1167,15 @@ function AIPanel({ project }: Props) {
         ) : (
           <>
             <button onClick={() => clearChat(currentProjectId ?? "")}
-              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[9.5px] text-white/30 hover:bg-white/[0.04] hover:text-white/55 transition-colors">
+              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-4)] hover:text-[var(--text-secondary)]">
               <X size={9}/> Clear
             </button>
             {deduped.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[88%] px-3.5 py-2.5 text-[11.5px] leading-relaxed rounded-2xl ${
                   m.role === "user"
-                    ? "bg-[#5B8CFF]/15 text-white/80 rounded-br-sm"
-                    : "bg-white/[0.03] text-white/55 rounded-bl-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                    ? "bg-[#5B8CFF]/15 text-[var(--text-primary)] rounded-br-sm"
+                    : "bg-[var(--surface-3)] text-[var(--text-secondary)] rounded-bl-sm shadow-[inset_0_0_0_1px_var(--border-soft)]"
                 }`}>
                   {m.content}
                 </div>
@@ -715,7 +1183,7 @@ function AIPanel({ project }: Props) {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white/[0.03] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] rounded-2xl rounded-bl-sm px-3 py-2">
+                <div className="rounded-2xl rounded-bl-sm bg-[var(--surface-3)] px-3 py-2 shadow-[inset_0_0_0_1px_var(--border-soft)]">
                   <Loader2 size={11} className="text-[#5B8CFF] animate-spin"/>
                 </div>
               </div>
@@ -724,405 +1192,21 @@ function AIPanel({ project }: Props) {
           </>
         )}
       </div>
-      <div className="border-t border-white/[0.04] p-3 flex-shrink-0">
+      <div className="border-t border-[var(--border-soft)] p-3 flex-shrink-0">
+        <div className="mb-2 text-[11px] text-[var(--text-tertiary)]">
+          {assistCostLabel} per prompt
+        </div>
         <div className="flex items-end gap-2">
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
             placeholder="Ask AI to improve your site…" rows={2}
-            className="flex-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11.5px] text-white/65 placeholder-white/16 outline-none resize-none transition-colors focus:border-white/[0.1]"/>
+            className="flex-1 resize-none rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2.5 text-[11.5px] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none transition-colors focus:border-[var(--border-focus)]"/>
           <button onClick={() => send(input)} disabled={!input.trim() || loading}
             className="w-8 h-8 flex items-center justify-center bg-[#5B8CFF] hover:bg-[#6B99FF] disabled:opacity-20 rounded-xl transition-colors flex-shrink-0 shadow-[0_2px_8px_rgba(91,140,255,0.2)]">
             {loading ? <Loader2 size={12} className="animate-spin"/> : <Send size={12}/>}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Properties Panel ──────────────────────────────────────────────────────────
-function PropsPanel({ project }: Props) {
-  const selectedPageId    = useAppStore((s) => s.editor.selectedPageId);
-  const selectedNode      = useAppStore((s) => s.editor.selectedNode);
-  const selectedSectionId = useAppStore((s) => s.editor.selectedSectionId);
-  const setPageContent    = useAppStore((s) => s.setPageContent);
-  const addGenLog         = useAppStore((s) => s.addGenLog);
-  const setApiError       = useAppStore((s) => s.setApiError);
-
-  const page = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
-
-  // Always derive sections fresh from page HTML so we never miss any
-  const liveSections = useMemo(
-    () => (page?.html ? parseSectionsFromPageHtml(page.html) : page?.sections ?? []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page?.html]
-  );
-
-  const [expandedId,    setExpandedId]    = useState<string | null>(null);
-  const [activeTab,     setActiveTab]     = useState<Record<string, "fields" | "ai">>({});
-  const [fieldEdits,    setFieldEdits]    = useState<Record<string, Record<string, string>>>({});
-  const [aiInstructions,setAiInstructions]= useState<Record<string, string>>({});
-  const [applying,      setApplying]      = useState<string | null>(null);
-  // Fields are derived lazily when a section is expanded
-  const [sectionFields, setSectionFields] = useState<Record<string, ExtractedField[]>>({});
-
-  // Refs for scroll-to-section
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const sectionRefs        = useRef<Record<string, HTMLDivElement | null>>({});
-
-  useEffect(() => {
-    setExpandedId(null);
-    setFieldEdits({});
-    setAiInstructions({});
-    setActiveTab({});
-    setSectionFields({});
-  }, [selectedPageId]);
-
-  // When canvas selection changes to a section, auto-expand + scroll to it
-  useEffect(() => {
-    if (!selectedSectionId) return;
-    const exists = liveSections.some(s => s.id === selectedSectionId);
-    if (!exists) return;
-    setExpandedId(selectedSectionId);
-  }, [selectedSectionId]); // eslint-disable-line
-
-  // Scroll to expanded section
-  useEffect(() => {
-    if (!expandedId) return;
-    const el = sectionRefs.current[expandedId];
-    if (el && scrollContainerRef.current) {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [expandedId]);
-
-  // When a section is expanded, extract its fields
-  useEffect(() => {
-    if (!expandedId || !page?.html) return;
-    if (sectionFields[expandedId]) return; // already extracted
-    const html = extractSectionHtml(page.html, expandedId);
-    if (html) setSectionFields(prev => ({ ...prev, [expandedId]: extractEditableFields(html) }));
-  }, [expandedId, page?.html, sectionFields]);
-
-  // Refresh fields if the page HTML changes (after an AI edit)
-  const prevHtmlRef = useRef<string>("");
-  useEffect(() => {
-    if (!page?.html || page.html === prevHtmlRef.current) return;
-    prevHtmlRef.current = page.html;
-    if (expandedId) {
-      const html = extractSectionHtml(page.html, expandedId);
-      if (html) {
-        const newFields = extractEditableFields(html);
-        setSectionFields(prev => ({ ...prev, [expandedId]: newFields }));
-        // Clear field edits that are now stale (values match the updated page)
-        setFieldEdits(prev => {
-          const pending = prev[expandedId] ?? {};
-          const refreshed: Record<string, string> = {};
-          for (const [k, v] of Object.entries(pending)) {
-            const field = newFields.find(f => f.key === k);
-            if (field && v !== field.value) refreshed[k] = v;
-          }
-          return { ...prev, [expandedId]: refreshed };
-        });
-      }
-    }
-  }, [page?.html, expandedId]);
-
-  /** Apply direct field edits — no AI round-trip. */
-  async function applyFields(sec: { id: string; type: string; name: string }) {
-    if (!page) return;
-    const edits   = fieldEdits[sec.id] ?? {};
-    const fields  = sectionFields[sec.id] ?? [];
-    if (Object.keys(edits).length === 0 || fields.length === 0) return;
-    setApplying(sec.id);
-    try {
-      const secHtml = extractSectionHtml(page.html, sec.id);
-      if (!secHtml) { addGenLog("❌ Section not found in page", "error"); return; }
-
-      const updatedSec = applyFieldEditsToSection(secHtml, fields, edits);
-      if (!updatedSec) { addGenLog("❌ Field edit failed", "error"); return; }
-
-      const newPageHtml = replaceSectionById(page.html, sec.id, updatedSec);
-      if (!newPageHtml) { addGenLog("❌ Could not splice section", "error"); return; }
-
-      setPageContent(page.id, newPageHtml, page.sections);
-      setFieldEdits(prev => { const n = { ...prev }; delete n[sec.id]; return n; });
-      addGenLog(`✅ ${sec.name} updated`, "success");
-    } finally {
-      setApplying(null);
-    }
-  }
-
-  /** Regenerate a section using the AI — uses /api/regenerate-section. */
-  async function regenerateSection(sec: { id: string; type: string; name: string }, instruction?: string) {
-    if (!page || !project.blueprint) return;
-    if (!project.brief) { addGenLog("❌ Project brief required for AI rewrite", "error"); return; }
-    setApplying(`ai-${sec.id}`);
-    try {
-      const secHtml = extractSectionHtml(page.html, sec.id);
-      if (!secHtml) throw new Error("Section not found in page HTML");
-
-      const idx       = liveSections.findIndex(s => s.id === sec.id);
-      const prevSec   = idx > 0 ? liveSections[idx - 1] : null;
-      const nextSec   = idx < liveSections.length - 1 ? liveSections[idx + 1] : null;
-      const bpPage    = project.blueprint.pages?.find(
-        p => p.name.toLowerCase() === page.name.toLowerCase()
-      ) ?? project.blueprint.pages?.[0];
-
-      const res = await fetch("/api/regenerate-section", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blueprint: project.blueprint,
-          brief:     project.brief,
-          page:      { name: page.name, purpose: bpPage?.purpose ?? page.name },
-          section:   {
-            id:                  sec.id,
-            type:                sec.type,
-            name:                sec.name,
-            html:                secHtml,
-            previousSectionName: prevSec?.name ?? null,
-            nextSectionName:     nextSec?.name ?? null,
-          },
-          instruction: instruction?.trim() || undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string; code?: string; requestId?: string | null };
-        throw createAppError({
-          code: (data.code as ErrorCode | undefined) ?? API_UNKNOWN_001,
-          devMessage: `Regenerate section failed (${res.status}): ${data.error ?? ""}`,
-          userMessage: data.error,
-          severity: res.status >= 500 ? "error" : "warn",
-          metadata: { pageId: page.id, sectionId: sec.id, sectionType: sec.type, requestId: data.requestId ?? null, status: res.status },
-        });
-      }
-
-      const data = await res.json() as { html?: string };
-      if (!data.html) throw new Error("No HTML returned from regenerate-section");
-
-      const newPageHtml = replaceSectionById(page.html, sec.id, data.html);
-      if (!newPageHtml) throw new Error("Failed to splice regenerated section into page");
-
-      setPageContent(page.id, newPageHtml, page.sections);
-      setAiInstructions(prev => { const n = { ...prev }; delete n[sec.id]; return n; });
-      addGenLog(`✅ ${sec.name} regenerated`, "success");
-    } catch (error) {
-      const { appErr, apiError } = buildClientApiError(error, API_UNKNOWN_001, {
-        pageId: page.id, pageName: page.name, sectionId: sec.id, sectionType: sec.type,
-      });
-      logAppError(appErr);
-      setApiError(apiError);
-      addGenLog(`❌ ${appErr.userMessage}`, "error");
-    } finally {
-      setApplying(null);
-    }
-  }
-
-  if (!page) return (
-    <div className="flex h-full items-center justify-center px-4 text-center text-[11px] text-white/18">
-      Select a page to edit sections.
-    </div>
-  );
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-white/[0.04] px-3.5 py-2.5">
-        <p className="text-[11px] font-medium text-white/40">{page.name}</p>
-        <p className="mt-0.5 text-[9.5px] text-white/18">{liveSections.length} section{liveSections.length !== 1 ? "s" : ""}</p>
-      </div>
-
-      {/* Canvas selection context banner */}
-      {selectedNode && (
-        <div className="flex-shrink-0 flex items-center gap-2 border-b border-[#5B8CFF]/10 bg-[#5B8CFF]/[0.04] px-3.5 py-2">
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#5B8CFF]" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[10px] font-medium text-[#5B8CFF]/80">{selectedNode.label}</p>
-            {selectedNode.sectionName && (
-              <p className="truncate text-[9px] text-white/30">in {selectedNode.sectionName}</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Section list */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
-        {liveSections.length === 0 && (
-          <div className="py-8 text-center text-[11px] text-white/20">No sections found.</div>
-        )}
-        {liveSections.map((sec) => {
-          const isOpen     = expandedId === sec.id;
-          const tab        = activeTab[sec.id] ?? "fields";
-          const pending    = fieldEdits[sec.id] ?? {};
-          const hasPending = Object.keys(pending).length > 0;
-          const fields     = sectionFields[sec.id] ?? [];
-          const isApplying    = applying === sec.id;
-          const isAiApplying  = applying === `ai-${sec.id}`;
-          const isAnyApplying = isApplying || isAiApplying;
-
-          return (
-            <div key={sec.id}
-              ref={(el) => { sectionRefs.current[sec.id] = el; }}
-              className={`overflow-hidden rounded-xl bg-white/[0.02] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-shadow ${
-                selectedSectionId === sec.id ? "shadow-[inset_0_0_0_1px_rgba(91,140,255,0.25)]" : ""
-              }`}
-            >
-              {/* Row header */}
-              <button
-                onClick={() => setExpandedId(isOpen ? null : sec.id)}
-                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
-              >
-                <span className={`flex-shrink-0 ${selectedSectionId === sec.id ? "text-[#5B8CFF]/60" : "text-white/25"}`}>
-                  {getSectionIcon(sec.type)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-[10.5px] font-medium ${selectedSectionId === sec.id ? "text-[#5B8CFF]/80" : "text-white/55"}`}>
-                    {sec.name}
-                  </span>
-                  <span className="mt-0.5 block text-[9px] uppercase tracking-[0.1em] text-white/22">{sec.type}</span>
-                </span>
-                {hasPending && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#5B8CFF]" />}
-                {isOpen
-                  ? <ChevronUp size={10} className="flex-shrink-0 text-white/16"/>
-                  : <ChevronDown size={10} className="flex-shrink-0 text-white/16"/>}
-              </button>
-
-              {/* Expanded body */}
-              {isOpen && (
-                <div className="border-t border-white/[0.04]">
-                  {/* Tab bar */}
-                  <div className="flex border-b border-white/[0.04]">
-                    {(["fields", "ai"] as const).map((t) => (
-                      <button key={t}
-                        onClick={() => setActiveTab(p => ({ ...p, [sec.id]: t }))}
-                        className={`flex-1 py-2 text-[9.5px] font-medium uppercase tracking-[0.08em] transition-colors ${
-                          tab === t
-                            ? "text-[#5B8CFF] border-b border-[#5B8CFF]"
-                            : "text-white/22 hover:text-white/40"
-                        }`}
-                      >
-                        {t === "fields" ? "Edit Fields" : "AI Rewrite"}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="p-2.5 space-y-2">
-                    {/* ── Edit Fields tab ── */}
-                    {tab === "fields" && (
-                      <>
-                        {fields.length === 0 ? (
-                          <p className="py-3 text-center text-[10px] text-white/22">
-                            {sectionFields[sec.id] ? "No editable fields detected." : "Loading fields…"}
-                          </p>
-                        ) : (
-                          <>
-                            {fields.map((field) => (
-                              <SectionFieldInput
-                                key={field.key}
-                                field={field}
-                                value={pending[field.key] ?? field.value}
-                                isDirty={pending[field.key] !== undefined && pending[field.key] !== field.value}
-                                onChange={(val) =>
-                                  setFieldEdits(prev => ({
-                                    ...prev,
-                                    [sec.id]: { ...(prev[sec.id] ?? {}), [field.key]: val },
-                                  }))
-                                }
-                              />
-                            ))}
-                            <button
-                              onClick={() => applyFields(sec)}
-                              disabled={!hasPending || isAnyApplying}
-                              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#5B8CFF]/[0.12] py-2 text-[10.5px] font-medium text-[#5B8CFF] transition-colors hover:bg-[#5B8CFF]/[0.2] disabled:opacity-25"
-                            >
-                              {isApplying
-                                ? <><Loader2 size={10} className="animate-spin"/>Applying…</>
-                                : "Apply Changes"}
-                            </button>
-                          </>
-                        )}
-                      </>
-                    )}
-
-                    {/* ── AI Rewrite tab ── */}
-                    {tab === "ai" && (
-                      <div className="space-y-2">
-                        <textarea
-                          value={aiInstructions[sec.id] ?? ""}
-                          onChange={(e) => setAiInstructions(p => ({ ...p, [sec.id]: e.target.value }))}
-                          placeholder={`e.g. "make the headline more compelling", "add urgency to the CTA"`}
-                          rows={3}
-                          disabled={isAnyApplying}
-                          className="w-full resize-none rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.1] disabled:opacity-40"
-                        />
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => regenerateSection(sec, aiInstructions[sec.id])}
-                            disabled={!aiInstructions[sec.id]?.trim() || isAnyApplying}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#5B8CFF]/[0.12] py-2 text-[10.5px] font-medium text-[#5B8CFF] transition-colors hover:bg-[#5B8CFF]/[0.2] disabled:opacity-25"
-                          >
-                            {isAiApplying && applying === `ai-${sec.id}`
-                              ? <><Loader2 size={10} className="animate-spin"/>Rewriting…</>
-                              : <><Wand2 size={10}/>Rewrite</>}
-                          </button>
-                          <button
-                            onClick={() => regenerateSection(sec)}
-                            disabled={isAnyApplying}
-                            title="Regenerate from scratch"
-                            className="flex items-center gap-1 rounded-lg px-2.5 py-2 text-[10px] text-white/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-colors hover:bg-white/[0.05] hover:text-white/55 disabled:opacity-25"
-                          >
-                            <RefreshCw size={10}/> Regen
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Section field input ───────────────────────────────────────────────────────
-function SectionFieldInput({
-  field, value, isDirty, onChange,
-}: {
-  field: ExtractedField;
-  value: string;
-  isDirty: boolean;
-  onChange: (val: string) => void;
-}) {
-  const isLong = value.length > 64 || field.kind === "text" && field.label.toLowerCase().includes("body");
-  const isUrl  = field.kind === "src" || field.kind === "href";
-
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <label className="flex items-center gap-1 text-[8.5px] font-medium uppercase tracking-[0.12em] text-white/25">
-          {isUrl ? <Link size={7}/> : <Type size={7}/>}
-          {field.label}
-        </label>
-        {isDirty && <span className="text-[8px] text-[#5B8CFF]/70">edited</span>}
-      </div>
-      {isLong ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={2}
-          className={`w-full resize-none rounded-lg border ${isDirty ? "border-[#5B8CFF]/30" : "border-white/[0.06]"} bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.12]`}
-        />
-      ) : (
-        <input
-          type={isUrl ? "url" : "text"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border ${isDirty ? "border-[#5B8CFF]/30" : "border-white/[0.06]"} bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-white/65 placeholder-white/14 outline-none transition-colors focus:border-white/[0.12]`}
-        />
-      )}
     </div>
   );
 }
@@ -1135,6 +1219,7 @@ function BlocksPanel({ project }: Props) {
   const [aiStatus, setAiStatus] = useState<{ msg: string; type: "loading"|"success"|"error" } | null>(null);
   const [useAI,  setUseAI]  = useState(false);
   const [iconSearch, setIconSearch] = useState("");
+  const [showAllCats, setShowAllCats] = useState(false);
   const insertBlock   = useAppStore((s) => s.insertBlock);
   const setPageContent= useAppStore((s) => s.setPageContent);
   const addGenLog     = useAppStore((s) => s.addGenLog);
@@ -1145,22 +1230,30 @@ function BlocksPanel({ project }: Props) {
   const page = (project?.pages ?? []).find((p) => p.id === selectedPageId) ?? null;
   const selectedSection = page?.sections.find((sec) => sec.id === selectedSectionId) ?? null;
   const searchQuery = search.trim().toLowerCase();
+  const aiInsertCostLabel = formatCreditAmount(getAIUsageCost("insert-block"));
 
   const dragOverlayRef = useRef<HTMLDivElement | null>(null);
   const dropLineRef    = useRef<HTMLDivElement | null>(null);
   const dropHintRef    = useRef<HTMLDivElement | null>(null);
   const categoryTabs = useMemo(() => EDITOR_INSERTION_CATEGORIES, []);
-  const categoryRows = useMemo(
+  const CATEGORY_ICON_MAP: Record<string, typeof LayoutGrid> = {
+    all: LayoutGrid,
+    sections: Rows3,
+    layout: Columns3,
+    basic: Square,
+    media: ImageIcon,
+    navigation: Menu,
+    typography: Type,
+    interactive: MousePointerClick,
+    forms: FormInput,
+    advanced: Sparkles,
+    icons: Shapes,
+  };
+  const categoryOrder = useMemo(
     () =>
-      [
-        ["all", "sections", "layout", "basic"],
-        ["media", "navigation", "typography", "interactive"],
-        ["forms", "advanced", "icons"],
-      ].map((row) =>
-        row
-          .map((key) => categoryTabs.find((tab) => tab.key === key))
-          .filter((tab): tab is InsertionCategory => !!tab)
-      ),
+      ["all", "sections", "layout", "basic", "media", "navigation", "typography", "interactive", "forms", "advanced", "icons"]
+        .map((key) => categoryTabs.find((tab) => tab.key === key))
+        .filter((tab): tab is InsertionCategory => !!tab),
     [categoryTabs]
   );
 
@@ -1683,52 +1776,117 @@ function BlocksPanel({ project }: Props) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex-shrink-0 px-0 pb-2.5 pt-1">
-        <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.03] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+        <div className="flex items-center gap-2.5 rounded-xl border border-[var(--border-soft)] bg-[var(--surface-4)] px-3 py-2 shadow-[var(--shadow-soft-inset)]">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={cat === "icons" ? "Search elements and icons…" : "Search elements…"}
-              className="w-full appearance-none border-0 bg-transparent text-[11px] text-white/55 placeholder-white/16 outline-none ring-0 shadow-none"
+              className="editor-plain-input w-full appearance-none border-0 bg-transparent text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] outline-none ring-0 shadow-none"
             />
             {search && (
-              <button onClick={() => setSearch("")} className="text-white/18 hover:text-white/50 transition-colors">
+              <button
+                onClick={() => setSearch("")}
+                className="text-[var(--text-disabled)] transition-colors hover:text-[var(--text-secondary)]"
+              >
                 <X size={11} />
               </button>
             )}
           </div>
 
-          <div className="h-6 w-px bg-white/[0.06]" />
+          <div className="h-6 w-px bg-[var(--border-soft)]" />
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <p className="text-[9.5px] font-medium text-white/40">{useAI ? "AI" : "Direct"}</p>
+            <p className="text-[9.5px] font-medium text-[var(--text-tertiary)]">{useAI ? "AI" : "Direct"}</p>
             <EditorSwitch checked={useAI} onChange={() => setUseAI(!useAI)} title={useAI ? "AI insert on" : "AI insert off"} className="scale-[0.85]" />
+            {useAI ? (
+              <span className="rounded-full border border-[rgba(91,140,255,0.18)] bg-[#5B8CFF]/10 px-2 py-0.5 text-[8.5px] font-medium text-[#8fb2ff]">
+                {aiInsertCostLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
       <div className="px-0 pb-2 flex-shrink-0">
-        <div className="space-y-1">
-          {categoryRows.map((row, index) => (
-            <div
-              key={`category-row-${index}`}
-              className={`grid gap-1 ${row.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}
-            >
-              {row.map((c) => (
-                <button
-                  key={c.key}
-                  onClick={() => setCat(c.key)}
-                  className={`rounded-lg px-2 py-1.5 text-[9px] font-medium transition-all duration-150 text-center ${
-                    cat === c.key
-                      ? "bg-[#5B8CFF]/12 text-[#5B8CFF]/80 shadow-[inset_0_0_0_1px_rgba(91,140,255,0.18)]"
-                      : "text-white/28 hover:text-white/50 hover:bg-white/[0.03]"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
+        {(() => {
+          const PRIMARY_KEYS = ["all", "sections", "layout", "basic", "media"];
+          const primary = PRIMARY_KEYS
+            .map((k) => categoryOrder.find((c) => c.key === k))
+            .filter((c): c is InsertionCategory => !!c);
+          const overflow = categoryOrder.filter((c) => !PRIMARY_KEYS.includes(c.key));
+          const activeInOverflow = overflow.some((c) => c.key === cat);
+          const expanded = showAllCats || activeInOverflow;
+
+          const renderPill = (c: InsertionCategory) => {
+            const Icon = CATEGORY_ICON_MAP[c.key] ?? LayoutGrid;
+            const active = cat === c.key;
+            return (
+              <button
+                key={c.key}
+                onClick={() => setCat(c.key)}
+                title={`${c.label} — ${c.description}`}
+                aria-label={c.label}
+                aria-pressed={active}
+                className={cn(
+                  "group relative flex h-7 items-center justify-center rounded-lg transition-all duration-150",
+                  active
+                    ? "bg-[var(--surface-1)] text-[var(--text-primary)] shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_0_0_1px_var(--border-strong)]"
+                    : "text-[var(--text-disabled)] hover:bg-[var(--surface-4)]/60 hover:text-[var(--text-secondary)]"
+                )}
+              >
+                <Icon
+                  size={12}
+                  strokeWidth={active ? 2 : 1.6}
+                  className={cn("transition-colors", active && "text-[var(--text-accent)]")}
+                />
+              </button>
+            );
+          };
+
+          const activeMeta = categoryOrder.find((c) => c.key === cat) ?? categoryOrder[0];
+          return (
+            <>
+            <div className="flex items-center justify-between px-0.5 pb-1.5">
+              <span className="text-[10px] font-semibold tracking-tight text-[var(--text-primary)]">
+                {activeMeta?.label}
+              </span>
             </div>
-          ))}
-        </div>
+            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-3)]/40 p-0.5">
+              <div className="grid grid-cols-[repeat(5,minmax(0,1fr))] gap-0.5">
+                {primary.map(renderPill)}
+              </div>
+              <div
+                className={cn(
+                  "grid transition-[grid-template-rows,margin-top,opacity] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                  expanded ? "mt-0.5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                )}
+              >
+                <div className="overflow-hidden">
+                  <div className="grid grid-cols-[repeat(6,minmax(0,1fr))] gap-0.5">
+                    {overflow.map(renderPill)}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAllCats((v) => !v)}
+                title={expanded ? "Show less" : "More categories"}
+                aria-label="Toggle more categories"
+                aria-expanded={expanded}
+                className="-mx-0.5 -mb-0.5 mt-0.5 flex h-6 w-[calc(100%+4px)] items-center justify-center rounded-b-lg bg-[var(--surface-4)]/60 text-white/70 transition-colors hover:bg-[var(--surface-4)] hover:text-white"
+              >
+                <ChevronDown
+                  size={12}
+                  strokeWidth={2}
+                  className={cn(
+                    "transition-transform duration-200 ease-out",
+                    expanded && "rotate-180"
+                  )}
+                />
+              </button>
+            </div>
+            </>
+          );
+        })()}
       </div>
       {aiStatus && (
         <div className={`mx-1 mt-1.5 mb-0 px-3 py-2 rounded-lg flex items-center gap-2 text-[10.5px] font-medium flex-shrink-0 ${
@@ -1742,59 +1900,55 @@ function BlocksPanel({ project }: Props) {
           <span className="truncate">{aiStatus.msg}</span>
         </div>
       )}
-      {/* ── Icon picker ──────────────────────────────────────────────────────── */}
+      {/* ── Icon picker — flat grid ── */}
       {cat === "icons" && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex-1 overflow-auto p-1.5 grid grid-cols-5 gap-1 content-start">
-            {ICON_DEFINITIONS
-              .filter((icon) =>
-                !searchQuery ||
-                icon.label.toLowerCase().includes(searchQuery) ||
-                icon.id.includes(searchQuery) ||
-                icon.keywords.some((keyword) => keyword.includes(searchQuery))
-              )
-              .map((icon) => (
-              <button
-                key={icon.id}
-                title={icon.label}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = "copy";
-                  e.dataTransfer.setData("text/plain", icon.id);
-                  setTimeout(() => showInlineOverlay((sectionId) => addIcon(icon, sectionId)), 0);
-                }}
-                onDragEnd={() => hideDropOverlay()}
-                onClick={() => addIcon(icon)}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/[0.015] hover:bg-[#5B8CFF]/8 transition-all duration-150 group cursor-grab active:cursor-grabbing"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
-                  className="w-5 h-5 text-white/25 group-hover:text-[#5B8CFF]/70 transition-colors flex-shrink-0"
-                  dangerouslySetInnerHTML={{ __html: icon.paths }}></svg>
-                <span className="text-[8px] text-white/18 group-hover:text-white/40 transition-colors text-center leading-tight truncate w-full">{icon.label}</span>
-              </button>
-            ))}
-          </div>
+        <div className="flex-1 overflow-auto px-3 py-2 grid grid-cols-5 gap-1 content-start">
+          {ICON_DEFINITIONS
+            .filter((icon) =>
+              !searchQuery ||
+              icon.label.toLowerCase().includes(searchQuery) ||
+              icon.id.includes(searchQuery) ||
+              icon.keywords.some((keyword) => keyword.includes(searchQuery))
+            )
+            .map((icon) => (
+            <button
+              key={icon.id}
+              title={icon.label}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "copy";
+                e.dataTransfer.setData("text/plain", icon.id);
+                setTimeout(() => showInlineOverlay((sectionId) => addIcon(icon, sectionId)), 0);
+              }}
+              onDragEnd={() => hideDropOverlay()}
+              onClick={() => addIcon(icon)}
+              className="group flex cursor-grab flex-col items-center gap-1.5 rounded-md p-2 transition-colors duration-100 active:cursor-grabbing hover:bg-[var(--surface-5)]"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
+                className="h-[18px] w-[18px] flex-shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-primary)]"
+                dangerouslySetInnerHTML={{ __html: icon.paths }}></svg>
+              <span className="w-full truncate text-center text-[7.5px] leading-tight text-[var(--text-disabled)] transition-colors group-hover:text-[var(--text-secondary)]">{icon.label}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* ── Blocks list ──────────────────────────────────────────────────────── */}
+      {/* ── Blocks list — flat rows ── */}
       {cat !== "icons" && (
-      <div className="flex-1 overflow-auto px-1 py-2">
+      <div className="flex-1 overflow-auto px-3.5 py-2">
         {filtered.length === 0 && (
-          <div className="rounded-xl px-4 py-7 text-center">
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-white/25">
-              <LayoutGrid size={15} />
-            </div>
-            <p className="mt-3 text-[11.5px] font-medium text-white/45">No matching elements</p>
-            <p className="mt-1 text-[10px] leading-5 text-white/20">
+          <div className="pt-8 text-center">
+            <LayoutGrid size={15} className="mx-auto text-[var(--text-disabled)]" />
+            <p className="mt-3 text-[11px] font-medium text-[var(--text-secondary)]">No matching elements</p>
+            <p className="mt-1 text-[10px] text-[var(--text-disabled)]">
               {search ? "Try a broader search or switch categories." : "This category has no available elements."}
             </p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-1.5 content-start">
+        <div className="space-y-0.5">
           {filtered.map(({ block: b, score }) => {
-            const categoryMeta = getElementCategoryDefinition(b.category);
+            const BlockIcon = CATEGORY_ICON_MAP[b.category] ?? LayoutGrid;
             return (
               <div
                 key={b.id}
@@ -1812,37 +1966,31 @@ function BlocksPanel({ project }: Props) {
                     }
                   }, 0);
                 }}
-                onDragEnd={() => {
-                  hideDropOverlay();
-                }}
+                onDragEnd={() => hideDropOverlay()}
                 onClick={() => add(b)}
-                className={`px-3 py-2.5 rounded-xl bg-white/[0.015] text-left hover:bg-[#5B8CFF]/6 transition-all duration-150 group cursor-grab active:cursor-grabbing select-none ${
-                  score >= 4 ? "shadow-[inset_0_0_0_1px_rgba(91,140,255,0.12)]" : "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]"
-                } ${adding===b.id?"opacity-30":""}`}
+                className={cn(
+                  "group flex cursor-grab select-none items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-100 active:cursor-grabbing hover:bg-[var(--surface-5)]",
+                  adding === b.id && "opacity-30"
+                )}
               >
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="text-[14px] leading-none text-white/16 group-hover:text-[#5B8CFF]/60 transition-colors mt-0.5">{b.icon}</span>
-                    <div className="min-w-0">
-                      <p className="text-[10.5px] text-white/55 font-semibold group-hover:text-white/80 transition-colors">{b.label}</p>
-                      <p className="text-[9.5px] text-white/20 mt-0.5 line-clamp-1">{b.preview}</p>
-                    </div>
-                  </div>
-                  {score >= 4 && (
-                    <span className="px-1.5 py-0.5 rounded-md text-[7.5px] font-semibold uppercase tracking-[0.1em] text-[#5B8CFF]/70 bg-[#5B8CFF]/10 flex-shrink-0">
-                      Smart
-                    </span>
+                <BlockIcon
+                  size={12}
+                  strokeWidth={1.6}
+                  className={cn(
+                    "flex-shrink-0 transition-colors",
+                    score >= 4
+                      ? "text-[var(--text-accent)] opacity-70"
+                      : "text-[var(--text-disabled)] group-hover:text-[var(--text-secondary)]"
                   )}
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-[8.5px] text-white/16">
-                  <span className="truncate">
-                    {categoryMeta?.label ? `${categoryMeta.label} · ` : ""}
-                    {placementText(b)}
+                />
+                <span className="min-w-0 truncate text-[11.5px] font-medium text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">
+                  {b.label}
+                </span>
+                {score >= 4 && (
+                  <span className="ml-auto flex-shrink-0 text-[8px] font-semibold uppercase tracking-wider text-[var(--text-accent)] opacity-50">
+                    Smart
                   </span>
-                  <span className="font-medium uppercase tracking-[0.08em] text-white/20 flex-shrink-0">
-                    {b.placement}
-                  </span>
-                </div>
+                )}
               </div>
             );
           })}

@@ -4,6 +4,7 @@ import type {
   WorkspaceTheme,
   UserAccountProfile,
 } from "@/types";
+import { normalizeAccountLeadCaptureMode } from "@/lib/lead-capture";
 
 export const SETTINGS_CACHE_KEY = "sitezy-user-settings-cache";
 
@@ -18,13 +19,14 @@ export const defaultUserSettings: UserSettings = {
     fontPreference: "default",
   },
   ai: {
-    designStyle: "minimal",
+    designStyle: "ai-pick",
     creativityLevel: 64,
     structurePreference: "clean",
     contentDensity: "balanced",
+    adaptiveGenerationEnabled: true,
   },
   projectDefaults: {
-    defaultPages: ["Home", "About", "Services", "Contact"],
+    defaultPages: ["Home"],
     defaultColorPalette: DEFAULT_COLOR_PALETTE,
     typographyStyle: "modern-sans",
     layoutSpacing: "balanced",
@@ -37,15 +39,41 @@ export const defaultUserSettings: UserSettings = {
   },
   integrations: {
     analyticsId: "",
+    analytics: {
+      enableSitezyAnalytics: true,
+      ga4: {
+        enabled: false,
+        measurementId: "",
+      },
+      metaPixel: {
+        enabled: false,
+        pixelId: "",
+      },
+    },
+    webhooks: {
+      deliveryTimeoutSeconds: 10,
+    },
     notificationEmail: "",
-    formsProvider: "email",
+    contactCaptureDefault: "sitezy",
+    newsletterCaptureDefault: "sitezy",
     primaryDomain: "",
   },
   billing: {
     planName: "Private Beta",
+    planId: null,
+    planStatus: "inactive",
     tokenUsage: 0,
     tokenLimit: 1000,
+    allowanceCredits: 1000,
+    manualGrantCredits: 0,
+    remainingCredits: 1000,
     paymentMethodLabel: null,
+    customerId: null,
+    subscriptionId: null,
+    periodStart: null,
+    periodEnd: null,
+    checkoutEnabled: false,
+    portalEnabled: false,
     billingHistory: [],
   },
   experimental: {
@@ -53,6 +81,8 @@ export const defaultUserSettings: UserSettings = {
     smartLayoutRegeneration: true,
     advancedEditor: false,
     chatBasedEditing: false,
+    selfLearningGenerator: false,
+    trainingMode: false,
   },
   security: {},
   creativeMode: {
@@ -77,7 +107,7 @@ export function normalizeUserSettings(input?: Partial<UserSettings> | null): Use
     ai: {
       designStyle: normalizeEnum(
         raw.ai?.designStyle,
-        ["minimal", "luxury", "playful", "brutalist", "editorial", "futuristic"],
+        ["ai-pick", "minimal", "luxury", "playful", "brutalist", "editorial", "futuristic"],
         defaultUserSettings.ai.designStyle
       ),
       creativityLevel: clampNumber(raw.ai?.creativityLevel, 0, 100, defaultUserSettings.ai.creativityLevel),
@@ -91,6 +121,8 @@ export function normalizeUserSettings(input?: Partial<UserSettings> | null): Use
         ["short", "balanced", "detailed"],
         defaultUserSettings.ai.contentDensity
       ),
+      adaptiveGenerationEnabled:
+        raw.ai?.adaptiveGenerationEnabled ?? defaultUserSettings.ai.adaptiveGenerationEnabled,
     },
     projectDefaults: {
       defaultPages: normalizePageList(raw.projectDefaults?.defaultPages),
@@ -121,19 +153,80 @@ export function normalizeUserSettings(input?: Partial<UserSettings> | null): Use
       includeSeoFiles: raw.exportDeployment?.includeSeoFiles ?? defaultUserSettings.exportDeployment.includeSeoFiles,
     },
     integrations: {
-      analyticsId: String(raw.integrations?.analyticsId ?? "").trim(),
+      analyticsId: normalizeLegacyAnalyticsId(raw.integrations),
+      analytics: {
+        enableSitezyAnalytics:
+          raw.integrations?.analytics?.enableSitezyAnalytics ??
+          defaultUserSettings.integrations.analytics.enableSitezyAnalytics,
+        ga4: {
+          enabled:
+            raw.integrations?.analytics?.ga4?.enabled ??
+            Boolean(normalizeLegacyAnalyticsId(raw.integrations)),
+          measurementId: normalizeLegacyAnalyticsId(raw.integrations),
+        },
+        metaPixel: {
+          enabled:
+            raw.integrations?.analytics?.metaPixel?.enabled ??
+            Boolean(String(raw.integrations?.analytics?.metaPixel?.pixelId ?? "").trim()),
+          pixelId: String(raw.integrations?.analytics?.metaPixel?.pixelId ?? "").trim(),
+        },
+      },
+      webhooks: {
+        deliveryTimeoutSeconds: clampNumber(
+          raw.integrations?.webhooks?.deliveryTimeoutSeconds,
+          3,
+          60,
+          defaultUserSettings.integrations.webhooks.deliveryTimeoutSeconds
+        ),
+      },
       notificationEmail: String(raw.integrations?.notificationEmail ?? "").trim(),
-      formsProvider: raw.integrations?.formsProvider === "none" ? "none" : "email",
+      contactCaptureDefault: normalizeAccountLeadCaptureMode(raw.integrations?.contactCaptureDefault),
+      newsletterCaptureDefault: normalizeAccountLeadCaptureMode(raw.integrations?.newsletterCaptureDefault),
       primaryDomain: String(raw.integrations?.primaryDomain ?? "").trim(),
     },
     billing: {
       planName: String(raw.billing?.planName ?? defaultUserSettings.billing.planName).trim() || defaultUserSettings.billing.planName,
+      planId: normalizeNullableString(raw.billing?.planId),
+      planStatus: normalizeBillingPlanStatus(raw.billing?.planStatus),
       tokenUsage: clampNumber(raw.billing?.tokenUsage, 0, Number.MAX_SAFE_INTEGER, defaultUserSettings.billing.tokenUsage),
-      tokenLimit: clampNumber(raw.billing?.tokenLimit, 1, Number.MAX_SAFE_INTEGER, defaultUserSettings.billing.tokenLimit),
+      tokenLimit: clampNumber(
+        raw.billing?.tokenLimit,
+        1,
+        Number.MAX_SAFE_INTEGER,
+        defaultUserSettings.billing.tokenLimit
+      ),
+      allowanceCredits: clampNumber(
+        raw.billing?.allowanceCredits,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        defaultUserSettings.billing.allowanceCredits
+      ),
+      manualGrantCredits: clampNumber(
+        raw.billing?.manualGrantCredits,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        defaultUserSettings.billing.manualGrantCredits
+      ),
+      remainingCredits: clampNumber(
+        raw.billing?.remainingCredits,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        Math.max(
+          0,
+          clampNumber(raw.billing?.tokenLimit, 1, Number.MAX_SAFE_INTEGER, defaultUserSettings.billing.tokenLimit) -
+            clampNumber(raw.billing?.tokenUsage, 0, Number.MAX_SAFE_INTEGER, defaultUserSettings.billing.tokenUsage)
+        )
+      ),
       paymentMethodLabel:
         typeof raw.billing?.paymentMethodLabel === "string" && raw.billing.paymentMethodLabel.trim()
           ? raw.billing.paymentMethodLabel.trim()
           : null,
+      customerId: normalizeNullableString(raw.billing?.customerId),
+      subscriptionId: normalizeNullableString(raw.billing?.subscriptionId),
+      periodStart: normalizeNullableString(raw.billing?.periodStart),
+      periodEnd: normalizeNullableString(raw.billing?.periodEnd),
+      checkoutEnabled: raw.billing?.checkoutEnabled ?? defaultUserSettings.billing.checkoutEnabled,
+      portalEnabled: raw.billing?.portalEnabled ?? defaultUserSettings.billing.portalEnabled,
       billingHistory: Array.isArray(raw.billing?.billingHistory)
         ? raw.billing!.billingHistory
             .map((entry) => ({
@@ -141,7 +234,11 @@ export function normalizeUserSettings(input?: Partial<UserSettings> | null): Use
               label: String(entry.label ?? ""),
               date: String(entry.date ?? ""),
               amount: String(entry.amount ?? ""),
-              status: (entry.status === "pending" ? "pending" : "paid") as "pending" | "paid",
+              status: normalizeBillingInvoiceStatus(entry.status),
+              invoiceUrl:
+                typeof entry.invoiceUrl === "string" && entry.invoiceUrl.trim()
+                  ? entry.invoiceUrl.trim()
+                  : null,
             }))
             .filter((entry) => entry.id && entry.label)
         : defaultUserSettings.billing.billingHistory,
@@ -151,6 +248,8 @@ export function normalizeUserSettings(input?: Partial<UserSettings> | null): Use
       smartLayoutRegeneration: raw.experimental?.smartLayoutRegeneration ?? defaultUserSettings.experimental.smartLayoutRegeneration,
       advancedEditor: raw.experimental?.advancedEditor ?? defaultUserSettings.experimental.advancedEditor,
       chatBasedEditing: raw.experimental?.chatBasedEditing ?? defaultUserSettings.experimental.chatBasedEditing,
+      selfLearningGenerator: raw.experimental?.selfLearningGenerator ?? defaultUserSettings.experimental.selfLearningGenerator,
+      trainingMode: raw.experimental?.trainingMode ?? defaultUserSettings.experimental.trainingMode,
     },
     security: {},
     creativeMode: {
@@ -173,7 +272,26 @@ export function mergeUserSettings(
     ai: { ...current.ai, ...patch.ai },
     projectDefaults: { ...current.projectDefaults, ...patch.projectDefaults },
     exportDeployment: { ...current.exportDeployment, ...patch.exportDeployment },
-    integrations: { ...current.integrations, ...patch.integrations },
+    integrations: {
+      ...current.integrations,
+      ...patch.integrations,
+      analytics: {
+        ...current.integrations.analytics,
+        ...patch.integrations?.analytics,
+        ga4: {
+          ...current.integrations.analytics.ga4,
+          ...patch.integrations?.analytics?.ga4,
+        },
+        metaPixel: {
+          ...current.integrations.analytics.metaPixel,
+          ...patch.integrations?.analytics?.metaPixel,
+        },
+      },
+      webhooks: {
+        ...current.integrations.webhooks,
+        ...patch.integrations?.webhooks,
+      },
+    },
     billing: { ...current.billing, ...patch.billing },
     experimental: { ...current.experimental, ...patch.experimental },
     security: { ...current.security, ...patch.security },
@@ -244,7 +362,7 @@ export function buildBriefFromSettings(brief: SiteBrief, settings: UserSettings)
     colorPalette: brief.colorPalette?.length ? brief.colorPalette : settings.projectDefaults.defaultColorPalette,
     colorPreference: brief.colorPreference || settings.projectDefaults.defaultColorPalette.join(", "),
     generationDesignStyle: brief.generationDesignStyle ?? settings.ai.designStyle,
-    generationCreativityLevel: brief.generationCreativityLevel ?? settings.ai.creativityLevel,
+    generationCreativityLevel: brief.generationCreativityLevel ?? settings.creativeMode.boldness,
     generationStructurePreference: brief.generationStructurePreference ?? settings.ai.structurePreference,
     generationContentDensity: brief.generationContentDensity ?? settings.ai.contentDensity,
     defaultTypographyStyle: brief.defaultTypographyStyle ?? settings.projectDefaults.typographyStyle,
@@ -260,7 +378,7 @@ export function buildInitialBriefSettings(settings: UserSettings) {
     colorPalette: settings.projectDefaults.defaultColorPalette,
     colorPreference: settings.projectDefaults.defaultColorPalette.join(", "),
     generationDesignStyle: settings.ai.designStyle,
-    generationCreativityLevel: settings.ai.creativityLevel,
+    generationCreativityLevel: settings.creativeMode.boldness,
     generationStructurePreference: settings.ai.structurePreference,
     generationContentDensity: settings.ai.contentDensity,
     defaultTypographyStyle: settings.projectDefaults.typographyStyle,
@@ -323,4 +441,24 @@ function normalizePageList(value: unknown): string[] {
     .filter(Boolean)
     .slice(0, 8);
   return cleaned.length ? cleaned : defaultUserSettings.projectDefaults.defaultPages;
+}
+
+function normalizeNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeLegacyAnalyticsId(value: Partial<UserSettings["integrations"]> | undefined) {
+  return String(value?.analytics?.ga4?.measurementId ?? value?.analyticsId ?? "").trim();
+}
+
+function normalizeBillingPlanStatus(value: unknown): UserSettings["billing"]["planStatus"] {
+  return normalizeEnum(
+    value,
+    ["inactive", "trialing", "active", "past_due", "canceled", "unpaid"],
+    defaultUserSettings.billing.planStatus
+  );
+}
+
+function normalizeBillingInvoiceStatus(value: unknown): UserSettings["billing"]["billingHistory"][number]["status"] {
+  return normalizeEnum(value, ["draft", "open", "paid", "void", "uncollectible", "pending"], "pending");
 }
