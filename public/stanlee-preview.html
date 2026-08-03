@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stanlee — Carry Less. Drink More.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --primary: #5b8cff;
+      --secondary: #3d6bef;
+      --accent: #a8d4f5;
+      --bg: #07090f;
+      --text: #e2e8f5;
+      --muted: #8896b0;
+      --border: #151c2e;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; }
+    h1, h2, h3, h4, h5, h6 { font-family: 'Sora', system-ui, sans-serif; line-height: 1.15; }
+    a { color: var(--primary); text-decoration: none; }
+    img { max-width: 100%; height: auto; display: block; }
+    ::selection { background: var(--primary); color: white; }
+
+    /* Reveal gating */
+    [data-sz-anim-in]:not([data-sz-anim-in="none"]) {
+      animation-duration: var(--sz-anim-duration, 700ms);
+      animation-delay: var(--sz-anim-delay, 0ms);
+      animation-timing-function: var(--sz-anim-ease, cubic-bezier(0.22,1,0.36,1));
+      animation-fill-mode: both;
+      will-change: transform, opacity;
+    }
+    [data-sz-anim-in="fade-up"] { animation-name: sz-fade-up; }
+    [data-sz-anim-in="fade-left"] { animation-name: sz-fade-left; }
+    [data-sz-anim-in="fade-right"] { animation-name: sz-fade-right; }
+    [data-sz-anim-in="zoom-in"] { animation-name: sz-zoom-in; }
+    [data-sz-anim-in="fade-in"] { animation-name: sz-fade-in; }
+    html.sz-reveal-on [data-sz-reveal][data-sz-anim-in]:not([data-sz-anim-play]) { opacity:0; animation-play-state:paused; }
+    [data-sz-reveal][data-sz-anim-play] { animation-play-state:running; }
+
+    /* Hover effects */
+    [data-sz-hover-fx] { transition: transform 280ms cubic-bezier(0.22,1,0.36,1), box-shadow 280ms cubic-bezier(0.22,1,0.36,1); }
+    [data-sz-hover-fx="lift"]:hover { transform: translateY(-4px); box-shadow: 0 24px 48px rgba(0,0,0,0.45); }
+    [data-sz-hover-fx="grow"]:hover { transform: scale(1.05); }
+    [data-sz-hover-fx="glow"]:hover { box-shadow: 0 0 0 1px rgba(91,140,255,0.4), 0 0 36px rgba(91,140,255,0.25); }
+
+    /* Premium primitives */
+    .sz-glass { background: rgba(7,9,15,0.6); backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5); border: 1px solid rgba(255,255,255,0.09); }
+    .sz-gradient-mesh {
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(at 15% 12%, rgba(91,140,255,0.22) 0px, transparent 52%),
+        radial-gradient(at 85% 8%,  rgba(168,212,245,0.14) 0px, transparent 48%),
+        radial-gradient(at 68% 88%, rgba(61,107,239,0.18)  0px, transparent 50%);
+    }
+    .sz-grain { position: relative; }
+    .sz-grain::after { content:""; position:absolute; inset:0; pointer-events:none; z-index:1; opacity:.32; mix-blend-mode:soft-light; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .sz-spotlight { position: relative; isolation: isolate; }
+    .sz-spotlight::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:0; transition:opacity 0.4s; border-radius:inherit; background:radial-gradient(380px circle at var(--sz-mx,50%) var(--sz-my,50%), rgba(91,140,255,0.18), transparent 55%); }
+    .sz-spotlight:hover::before { opacity:1; }
+    .sz-elev-2 { box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 24px 56px rgba(0,0,0,0.3); }
+    .sz-elev-3 { box-shadow: 0 16px 48px rgba(0,0,0,0.55), 0 48px 96px rgba(0,0,0,0.4); }
+    .sz-gradient-text { background-image: linear-gradient(120deg, var(--primary), var(--accent)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .sz-rule { height:1px; border:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent); }
+
+    /* Fluid type */
+    .sz-display  { font-family:'Sora',sans-serif; font-size:clamp(52px,8vw,124px); line-height:.94; letter-spacing:-.04em; font-weight:800; }
+    .sz-fluid-h1 { font-family:'Sora',sans-serif; font-size:clamp(34px,5vw,68px);  line-height:1.04; letter-spacing:-.03em; font-weight:800; }
+    .sz-fluid-h2 { font-family:'Sora',sans-serif; font-size:clamp(24px,3vw,42px);  line-height:1.1;  letter-spacing:-.02em; font-weight:700; }
+    .sz-eyebrow  { font-size:11px; letter-spacing:.22em; text-transform:uppercase; font-weight:600; }
+    .sz-lead     { font-size:clamp(17px,1.4vw,21px); line-height:1.62; }
+    [data-sz-icon] { display:inline-flex; align-items:center; justify-content:center; line-height:0; }
+
+    /* Keyframes */
+    @keyframes sz-fade-up   { from { opacity:0; transform:translate3d(0,28px,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+    @keyframes sz-fade-in   { from { opacity:0; } to { opacity:1; } }
+    @keyframes sz-fade-left { from { opacity:0; transform:translate3d(28px,0,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+    @keyframes sz-fade-right{ from { opacity:0; transform:translate3d(-28px,0,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+    @keyframes sz-zoom-in   { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+    @keyframes sz-float     { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-16px); } }
+    @media (prefers-reduced-motion:reduce) {
+      [data-sz-anim-in] { animation:none !important; }
+      [data-sz-hover-fx] { transition:none !important; }
+    }
+
+    /* Component styles */
+    .sz-navbar { position:sticky; top:0; z-index:60; background:rgba(7,9,15,0.8); backdrop-filter:blur(22px) saturate(1.4); -webkit-backdrop-filter:blur(22px) saturate(1.4); border-bottom:1px solid rgba(255,255,255,0.05); }
+    .bottle-float { animation: sz-float 6s ease-in-out infinite; filter:drop-shadow(0 0 48px rgba(91,140,255,0.4)) drop-shadow(0 0 100px rgba(91,140,255,0.12)); }
+    .orb { position:absolute; border-radius:50%; filter:blur(88px); pointer-events:none; }
+    .feature-card { border-radius:22px; border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.028); padding:28px; transition:border-color .3s, background .3s; }
+    .feature-card:hover { border-color:rgba(91,140,255,0.28); background:rgba(91,140,255,0.06); }
+    .stat-num { font-family:'Sora',sans-serif; font-size:clamp(38px,5vw,64px); font-weight:800; letter-spacing:-.04em; line-height:1; }
+    .nav-link { font-size:11px; letter-spacing:.2em; text-transform:uppercase; font-weight:600; color:var(--muted); transition:color .2s; }
+    .nav-link:hover { color:var(--text); }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="sz-navbar">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2.5">
+      <div style="width:34px;height:34px;border-radius:12px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;">
+        <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:#fff;">S</span>
+      </div>
+      <span style="font-family:'Sora',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.03em;">Stanlee</span>
+    </a>
+    <div class="hidden md:flex items-center gap-8">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#about" class="nav-link">Story</a>
+      <a href="#shop" class="nav-link">Shop</a>
+    </div>
+    <a href="#shop" style="background:var(--primary);color:#fff;font-family:'Sora',sans-serif;font-size:13px;font-weight:600;padding:10px 24px;border-radius:999px;letter-spacing:-.01em;transition:background .2s,transform .2s;" onmouseenter="this.style.background='#6d99ff';this.style.transform='translateY(-1px)'" onmouseleave="this.style.background='var(--primary)';this.style.transform=''">
+      Shop Now
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="sz-gradient-mesh sz-grain relative overflow-hidden" style="min-height:96vh;display:flex;align-items:center;">
+  <div class="orb" style="width:700px;height:700px;top:-160px;right:-180px;background:radial-gradient(circle,rgba(91,140,255,0.16),transparent 68%);"></div>
+  <div class="orb" style="width:500px;height:500px;bottom:-120px;left:-120px;background:radial-gradient(circle,rgba(61,107,239,0.13),transparent 68%);"></div>
+  <div class="max-w-6xl mx-auto px-6 py-24 w-full relative z-10">
+    <div class="grid md:grid-cols-2 gap-16 items-center">
+      <!-- Copy -->
+      <div>
+        <div class="flex items-center gap-3 mb-10" data-sz-reveal data-sz-anim-in="fade-up">
+          <div style="width:36px;height:1.5px;background:var(--primary);"></div>
+          <span class="sz-eyebrow" style="color:var(--primary);">Premium Hydration ✦ Est. 2019</span>
+        </div>
+
+        <h1 class="sz-display" style="color:var(--text);margin:0;" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:60ms">Carry</h1>
+        <h1 class="sz-display sz-gradient-text" style="margin:0;" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:130ms">Less.</h1>
+        <h1 class="sz-display" style="color:var(--text);margin:0 0 36px;" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:200ms">Drink More.</h1>
+
+        <p class="sz-lead" style="color:var(--muted);max-width:440px;margin-bottom:44px;" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:280ms">
+          Stanlee is engineered for people who take hydration seriously. Double-wall vacuum insulation, medical-grade steel, and a lifetime warranty on everything.
+        </p>
+
+        <div class="flex flex-wrap gap-4 mb-12" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:360ms">
+          <a href="#shop" data-sz-hover-fx="lift" style="display:inline-flex;align-items:center;gap:9px;background:var(--primary);color:#fff;font-family:'Sora',sans-serif;font-size:14px;font-weight:700;padding:15px 30px;border-radius:999px;letter-spacing:-.01em;">
+            Shop the Collection
+            <span data-sz-icon="arrow-right" style="font-size:16px;"></span>
+          </a>
+          <a href="#features" style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-family:'Sora',sans-serif;font-size:14px;font-weight:500;padding:15px 22px;border-radius:999px;border:1px solid rgba(255,255,255,0.1);transition:color .2s,border-color .2s;" onmouseenter="this.style.color='var(--text)';this.style.borderColor='rgba(255,255,255,0.22)'" onmouseleave="this.style.color='var(--muted)';this.style.borderColor='rgba(255,255,255,0.1)'">
+            See Features
+          </a>
+        </div>
+
+        <!-- Social proof row -->
+        <div class="flex items-center gap-5" data-sz-reveal data-sz-anim-in="fade-up" style="--sz-anim-delay:440ms">
+          <div class="flex">
+            <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#5b8cff,#a8d4f5);border:2px solid var(--bg);margin-right:-9px;"></div>
+            <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#3d6bef,#5b8cff);border:2px solid var(--bg);margin-right:-9px;"></div>
+            <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#a8d4f5,#5b8cff);border:2px solid var(--bg);"></div>
+          </div>
+          <span style="font-size:13px;color:var(--muted);padding-left:8px;"><strong style="color:var(--text);">12,000+</strong> happy hydrators</span>
+          <div style="width:1px;height:16px;background:rgba(255,255,255,0.12);"></div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span data-sz-icon="star" style="font-size:14px;color:#f59e0b;"></span>
+            <span style="font-size:13px;font-weight:700;color:var(--text);">4.9</span>
+            <span style="font-size:13px;color:var(--muted);">/ 5</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottle -->
+      <div class="flex justify-center items-center" data-sz-reveal data-sz-anim-in="zoom-in" style="--sz-anim-delay:180ms;--sz-anim-duration:1000ms;">
+        <div data-sz-parallax data-sz-parallax-speed="0.07" style="position:relative;">
+          <svg class="bottle-float" width="260" height="480" viewBox="0 0 260 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Bottle body -->
+            <rect x="45" y="95" width="170" height="345" rx="32" fill="url(#bGrad)"/>
+            <!-- Inner highlight -->
+            <rect x="60" y="110" width="16" height="280" rx="8" fill="url(#hiGrad)" opacity="0.5"/>
+            <!-- Neck -->
+            <rect x="82" y="55" width="96" height="50" rx="13" fill="url(#nGrad)"/>
+            <!-- Cap -->
+            <rect x="88" y="34" width="84" height="28" rx="11" fill="url(--cGrad)"/>
+            <rect x="88" y="34" width="84" height="28" rx="11" fill="url(#cGrad)"/>
+            <!-- Logo mark -->
+            <text x="130" y="286" text-anchor="middle" font-family="Sora,sans-serif" font-size="32" font-weight="800" fill="rgba(255,255,255,0.1)" letter-spacing="-1">S</text>
+            <!-- Water line dashed -->
+            <line x1="60" y1="330" x2="200" y2="330" stroke="rgba(168,212,245,0.18)" stroke-width="1" stroke-dasharray="5 5"/>
+            <!-- Bottom shine -->
+            <ellipse cx="130" cy="432" rx="60" ry="7" fill="rgba(91,140,255,0.15)"/>
+            <defs>
+              <linearGradient id="bGrad" x1="45" y1="95" x2="215" y2="440" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#1b2e52"/>
+                <stop offset="45%" stop-color="#0d1a32"/>
+                <stop offset="100%" stop-color="#080e1e"/>
+              </linearGradient>
+              <linearGradient id="hiGrad" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+                <stop offset="0%" stop-color="white" stop-opacity="0.65"/>
+                <stop offset="100%" stop-color="white" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="nGrad" x1="82" y1="55" x2="178" y2="105" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#203050"/>
+                <stop offset="100%" stop-color="#0d1a32"/>
+              </linearGradient>
+              <linearGradient id="cGrad" x1="88" y1="34" x2="172" y2="62" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#6d99ff"/>
+                <stop offset="100%" stop-color="#3d6bef"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <!-- Glow pool under bottle -->
+          <div style="position:absolute;bottom:-28px;left:50%;transform:translateX(-50%);width:180px;height:32px;background:rgba(91,140,255,0.22);filter:blur(24px);border-radius:50%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS BAND -->
+<div style="border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.018);">
+  <div class="max-w-6xl mx-auto px-6 py-12">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8" data-sz-stagger data-sz-stagger-step="80">
+      <div class="text-center" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="stat-num sz-gradient-text">32oz</div>
+        <div class="sz-eyebrow mt-2" style="color:var(--muted);">Three Sizes</div>
+      </div>
+      <div class="text-center" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="stat-num" style="color:var(--text);">24h</div>
+        <div class="sz-eyebrow mt-2" style="color:var(--muted);">Cold Retention</div>
+      </div>
+      <div class="text-center" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="stat-num sz-gradient-text">∞</div>
+        <div class="sz-eyebrow mt-2" style="color:var(--muted);">Lifetime Warranty</div>
+      </div>
+      <div class="text-center" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="stat-num" style="color:var(--text);">100%</div>
+        <div class="sz-eyebrow mt-2" style="color:var(--muted);">BPA-Free Steel</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section id="features" class="py-28">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-18">
+      <span class="sz-eyebrow" style="color:var(--primary);" data-sz-reveal data-sz-anim-in="fade-up">Why Stanlee</span>
+      <h2 class="sz-fluid-h1 mt-5 mb-5" style="color:var(--text);" data-sz-reveal data-sz-anim-in="fade-up">
+        Built for the <span class="sz-gradient-text">long run.</span>
+      </h2>
+      <p class="sz-lead max-w-xl mx-auto" style="color:var(--muted);" data-sz-reveal data-sz-anim-in="fade-up">
+        Every detail in a Stanlee bottle is deliberate — engineered, tested, and built to outlast anything else in your bag.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5 mt-16" data-sz-stagger data-sz-stagger-step="90">
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="shield-check" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">Lifetime Warranty</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">If it ever breaks, we replace it. No receipts, no questions, no expiry. That's the Stanlee promise.</p>
+      </div>
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="zap" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">24h Cold, 12h Hot</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">Dual-wall vacuum insulation keeps ice water ice-cold all day and coffee hot all morning. No exceptions.</p>
+      </div>
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="leaf" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">100% Plastic-Free</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">Medical-grade 18/8 stainless steel from the inside out. Zero plastic touching your water. Clean taste, always.</p>
+      </div>
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="droplet" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">Precision Leakproof Lid</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">Machined to a micron tolerance. Seals with a satisfying click. Toss it in your bag upside down — we dare you.</p>
+      </div>
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="layers" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">8 Premium Colorways</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">From Matte Obsidian to Glacier White. Each powder-coated for grip that doesn't smudge or chip.</p>
+      </div>
+      <div class="feature-card sz-spotlight sz-elev-2" data-sz-reveal data-sz-anim-in="fade-up" data-sz-hover-fx="lift">
+        <div style="width:50px;height:50px;background:rgba(91,140,255,0.14);border-radius:15px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+          <span data-sz-icon="award" style="font-size:24px;color:var(--primary);"></span>
+        </div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin:0 0 10px;color:var(--text);">Award-Winning Design</h3>
+        <p style="font-size:14px;line-height:1.75;color:var(--muted);margin:0;">Named best reusable bottle three years running by Gear Patrol, Wirecutter, and Outside Magazine.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT / EDITORIAL -->
+<section id="about" class="sz-grain relative overflow-hidden py-28" style="background:#050810;">
+  <div class="orb" style="width:560px;height:560px;top:50%;right:-140px;transform:translateY(-50%);background:radial-gradient(circle,rgba(91,140,255,0.11),transparent 68%);"></div>
+  <div class="max-w-6xl mx-auto px-6 relative z-10">
+    <div class="grid md:grid-cols-2 gap-20 items-center">
+      <div>
+        <span class="sz-eyebrow" style="color:var(--primary);" data-sz-reveal data-sz-anim-in="fade-right">Our Story</span>
+        <h2 class="sz-fluid-h1 mt-6 mb-8" style="color:var(--text);" data-sz-reveal data-sz-anim-in="fade-right">
+          Started in a garage. <span class="sz-gradient-text">Built for the world.</span>
+        </h2>
+        <blockquote style="border-left:2px solid var(--primary);padding-left:24px;margin:0 0 28px;" data-sz-reveal data-sz-anim-in="fade-right">
+          <p class="sz-lead" style="color:var(--muted);font-style:italic;margin:0;">"We were tired of bottles that leaked, warmed up, and wore out. So we built one that wouldn't."</p>
+        </blockquote>
+        <p style="font-size:15px;line-height:1.8;color:var(--muted);margin-bottom:20px;" data-sz-reveal data-sz-anim-in="fade-right">
+          Stanlee was founded in 2019 by two engineers who couldn't find a bottle worth keeping. Three years and 47 prototypes later, we shipped 500 bottles. They sold out in 6 hours.
+        </p>
+        <p style="font-size:15px;line-height:1.8;color:var(--muted);margin-bottom:36px;" data-sz-reveal data-sz-anim-in="fade-right">
+          Today, Stanlee is carried by doctors, athletes, chefs, and parents across 42 countries. The obsession with getting it right hasn't changed.
+        </p>
+        <a href="#shop" data-sz-hover-fx="grow" style="display:inline-flex;align-items:center;gap:8px;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--primary);" data-sz-reveal data-sz-anim-in="fade-right">
+          Read the full story
+          <span data-sz-icon="arrow-right" style="font-size:15px;"></span>
+        </a>
+      </div>
+      <div data-sz-reveal data-sz-anim-in="fade-left">
+        <div class="sz-elev-2 rounded-3xl overflow-hidden" style="border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.028);padding:36px;">
+          <div class="grid grid-cols-2 gap-5 mb-5">
+            <div style="padding:22px 24px;background:rgba(91,140,255,0.09);border-radius:18px;border:1px solid rgba(91,140,255,0.16);">
+              <div class="stat-num sz-gradient-text">42</div>
+              <div class="sz-eyebrow mt-2" style="color:var(--muted);">Countries</div>
+            </div>
+            <div style="padding:22px 24px;background:rgba(91,140,255,0.09);border-radius:18px;border:1px solid rgba(91,140,255,0.16);">
+              <div class="stat-num" style="color:var(--text);">47</div>
+              <div class="sz-eyebrow mt-2" style="color:var(--muted);">Prototypes</div>
+            </div>
+            <div style="padding:22px 24px;background:rgba(91,140,255,0.09);border-radius:18px;border:1px solid rgba(91,140,255,0.16);">
+              <div class="stat-num" style="color:var(--text);">12k+</div>
+              <div class="sz-eyebrow mt-2" style="color:var(--muted);">Community</div>
+            </div>
+            <div style="padding:22px 24px;background:rgba(91,140,255,0.09);border-radius:18px;border:1px solid rgba(91,140,255,0.16);">
+              <div class="stat-num sz-gradient-text">4.9★</div>
+              <div class="sz-eyebrow mt-2" style="color:var(--muted);">Avg Rating</div>
+            </div>
+          </div>
+          <hr class="sz-rule" style="margin-bottom:20px;">
+          <div class="flex items-center gap-3">
+            <span data-sz-icon="check-circle" style="font-size:18px;color:#34d399;flex-shrink:0;"></span>
+            <span style="font-size:13px;color:var(--muted);line-height:1.5;">B-Corp certified. 1% of all revenue funds clean water access projects globally.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="py-24">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14">
+      <span class="sz-eyebrow" style="color:var(--primary);" data-sz-reveal data-sz-anim-in="fade-up">What people say</span>
+      <h2 class="sz-fluid-h2 mt-4" style="color:var(--text);" data-sz-reveal data-sz-anim-in="fade-up">Trusted by real people.</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-5" data-sz-stagger data-sz-stagger-step="90">
+      <div class="feature-card" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="flex gap-1 mb-5">
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+        </div>
+        <p style="font-size:14px;line-height:1.8;color:var(--muted);margin:0 0 20px;">"I've tried every bottle on the market. Nothing comes close to Stanlee. Ice stays ice. The lid never leaks. Worth every cent."</p>
+        <div class="flex items-center gap-3">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#5b8cff,#a8d4f5);flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);">Sarah M.</div>
+            <div style="font-size:11px;color:var(--muted);">Marathon runner · Austin TX</div>
+          </div>
+        </div>
+      </div>
+      <div class="feature-card" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="flex gap-1 mb-5">
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+        </div>
+        <p style="font-size:14px;line-height:1.8;color:var(--muted);margin:0 0 20px;">"Bought one, then three more for the family. The lifetime warranty sealed it — this is the last bottle I'll ever buy."</p>
+        <div class="flex items-center gap-3">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3d6bef,#5b8cff);flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);">James K.</div>
+            <div style="font-size:11px;color:var(--muted);">Architect · New York</div>
+          </div>
+        </div>
+      </div>
+      <div class="feature-card" data-sz-reveal data-sz-anim-in="fade-up">
+        <div class="flex gap-1 mb-5">
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+          <span data-sz-icon="star" style="font-size:13px;color:#f59e0b;"></span>
+        </div>
+        <p style="font-size:14px;line-height:1.8;color:var(--muted);margin:0 0 20px;">"As an ER doctor I need a bottle I can actually trust. Stanlee doesn't leak, doesn't smell, doesn't quit. Perfect."</p>
+        <div class="flex items-center gap-3">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#a8d4f5,#5b8cff);flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);">Dr. Priya L.</div>
+            <div style="font-size:11px;color:var(--muted);">Emergency Medicine · Boston</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="shop" class="py-24">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="sz-glass sz-grain sz-elev-3 rounded-3xl p-16 text-center relative overflow-hidden" data-sz-reveal data-sz-anim-in="zoom-in">
+      <div class="orb" style="width:440px;height:440px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(91,140,255,0.18),transparent 68%);pointer-events:none;z-index:0;"></div>
+      <div style="position:relative;z-index:1;">
+        <span class="sz-eyebrow" style="color:var(--primary);">Ready to upgrade?</span>
+        <h2 class="sz-fluid-h1 mt-5 mb-5" style="color:var(--text);">
+          Your last bottle, <span class="sz-gradient-text">ever.</span>
+        </h2>
+        <p class="sz-lead mb-10" style="color:var(--muted);max-width:460px;margin-left:auto;margin-right:auto;">
+          Free worldwide shipping. 30-day hassle-free returns. And a warranty that outlasts everything else.
+        </p>
+        <div class="flex flex-wrap gap-4 justify-center">
+          <a href="#" data-sz-hover-fx="glow" style="display:inline-flex;align-items:center;gap:10px;background:var(--primary);color:#fff;font-family:'Sora',sans-serif;font-size:15px;font-weight:700;padding:17px 38px;border-radius:999px;letter-spacing:-.01em;">
+            <span data-sz-icon="shopping-bag" style="font-size:18px;"></span>
+            Shop Stanlee — From $49
+          </a>
+        </div>
+        <p class="mt-6" style="font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;">
+          <span data-sz-icon="shield-check" style="font-size:15px;color:#34d399;"></span>
+          Lifetime warranty · Free returns · Carbon-neutral shipping
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer style="border-top:1px solid rgba(255,255,255,0.05);padding:52px 0 36px;">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="grid md:grid-cols-4 gap-10 mb-14">
+      <div class="md:col-span-2">
+        <div class="flex items-center gap-2.5 mb-5">
+          <div style="width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;">
+            <span style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#fff;">S</span>
+          </div>
+          <span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.03em;">Stanlee</span>
+        </div>
+        <p style="font-size:14px;line-height:1.72;color:var(--muted);max-width:270px;">Premium reusable water bottles for people who refuse to compromise on the small things.</p>
+        <div class="flex gap-3 mt-6">
+          <a href="#" data-sz-hover-fx="grow" style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:color .2s,border-color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'"><span data-sz-icon="instagram" style="font-size:15px;"></span></a>
+          <a href="#" data-sz-hover-fx="grow" style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'"><span data-sz-icon="twitter" style="font-size:15px;"></span></a>
+          <a href="#" data-sz-hover-fx="grow" style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'"><span data-sz-icon="youtube" style="font-size:15px;"></span></a>
+        </div>
+      </div>
+      <div>
+        <p class="sz-eyebrow mb-5" style="color:var(--muted);">Product</p>
+        <div class="space-y-3">
+          <div><a href="#" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">Shop All</a></div>
+          <div><a href="#" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">Gift Sets</a></div>
+          <div><a href="#" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">Accessories</a></div>
+        </div>
+      </div>
+      <div>
+        <p class="sz-eyebrow mb-5" style="color:var(--muted);">Company</p>
+        <div class="space-y-3">
+          <div><a href="#about" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">About</a></div>
+          <div><a href="#" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">Sustainability</a></div>
+          <div><a href="#" style="font-size:14px;color:var(--muted);transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--muted)'">Contact</a></div>
+        </div>
+      </div>
+    </div>
+    <hr class="sz-rule" style="margin-bottom:24px;">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+      <p style="font-size:12px;color:var(--muted);margin:0;">© 2026 Stanlee Inc. All rights reserved.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0;">Built with Sitezy ✦</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ICON RUNTIME -->
+<script>
+(function(){
+  var I={
+    "arrow-right":'<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+    "check-circle":'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+    "star":'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    "zap":'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    "shield-check":'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
+    "leaf":'<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/>',
+    "layers":'<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    "award":'<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
+    "shopping-bag":'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+    "instagram":'<rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>',
+    "twitter":'<path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/>',
+    "youtube":'<path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.4 19.5c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2.02A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>',
+    "droplet":'<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>'
+  };
+  function render(h){var n=h.getAttribute("data-sz-icon");if(!n||h.getAttribute("data-sz-icon-done")==="1")return;var i=I[n];if(!i)return;h.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;display:block" aria-hidden="true">'+i+'</svg>';h.setAttribute("data-sz-icon-done","1");}
+  function run(){var h=document.querySelectorAll("[data-sz-icon]");for(var i=0;i<h.length;i++)render(h[i]);}
+  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",run,{once:true});}else{run();}
+  var s=false;function sched(){if(s)return;s=true;(window.requestAnimationFrame||window.setTimeout)(function(){s=false;run();},0);}
+  try{new MutationObserver(sched).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}
+})();
+</script>
+
+<!-- MOTION RUNTIME -->
+<script>
+(function(){
+  var docEl=document.documentElement;
+  var reduce=false;
+  try{reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;}catch(e){}
+  function qsa(sel,root){return[].slice.call((root||document).querySelectorAll(sel));}
+  function play(el){el.setAttribute("data-sz-anim-play","");}
+  var revEls=qsa("[data-sz-reveal]");
+  revEls.forEach(function(el){if(!el.hasAttribute("data-sz-anim-in"))el.setAttribute("data-sz-anim-in","fade-up");});
+  if(reduce||!("IntersectionObserver" in window)){revEls.forEach(play);}
+  else{
+    docEl.classList.add("sz-reveal-on");
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(!entry.isIntersecting)return;
+        var t=entry.target;io.unobserve(t);
+        if(t.hasAttribute("data-sz-stagger")){
+          var step=parseInt(t.getAttribute("data-sz-stagger-step")||"90",10);
+          qsa("[data-sz-reveal]",t).forEach(function(kid,i){kid.style.setProperty("--sz-anim-delay",(i*step)+"ms");play(kid);});
+        }else{play(t);}
+      });
+    },{rootMargin:"0px 0px -8% 0px",threshold:0.1});
+    qsa("[data-sz-stagger]").forEach(function(p){io.observe(p);});
+    revEls.forEach(function(el){
+      if(el.hasAttribute("data-sz-stagger"))return;
+      if(el.closest("[data-sz-stagger]"))return;
+      io.observe(el);
+    });
+  }
+  // Parallax
+  if(!reduce){
+    var px=qsa("[data-sz-parallax]");
+    if(px.length){
+      var tk=false;
+      var rp=function(){tk=false;var vh=window.innerHeight||docEl.clientHeight;px.forEach(function(el){var r=el.getBoundingClientRect();var sp=parseFloat(el.getAttribute("data-sz-parallax-speed")||"0.12");var off=((r.top+r.height/2)-vh/2)*-sp;el.style.transform="translate3d(0,"+off.toFixed(1)+"px,0)";});};
+      var os=function(){if(!tk){tk=true;window.requestAnimationFrame(rp);}};
+      window.addEventListener("scroll",os,{passive:true});
+      window.addEventListener("resize",os,{passive:true});
+      rp();
+    }
+  }
+  // Spotlight
+  document.addEventListener("pointermove",function(e){
+    var el=e.target&&e.target.closest?e.target.closest(".sz-spotlight"):null;
+    if(!el)return;
+    var r=el.getBoundingClientRect();
+    el.style.setProperty("--sz-mx",((e.clientX-r.left)/r.width*100)+"%");
+    el.style.setProperty("--sz-my",((e.clientY-r.top)/r.height*100)+"%");
+  },{passive:true});
+})();
+</script>
+</body>
+</html>
