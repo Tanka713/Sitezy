@@ -1,33 +1,75 @@
 # Sitezy
 
-Sitezy is an AI website builder with a public marketing site, authenticated studio, visual editor, structured settings, Supabase-backed persistence, shared media storage, an in-product support inbox, and ZIP export.
+Sitezy is an open-source, AI-assisted website builder for turning a structured brief into a polished, editable, multi-page website.
 
-## Stack
+It combines an AI generation pipeline with a visual editor, persistent project storage, media management, preview and publishing flows, lead capture, CMS collections, analytics, support tooling, and ZIP export.
 
-- Next.js 14
-- React 18
-- TypeScript
+> Sitezy is no longer under active development. The repository is preserved as an open-source snapshot of the project and may receive occasional maintenance updates.
+
+## What Sitezy includes
+
+- AI-assisted brief and blueprint generation
+- Streaming multi-page website generation
+- Structured sections and reusable content blocks
+- Visual editor with preview, split, and code-oriented workflows
+- Section regeneration and block insertion
+- Shared account-level media library backed by Supabase Storage
+- Project pages, CMS collections, lead capture, and newsletter subscribers
+- Preview, live-site rendering, publishing, and ZIP export
+- Background project-generation jobs with an optional dedicated worker
+- Persisted workspace and product settings
+- Project analytics, comments, collaboration bootstrap, and webhooks
+- Support inbox, beta access controls, and administrative tools
+
+## Technology
+
+- [Next.js 14](https://nextjs.org/) with the App Router
+- React 18 and TypeScript
 - Tailwind CSS
-- Zustand
-- Supabase Auth, Postgres, and Storage
-- Anthropic API
-- JSZip
+- Zustand for client-side state
+- Supabase Auth, Postgres, Row Level Security, and Storage
+- Anthropic Claude by default, with optional DeepSeek support
+- CodeMirror for editable HTML, CSS, and JavaScript
+- JSZip for project export
+- Framer Motion and Lucide React for interaction and UI primitives
 
-## Quick Start
+## Requirements
 
-### 1. Install dependencies
+Before starting, install:
+
+- Node.js 20 or newer
+- npm 10 or newer
+- A Supabase project
+- An Anthropic API key, unless you configure another supported AI provider
+
+Node and npm versions can be checked with:
 
 ```bash
+node --version
+npm --version
+```
+
+## Installation
+
+Clone the repository and install its dependencies:
+
+```bash
+git clone https://github.com/Tanka713/Sitezy-V2.git
+cd Sitezy-V2
 npm install
 ```
 
-### 2. Create local environment
+Copy the example environment file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Required variables:
+Open `.env.local` and configure the required values.
+
+## Environment variables
+
+### Required
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
@@ -36,22 +78,50 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
-Optional variables:
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is the public Supabase browser key. Never put a Supabase service-role key or an AI provider key in a `NEXT_PUBLIC_*` variable.
+
+### Recommended for the complete local experience
 
 ```env
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-SITEZY_WORKER_SECRET=replace-with-a-long-random-secret
 SITEZY_INTERNAL_BASE_URL=http://127.0.0.1:3000
+```
+
+The service-role key enables server-only administrative flows and lets the development process run background generation jobs. It must remain server-side and must never be committed or exposed to the browser.
+
+### Optional AI provider settings
+
+```env
 SITEZY_AI_PROVIDER=anthropic
-SITEZY_SPARK_KEY=your-sitezy-spark-key
-SITEZY_SPARK_MODEL=claude-sonnet-4-20250514
+
+# Optional DeepSeek provider
 DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-SITEZY_GENERATION_MODE=efficient
-SITEZY_STREAM_MAX_TOKENS=9000
-SITEZY_JSON_MAX_TOKENS=3000
+
+# Optional Sitezy Spark aliases
+SITEZY_SPARK_KEY=your-sitezy-spark-key
+SITEZY_SPARK_MODEL=claude-sonnet-4-20250514
+```
+
+### Optional background-worker settings
+
+```env
+SITEZY_WORKER_SECRET=replace-with-a-long-random-secret
+SITEZY_GENERATION_WORKER_ID=local-dev-worker
+SITEZY_GENERATION_WORKER_POLL_MS=3000
+SITEZY_GENERATION_WORKER_STEP_BACKOFF_MS=2000
+SITEZY_GENERATION_WORKER_ERROR_BACKOFF_MS=5000
+SITEZY_GENERATION_JOB_STALE_SECONDS=120
+```
+
+Use `SITEZY_WORKER_SECRET` when running the detached worker process. The worker calls the local application through `SITEZY_INTERNAL_BASE_URL` and uses the secret to authorize internal generation-step requests.
+
+### Optional beta, support, and email settings
+
+```env
 SITEZY_BETA_MODE=invite-only
+SITEZY_ADMIN_EMAILS=founder@example.com
 SITEZY_BETA_ALLOWLIST=founder@example.com,designer@example.com
 SITEZY_BETA_DENIED_MESSAGE=This private beta is currently limited to invited accounts.
 SITEZY_SUPPORT_EMAIL=support@sitezy.app
@@ -59,55 +129,77 @@ RESEND_API_KEY=re_xxxxxxxxx
 SITEZY_SUPPORT_FROM_EMAIL=support@updates.sitezy.app
 ```
 
-Notes:
+These settings are only needed for invite-only access and support-reply email flows.
 
-- `SUPABASE_SERVICE_ROLE_KEY` is required for admin and customer-service internal dashboards, beta invite management, and permanent account deletion.
-- `SUPABASE_SERVICE_ROLE_KEY` also enables the built-in server-side generation daemon so full-site generation keeps running after refresh, tab close, or sign-out.
-- `SITEZY_WORKER_SECRET` plus `npm run worker:project-generation` are optional when you want a separate dedicated worker process.
-- `SITEZY_INTERNAL_BASE_URL` should point the standalone worker at the running app server. For local dev, `http://127.0.0.1:3000` is the default.
-- `SITEZY_SPARK_*` is an alias supported by the AI service layer.
-- `SITEZY_BETA_*` and `SITEZY_SUPPORT_EMAIL` are optional launch controls for invite-only beta access and support messaging.
-- `RESEND_API_KEY` plus `SITEZY_SUPPORT_FROM_EMAIL` enable customer-service reply emails from the internal support dashboard.
+### Optional image providers
 
-### 3. Apply Supabase SQL
+```env
+UNSPLASH_ACCESS_KEY=your-unsplash-access-key
+PEXELS_API_KEY=your-pexels-api-key
+```
 
-Choose the SQL path that matches your database state:
+Without these keys, Sitezy uses a keyless keyword-matched fallback for generated imagery. Unsplash or Pexels keys generally provide more relevant business imagery.
 
-- Fresh setup or full reset:
-  - [`supabase/reset-from-scratch.sql`](./supabase/reset-from-scratch.sql)
-- Core project schema with settings and support:
-  - [`supabase/schema.sql`](./supabase/schema.sql)
-- Existing database upgrade for shared media and storage:
-  - [`supabase/add-user-media.sql`](./supabase/add-user-media.sql)
-- Existing database upgrade for persisted user settings:
-  - [`supabase/add-user-settings.sql`](./supabase/add-user-settings.sql)
-- Existing database upgrade for beta access, internal roles, and invite-only gating:
-  - [`supabase/add-beta-access.sql`](./supabase/add-beta-access.sql)
-- Existing database upgrade for blocked-account beta interest capture:
-  - [`supabase/add-beta-interest-requests.sql`](./supabase/add-beta-interest-requests.sql)
-- Existing database upgrade for support requests:
-  - [`supabase/add-support-requests.sql`](./supabase/add-support-requests.sql)
-- Existing database upgrade for support reply threads:
-  - [`supabase/add-support-request-replies.sql`](./supabase/add-support-request-replies.sql)
-- Existing database upgrade for support ticket numbers:
-  - [`supabase/add-support-ticket-numbers.sql`](./supabase/add-support-ticket-numbers.sql)
-- Existing database upgrade for background generation jobs:
-  - [`supabase/add-project-generation-jobs.sql`](./supabase/add-project-generation-jobs.sql)
+### Optional generation controls
 
-Notes:
+```env
+SITEZY_GENERATION_MODE=efficient
+SITEZY_STREAM_MAX_TOKENS=9000
+SITEZY_JSON_MAX_TOKENS=3000
+```
 
-- `reset-from-scratch.sql` includes projects, pages, files, user settings, user media, support requests, the project save RPC, RLS policies, and `sitezy-media` bucket setup.
-- `schema.sql` is the canonical core schema for projects, settings, support, and the `save_project_snapshot(...)` RPC.
-- `add-user-media.sql` is still required if you are upgrading an older database to the shared media system.
+## Supabase setup
 
-In Supabase Auth settings:
+1. Create a new Supabase project.
+2. Open the Supabase SQL Editor.
+3. For a new database, run [`supabase/reset-from-scratch.sql`](./supabase/reset-from-scratch.sql).
+4. For an existing Sitezy database, apply only the migrations required for the features you need.
+5. Confirm that the `sitezy-media` Storage bucket and its policies exist after applying the schema.
 
-- Site URL: `http://localhost:3000`
-- Redirect URL: `http://localhost:3000/auth/callback`
-- Enable the Google and GitHub providers if you want OAuth login/signup in the product.
-- Configure each provider's client ID and secret in Supabase Auth, then point their OAuth callback/redirect back to your Supabase project as required by Supabase.
+The reset script is the easiest path for a fresh local installation. It creates the core tables, project-save RPC, indexes, Row Level Security policies, storage configuration, generation jobs, publishing records, CMS tables, lead-capture tables, support tables, and AI-learning tables.
 
-### 4. Run the app
+### Incremental migrations
+
+The repository also contains focused migrations for existing databases:
+
+- `add-project-generation-jobs.sql`
+- `add-project-publishing.sql`
+- `add-project-cms.sql`
+- `add-project-lead-capture.sql`
+- `add-project-seo.sql`
+- `add-user-media.sql`
+- `add-user-settings.sql`
+- `add-beta-access.sql`
+- `add-beta-interest-requests.sql`
+- `add-support-requests.sql`
+- `add-support-request-replies.sql`
+- `add-support-ticket-numbers.sql`
+- `add-ai-learning.sql`
+- `extend-ai-learning-feedback.sql`
+- `tune-ai-learning-guardrails.sql`
+- `add-platform-expansion.sql`
+
+When adding a new database-backed feature, update both the relevant incremental migration and the canonical reset/schema files.
+
+### Supabase Auth configuration
+
+For local development, configure these values in Supabase Authentication → URL Configuration:
+
+```text
+Site URL:     http://localhost:3000
+Redirect URL: http://localhost:3000/auth/callback
+```
+
+To enable OAuth login:
+
+1. Enable Google and/or GitHub under Supabase Authentication → Providers.
+2. Add the provider client ID and secret in Supabase.
+3. Configure the provider callback URL using the callback URL Supabase provides for your project.
+4. Test both sign-in and sign-up flows from Sitezy.
+
+## Running Sitezy locally
+
+Start the development server:
 
 ```bash
 npm run dev
@@ -115,143 +207,166 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-If `SUPABASE_SERVICE_ROLE_KEY` is present, the app server now drains full-site generation jobs on its own.
+The `dev` script starts Next.js through `scripts/dev-with-worker.mjs`. If `SUPABASE_SERVICE_ROLE_KEY` is present, it also starts the project-generation worker automatically. If that key is absent, the web app still starts, but background generation will not be launched by the combined development script.
 
-Run the background worker in a second terminal only if you want a separate dedicated worker process:
+### Run the app without the worker
+
+```bash
+npm run dev:app
+```
+
+### Run the worker separately
+
+In a second terminal, with the app already running:
 
 ```bash
 npm run worker:project-generation
 ```
 
-## Product Surface
+This is useful when you want to inspect or restart the worker independently from the Next.js process.
 
-Public routes:
-
-- `/`
-- `/login`
-- `/signup`
-- `/reset-password`
-- `/privacy`
-- `/terms`
-- `/support`
-
-Protected app routes:
-
-- `/app`
-- `/studio`
-- `/settings`
-- `/preview/[projectId]`
-- `/admin`
-- `/customer-service`
-- `/beta/access-needed`
-
-Core product capabilities:
-
-- AI brief to blueprint flow
-- Streaming page generation
-- Section regeneration and block insertion
-- Visual editor with preview, split, and code modes
-- Shared account-level media library backed by Supabase Storage
-- Persisted workspace and product settings
-- In-product support inbox backed by Supabase
-- ZIP export and preview-frame rendering
-
-## API Surface
-
-AI generation:
-
-- `POST /api/blueprint`
-- `POST /api/generate`
-- `POST /api/add-page`
-- `POST /api/regenerate-section`
-- `POST /api/insert-block`
-- `POST /api/assist`
-- `POST /api/intelligence`
-
-Persistence and assets:
-
-- `GET, POST /api/projects`
-- `GET, PUT, DELETE /api/projects/[id]`
-- `GET, POST /api/media`
-- `PATCH, DELETE /api/media/[id]`
-
-Settings and support:
-
-- `GET, PUT, DELETE /api/settings`
-- `DELETE /api/settings/account`
-- `GET, POST /api/support`
-- `GET, POST /api/admin/invites`
-- `PATCH /api/admin/invites/[id]`
-- `GET /api/customer-service/support`
-- `PATCH, POST /api/customer-service/support/[id]`
-
-Preview and export:
-
-- `GET /api/preview-frame`
-- `POST /api/export`
-- `POST /api/map-resolve`
-
-Background generation:
-
-- `POST /api/projects/[id]/generation`
-- `GET /api/projects/[id]/generation`
-- `POST /api/internal/project-generation/step`
-
-## Persistence Notes
-
-- Projects are persisted in Supabase, not local SQLite.
-- Project saves go through `public.save_project_snapshot(...)`.
-- User settings are stored in `public.user_settings`.
-- Shared media records are stored in `public.user_media`, while binary assets live in the `sitezy-media` storage bucket.
-- Invite-only beta access and internal roles are stored in `public.beta_access`.
-- Blocked-account interest capture is stored in `public.beta_interest_requests`.
-- Support requests are stored in `public.support_requests`.
-- Support reply threads are stored in `public.support_request_replies`.
-- Support ticket numbers are stored in `public.support_requests.ticket_number`.
-- Background generation jobs are stored in `public.project_generation_jobs`.
-- `public.beta_access` uses a unique normalized email index on `lower(email)`. Invite writes should resolve the existing record first, then do an explicit `insert` or `update`. Do not rely on `upsert(..., { onConflict: "email" })` against this schema.
-- The browser still keeps a small amount of local state for UX:
-  - `sitezy-last-project-id`
-  - `sitezy-user-settings-cache`
-
-## Documentation Map
-
-Start here:
-
-- [`docs/index.md`](./docs/index.md)
-- [`docs/architecture.md`](./docs/architecture.md)
-- [`docs/backend-and-data.md`](./docs/backend-and-data.md)
-- [`docs/frontend-and-theming.md`](./docs/frontend-and-theming.md)
-- [`docs/development.md`](./docs/development.md)
-
-Existing deep-dive docs:
-
-- [`docs/media-gallery-system.md`](./docs/media-gallery-system.md)
-- [`docs/error-handling-audit.md`](./docs/error-handling-audit.md)
-- [`docs/element-settings-coverage-audit.md`](./docs/element-settings-coverage-audit.md)
-- [`docs/element-system-audit-phase-1.md`](./docs/element-system-audit-phase-1.md)
-- [`docs/element-system-phase-2.md`](./docs/element-system-phase-2.md)
-- [`docs/element-system-phase-3.md`](./docs/element-system-phase-3.md)
-- [`docs/element-system-phase-4.md`](./docs/element-system-phase-4.md)
-- [`docs/element-system-phase-5.md`](./docs/element-system-phase-5.md)
-- [`docs/element-system-phase-5b.md`](./docs/element-system-phase-5b.md)
-- [`docs/element-system-phase-5c.md`](./docs/element-system-phase-5c.md)
-- [`docs/element-system-phase-5d.md`](./docs/element-system-phase-5d.md)
-- [`docs/element-system-phase-5e.md`](./docs/element-system-phase-5e.md)
-- [`docs/element-system-phase-5f.md`](./docs/element-system-phase-5f.md)
-- [`docs/element-system-phase-5g.md`](./docs/element-system-phase-5g.md)
-- [`docs/element-system-phase-6.md`](./docs/element-system-phase-6.md)
-- [`docs/element-system-phase-7.md`](./docs/element-system-phase-7.md)
-- [`docs/element-system-phase-8.md`](./docs/element-system-phase-8.md)
-- [`docs/element-system-phase-9.md`](./docs/element-system-phase-9.md)
-- [`docs/element-system-phase-10.md`](./docs/element-system-phase-10.md)
-
-## Scripts
+### Production-like local run
 
 ```bash
-npm run dev
 npm run build
 npm run start
-npm run lint
-npm run type-check
 ```
+
+## Useful commands
+
+```bash
+npm run dev                    # Next.js plus worker when configured
+npm run dev:app                # Next.js only
+npm run worker:project-generation
+npm run type-check             # TypeScript verification
+npm run lint                   # Next.js linting
+npm run build                  # Production build
+npm run start                  # Run the production build
+```
+
+The project does not currently expose a dedicated automated test suite through `package.json`. For meaningful changes, run at least:
+
+```bash
+npm run type-check
+npm run build
+```
+
+## Product routes
+
+### Public routes
+
+- `/` — marketing site
+- `/login` — sign in
+- `/signup` — account creation
+- `/reset-password` — password reset
+- `/privacy` — privacy policy
+- `/terms` — terms of use
+- `/support` — public support entry point
+
+### Authenticated routes
+
+- `/app` — project dashboard
+- `/studio` — project studio
+- `/studio/cms/[projectId]` — CMS collections and entries
+- `/studio/leads/[projectId]` — project leads
+- `/settings` — account and workspace settings
+- `/preview/[projectId]` — project preview
+- `/admin` — administrative tools
+- `/customer-service` — support operations
+- `/beta/access-needed` — access-request state for invite-only mode
+
+## API overview
+
+The main API areas are:
+
+- AI generation: `/api/brief-chat`, `/api/blueprint`, `/api/generate`, `/api/assist`, `/api/intelligence`, `/api/add-page`, `/api/regenerate-section`, `/api/insert-block`
+- Projects and pages: `/api/projects`, `/api/projects/[id]`, `/api/projects/[id]/pages`, `/api/projects/[id]/generation`
+- Preview and publishing: `/api/preview-frame`, `/api/projects/[id]/preview/share`, `/api/projects/[id]/publish`, `/api/projects/[id]/deployments`
+- Media and export: `/api/media`, `/api/export`, `/api/map-resolve`
+- CMS and leads: `/api/projects/[id]/cms`, `/api/projects/[id]/leads`, `/api/projects/[id]/lead-capture`, `/api/projects/[id]/subscribers`
+- Analytics and collaboration: `/api/projects/[id]/analytics`, `/api/projects/[id]/collab`, `/api/projects/[id]/comments`, `/api/projects/[id]/webhooks`
+- Settings and support: `/api/settings`, `/api/support`, `/api/customer-service/support`, `/api/admin/invites`
+- AI learning and training: `/api/ai-learning`, `/api/admin/training-data`
+
+## Architecture at a glance
+
+```text
+Browser
+  ↓
+Next.js App Router and API routes
+  ├─ Supabase Auth and user-scoped data
+  ├─ Supabase Storage for media
+  ├─ AI provider adapters and generation engines
+  ├─ Project/page/section persistence
+  └─ Preview, publishing, export, CMS, leads, and analytics
+          ↓
+  Background generation jobs
+          ↓
+  In-process or detached project-generation worker
+```
+
+Important implementation areas:
+
+- `src/app` — application routes and API handlers
+- `src/components` — product UI and editor surfaces
+- `src/lib/ai` — provider adapters, prompts, engines, validation, and generation orchestration
+- `src/lib/server` — server-only persistence and domain services
+- `src/lib/blocks` — block registry and block factory
+- `src/types` — shared domain types
+- `supabase` — schema and migrations
+- `docs` — architecture, data, frontend, and development notes
+
+For a deeper tour, start with [`docs/index.md`](./docs/index.md), then read [`docs/architecture.md`](./docs/architecture.md) and [`docs/backend-and-data.md`](./docs/backend-and-data.md).
+
+## Data and security model
+
+- Projects, pages, files, settings, media metadata, leads, CMS data, and support records are persisted in Supabase.
+- User-owned tables use `user_id` ownership and Row Level Security policies.
+- Project saves use the `public.save_project_snapshot(...)` database function.
+- Binary media is stored in the `sitezy-media` bucket; metadata is stored in `public.user_media`.
+- Service-role access is used only by server-side administrative and worker flows.
+- Never commit `.env.local`, API keys, service-role keys, OAuth secrets, or generated private credentials.
+
+Before deploying publicly, review the RLS policies, OAuth redirect configuration, rate limits, AI-provider spending limits, and service-role usage for your environment.
+
+## Troubleshooting
+
+### The app starts but generation does not run
+
+Set `SUPABASE_SERVICE_ROLE_KEY`, make sure `supabase/reset-from-scratch.sql` or `add-project-generation-jobs.sql` has been applied, and restart `npm run dev`. If using a detached worker, also set `SITEZY_WORKER_SECRET` and `SITEZY_INTERNAL_BASE_URL`.
+
+### Supabase authentication redirects incorrectly
+
+Check that the Supabase Site URL and redirect URL exactly match `http://localhost:3000` and `http://localhost:3000/auth/callback` for local development.
+
+### Media upload fails
+
+Verify that `public.user_media` exists, the `sitezy-media` bucket exists, and the storage policies from `add-user-media.sql` or `reset-from-scratch.sql` were applied.
+
+### Settings do not persist
+
+Verify that `public.user_settings` exists and that the authenticated user can reach `GET /api/settings` and `PUT /api/settings`.
+
+### Admin or customer-service pages are unavailable
+
+Those flows require `SUPABASE_SERVICE_ROLE_KEY` and the corresponding beta/access/support migrations. Confirm that the signed-in account has the expected internal role or allowlist entry.
+
+## Contributing
+
+Contributions are welcome. Before opening a pull request:
+
+1. Explain the user-facing problem or capability.
+2. Keep changes scoped and follow the existing domain boundaries.
+3. Add or update Supabase migrations for schema changes.
+4. Update `reset-from-scratch.sql` when adding a new persisted feature.
+5. Update documentation when routes, configuration, or behavior changes.
+6. Run `npm run type-check`, `npm run lint`, and `npm run build` when applicable.
+7. Do not include secrets, local credentials, generated build output, or `.claude/worktrees` state.
+
+## Project context
+
+Sitezy began as a personal product-building project and is now preserved as an open-source project snapshot. For the longer personal background and development history, see [`README-PERSONAL.md`](./README-PERSONAL.md).
+
+## License
+
+No open-source license has been selected in this repository yet. Until a `LICENSE` file is added, the source remains under the copyright of its author and should not be assumed to be available for unrestricted redistribution.
